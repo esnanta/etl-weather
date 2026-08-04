@@ -1,5 +1,6 @@
 #!/bin/bash
 # Activation script for weather-dataset Python environment
+# python3 -m venv myvenv
 
 echo "==================================================="
 echo "Weather Dataset Project - Python Environment"
