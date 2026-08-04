@@ -1,0 +1,8 @@
+CDSAPI_URL=https://cds.climate.copernicus.eu/api
+CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
+
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=your_database_name
+POSTGRES_USER=your_username
+POSTGRES_PASSWORD=your_password
