@@ -28,7 +28,7 @@ from pipeline.extract import (
     ArcoExtractor
 )
 
-from pipeline.utils import split_request_by_month
+from pipeline.utils import split_request_by_month, split_request_by_week
 from pipeline.model import (
     BoundingBox,
     DataSource,
@@ -138,7 +138,7 @@ def run_pipeline_batch() -> None:
         source=DataSource.ARCO,
         dataset="era5-single-levels",
         start_date="1990-01-01",
-        end_date="1990-01-03",
+        end_date="1990-03-31",
         variables=[
             "surface_solar_radiation_downwards",
             "total_precipitation",
@@ -162,7 +162,8 @@ def run_pipeline_batch() -> None:
     spatial_dataset = spatial_dataset.chunk("auto")
 
     # 3. Split by month.
-    requests = split_request_by_month(request)
+    # requests = split_request_by_month(request)
+    requests =  split_request_by_week(request)
 
     # 4. Looping untuk setiap bulan
     extractor = ArcoExtractor(spatial_dataset)

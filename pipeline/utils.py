@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from calendar import monthrange
 from dataclasses import replace
-from datetime import datetime
-
+from datetime import datetime, timedelta
+from calendar import monthrange
 from pipeline.model import WeatherRequest, DataSource
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,41 @@ def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
             month = 1
         else:
             month += 1
+
+    return requests
+
+def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
+    """
+    Split a WeatherRequest into weekly WeatherRequests.
+    Ensures intervals do not cross month boundaries or exceed request end_date.
+    """
+    start_date = datetime.strptime(request.start_date, "%Y-%m-%d").date()
+    end_date = datetime.strptime(request.end_date, "%Y-%m-%d").date()
+    requests: list[WeatherRequest] = []
+
+    current_start = start_date
+
+    while current_start <= end_date:
+        # 1. Hitung tanggal 7 hari (current_start + 6 hari)
+        week_end = current_start + timedelta(days=6)
+
+        # 2. Hitung tanggal terakhir di bulan berjalan
+        last_day_of_month = monthrange(current_start.year, current_start.month)[1]
+        month_end = datetime(current_start.year, current_start.month, last_day_of_month).date()
+
+        # 3. Ambil batas paling kecil antara: batas minggu (7 hari), batas akhir bulan, atau end_date request
+        period_end = min(week_end, month_end, end_date)
+
+        requests.append(
+            replace(
+                request,
+                start_date=current_start.isoformat(),
+                end_date=period_end.isoformat(),
+            )
+        )
+
+        # 4. Pindah ke hari berikutnya untuk memulainya minggu/bulan baru
+        current_start = period_end + timedelta(days=1)
 
     return requests
 

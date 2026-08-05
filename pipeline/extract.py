@@ -1,19 +1,18 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from datetime import timezone
 
 import aiohttp
 import xarray as xr
-import logging
 
+from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_step
 from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
-from pipeline.interfaces import WeatherExtractor
 from pipeline.utils import (
     validate_request,
     build_request,
-    split_request_by_month,
     ERA5_SINGLE_LEVELS_URL
 )
 
