@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from pipeline.extract import RawWeatherDataset
+from pipeline.model import RawWeatherDataset
 from pipeline.logging import log_step
 from pipeline.transform import TransformedWeatherDataset
 

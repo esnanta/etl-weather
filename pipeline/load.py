@@ -19,7 +19,7 @@ from pipeline.logging import (
     log_step,
 )
 
-from pipeline.transform import (
+from pipeline.model import (
     TransformedWeatherDataset,
 )
 

@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import (
-    dataclass,
-)
-
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -13,9 +9,9 @@ import logging
 import pandas as pd
 import xarray as xr
 
-from pipeline.extract import (
+from pipeline.model import (
     RawWeatherDataset,
-    WeatherRequest, LoadedWeatherDataset,
+    WeatherRequest, LoadedWeatherDataset, DatasetArtifact,
 )
 
 from pipeline.logging import (
@@ -43,20 +39,9 @@ VARIABLE_MAP = {
     "total_precipitation": "tp",
 }
 
-
 class DataLayer(Enum):
     RAW = "raw"
     TRANSFORMED = "transformed"
-
-
-@dataclass(frozen=True)
-class DatasetArtifact:
-    """Metadata describing a stored artifact."""
-
-    layer: DataLayer
-    created_at: datetime
-    path: Path
-
 
 @log_step
 def save_raw_netcdf(

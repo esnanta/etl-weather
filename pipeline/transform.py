@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import (
     UTC,
     datetime,
@@ -9,27 +8,16 @@ from datetime import (
 import logging
 import pandas as pd
 
-from pipeline.extract import (
-    LoadedWeatherDataset,
-    WeatherRequest,
+from pipeline.model import (
+    LoadedWeatherDataset
 )
 
 from pipeline.logging import (
     log_step, log_dataframe_changes, log_dataframe_info, _log_dataframe_preview,
 )
+from pipeline.model import TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class TransformedWeatherDataset:
-    """
-    Analysis-ready weather dataset.
-    """
-
-    request: WeatherRequest
-    transformed_at: datetime
-    dataset: pd.DataFrame
 
 
 @log_step

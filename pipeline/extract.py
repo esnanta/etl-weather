@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from dataclasses import replace
 from calendar import monthrange
 from datetime import datetime
 from datetime import timezone
-from enum import Enum
 
-import pandas as pd
 import aiohttp
 import xarray as xr
 import logging
 
 from pipeline.logging import log_step
+from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
 
 logger = logging.getLogger(__name__)
 
@@ -36,62 +34,6 @@ SUPPORTED_DATASETS = {
 ERA5_SINGLE_LEVELS_URL = (
     "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 )
-
-class DataSource(Enum):
-    ARCO = "arco"
-    CDS = "cds"
-
-
-@dataclass(frozen=True)
-class BoundingBox:
-    """
-    Geographic bounding box.
-    """
-
-    north_lat: float
-    west_lon: float
-    south_lat: float
-    east_lon: float
-
-@dataclass(frozen=True)
-class WeatherRequest:
-    """
-    Weather extraction configuration.
-    """
-    source: DataSource
-    dataset: str
-    start_date: str
-    end_date: str
-    variables: list[str]
-    bbox: BoundingBox
-
-
-@dataclass(frozen=True)
-class RawWeatherDataset:
-    """
-    Raw dataset immediately after extraction.
-
-    The dataset is still a lazy xarray.Dataset.
-    Materialization is delegated to the storage layer
-    when the dataset is written to NetCDF.
-    """
-
-    request: WeatherRequest
-    downloaded_at: datetime
-    raw_data: xr.Dataset
-
-
-@dataclass(frozen=True)
-class LoadedWeatherDataset:
-    """
-    Raw dataset after being reloaded from a Parquet checkpoint.
-
-    At this stage the data is represented as a Pandas DataFrame.
-    """
-
-    request: WeatherRequest
-    downloaded_at: datetime
-    raw_data: pd.DataFrame
 
 
 def validate_request(
