@@ -38,6 +38,11 @@ DATA_DIRECTORY = (
     / "data"
 )
 
+VARIABLE_MAP = {
+    "surface_solar_radiation_downwards": "ssrd",
+    "total_precipitation": "tp",
+}
+
 
 class DataLayer(Enum):
     RAW = "raw"
@@ -109,7 +114,6 @@ def convert_netcdf_to_dataframe(
     df = local_ds.to_dataframe().reset_index()
     local_ds.close()
 
-    # Menampilkan preview 10 baris pertama ke console log
     _log_dataframe_preview(df, rows=10)
 
     return df
@@ -170,6 +174,8 @@ def delete_artifact(
 ) -> None:
     """Delete artifact if it exists."""
 
+
+
     if artifact.path.exists():
         artifact.path.unlink()
 
@@ -229,10 +235,12 @@ def _build_variable_signature(
     """
     Build a deterministic variable signature.
     """
+    
+    short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
 
     return "_".join(
         sorted(
-            variables,
+            short_variables,
         )
     )
 
