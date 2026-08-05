@@ -134,7 +134,7 @@ def run_pipeline_batch() -> None:
         source=DataSource.ARCO,
         dataset="era5-single-levels",
         start_date="1990-01-01",
-        end_date="1990-01-15",
+        end_date="1990-01-03",
         variables=[
             "surface_solar_radiation_downwards",
             "total_precipitation",
