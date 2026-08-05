@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 
 from pipeline.logging import log_step
 
@@ -44,6 +45,44 @@ class DatabaseConfig:
             f"{self.database}"
         )
 
+    @property
+    def url_maintenance(self) -> str:
+        """
+        Return a connection string to the maintenance
+        database (e.g. 'postgres')
+        which can be used to create the actual database.
+        """
+        return (
+            "postgresql+psycopg://"
+            f"{self.user}:"
+            f"{self.password}@"
+            f"{self.host}:"
+            f"{self.port}/"
+            "postgres"
+        )
+
+
+def ensure_database_exists(config: DatabaseConfig = DatabaseConfig()) -> None:
+    """
+    Create the database if it does not exist.
+    """
+    try:
+        engine = create_engine(config.url)
+        conn = engine.connect()
+        conn.close()
+        logger.info("Database '%s' already exists.", config.database)
+        return
+    except OperationalError as e:
+        if f'database "{config.database}" does not exist' not in str(e):
+            raise
+        logger.info("Database '%s' does not exist. Creating...", config.database)
+
+    maintenance_engine = create_engine(config.url_maintenance)
+    with maintenance_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(f'CREATE DATABASE "{config.database}"'))
+
+    logger.info("Database '%s' created.", config.database)
+
 
 @log_step
 def create_database_engine(
@@ -52,8 +91,8 @@ def create_database_engine(
     """
     Create SQLAlchemy engine.
     """
-
-    logger.info("Creating PostgreSQL engine.")
+    ensure_database_exists(config)
+    logger.info("Creating PostgreSQL engine for database '%s'.", config.database)
 
     return create_engine(
         config.url,
