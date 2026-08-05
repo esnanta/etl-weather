@@ -11,6 +11,7 @@ import logging
 
 from pipeline.logging import log_step
 from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
+from pipeline.interfaces import WeatherExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -268,30 +269,30 @@ def _download_arco(
     return dataset
 
 
+DOWNLOAD_STRATEGIES = {
+    DataSource.ARCO: _download_arco,
+}
+
 @log_step
 def _download_data(
     request: WeatherRequest,
 ) -> xr.Dataset:
     """
     Download a weather dataset
-    from the configured source.
+    from the configured source using a strategy pattern.
     """
-
-    if request.source is DataSource.ARCO:
-        return _download_arco(
-            request,
+    strategy = DOWNLOAD_STRATEGIES.get(request.source)
+    if not strategy:
+        if request.source is DataSource.CDS:
+            raise NotImplementedError(
+                "CDS data source is not "
+                "implemented yet."
+            )
+        raise ValueError(
+            f"Unsupported data source: "
+            f"{request.source}"
         )
-
-    if request.source is DataSource.CDS:
-        raise NotImplementedError(
-            "CDS data source is not "
-            "implemented yet."
-        )
-
-    raise ValueError(
-        f"Unsupported data source: "
-        f"{request.source}"
-    )
+    return strategy(request)
 
 @log_step
 def _select_time(
@@ -477,3 +478,15 @@ def open_dataset(
     return _download_data(
         request,
     )
+
+class ArcoExtractor(WeatherExtractor):
+    """
+    SOLID: Single Responsibility and Open/Closed.
+    Provides an extraction implementation for ARCO datasets.
+    """
+    def __init__(self, dataset: xr.Dataset):
+        self.dataset = dataset
+
+    def extract(self, request: WeatherRequest) -> RawWeatherDataset:
+        return extract_data(request, self.dataset)
+

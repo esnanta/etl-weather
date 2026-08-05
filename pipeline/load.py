@@ -23,6 +23,8 @@ from pipeline.model import (
     TransformedWeatherDataset,
 )
 
+from pipeline.interfaces import DataLoader
+
 logger = logging.getLogger(__name__)
 
 
@@ -212,3 +214,14 @@ def load_to_postgresql(
         dataset_id,
         rows_inserted,
     )
+
+class PostgresDataLoader(DataLoader):
+    """
+    SOLID: Single Responsibility & Dependency Inversion.
+    Handles loading dataset into PostgreSQL database.
+    """
+    def __init__(self, config: DatabaseConfig = None):
+        self.config = config or DatabaseConfig()
+
+    def load(self, dataset: TransformedWeatherDataset) -> tuple[int, int]:
+        return load_to_postgresql(dataset, self.config)

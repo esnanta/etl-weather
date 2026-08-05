@@ -4,8 +4,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import xarray as xr
-
 project_root = (
     Path(__file__)
     .resolve()
@@ -17,25 +15,31 @@ sys.path.insert(
     str(project_root),
 )
 
+from pipeline.interfaces import (
+    WeatherExtractor,
+    DataStorage,
+    DataTransformer,
+    DataLoader,
+)
+
 from pipeline.extract import (
+    open_dataset,
+    split_request_by_month,
+    _select_bbox,
+    ArcoExtractor
+)
+from pipeline.model import (
     BoundingBox,
     DataSource,
     WeatherRequest,
-    extract_data,
-    open_dataset,
-    split_request_by_month,
     LoadedWeatherDataset,
-    _select_bbox
 )
-
 from pipeline.storage import (
-    save_raw_netcdf,
-    convert_netcdf_to_dataframe,
-    save_transformed_parquet,
+    LocalDataStorage
 )
 
 from pipeline.transform import (
-    transform_data,
+    DefaultDataTransformer
 )
 
 from pipeline.validation import (
@@ -44,7 +48,7 @@ from pipeline.validation import (
 )
 
 from pipeline.load import (
-    load_to_postgresql,
+    PostgresDataLoader
 )
 
 from pipeline.logging import (
@@ -59,68 +63,67 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(
-    request: WeatherRequest,
-    dataset: xr.Dataset,
-) -> None:
+class WeatherPipeline:
     """
-    Execute the complete pipeline for
-    one WeatherRequest using SOLID functions.
+    SOLID: Single Responsibility & Dependency Inversion.
+    Coordinates the pipeline steps using injected dependencies.
     """
-    started_at = datetime.now()
-    logger.info("[START] Pipeline | %s -> %s", request.start_date, request.end_date)
+    def __init__(
+        self,
+        extractor: WeatherExtractor,
+        storage: DataStorage,
+        transformer: DataTransformer,
+        loader: DataLoader,
+    ):
+        self.extractor = extractor
+        self.storage = storage
+        self.transformer = transformer
+        self.loader = loader
 
-    # ---------------------------------------------------------
-    # 1. Extract (Lazy)
-    # ---------------------------------------------------------
-    raw_dataset = extract_data(request=request, dataset=dataset)
-    validate_raw_dataset(raw_dataset)
+    def run(self, request: WeatherRequest) -> None:
+        started_at = datetime.now()
+        logger.info("[START] Pipeline | %s -> %s", request.start_date, request.end_date)
 
-    # ---------------------------------------------------------
-    # 2. Save Checkpoint 1 (Layer: RAW, Format: .nc)
-    # ---------------------------------------------------------
-    nc_artifact = save_raw_netcdf(raw_dataset)
+        # 1. Extract
+        raw_dataset = self.extractor.extract(request)
+        validate_raw_dataset(raw_dataset)
 
-    # ---------------------------------------------------------
-    # 3. Read to RAM (Konversi .nc ke DataFrame)
-    # ---------------------------------------------------------
-    raw_dataframe = convert_netcdf_to_dataframe(nc_artifact)
-    loaded_dataset = LoadedWeatherDataset(
-        request=request,
-        downloaded_at=raw_dataset.downloaded_at,
-        raw_data=raw_dataframe,
-    )
-    # ---------------------------------------------------------
-    # 4. Transform
-    # ---------------------------------------------------------
-    transformed_dataset = transform_data(loaded_dataset)
-    validate_transformed_dataset(transformed_dataset)
+        # 2. Save Checkpoint 1
+        nc_artifact = self.storage.save_raw(raw_dataset)
 
-    # ---------------------------------------------------------
-    # 5. Save Checkpoint 2 (Layer: TRANSFORMED, Format: .parquet)
-    # ---------------------------------------------------------
-    parquet_artifact = save_transformed_parquet(
-        df=transformed_dataset.dataset,
-        request=request,
-        downloaded_at=raw_dataset.downloaded_at
-    )
+        # 3. Read to RAM
+        raw_dataframe = self.storage.convert_to_dataframe(nc_artifact)
+        loaded_dataset = LoadedWeatherDataset(
+            request=request,
+            downloaded_at=raw_dataset.downloaded_at,
+            raw_data=raw_dataframe,
+        )
 
-    # ---------------------------------------------------------
-    # 6. Load to PostgreSQL
-    # ---------------------------------------------------------
-    dataset_id, rows_inserted = load_to_postgresql(transformed_dataset)
+        # 4. Transform
+        transformed_dataset = self.transformer.transform(loaded_dataset)
+        validate_transformed_dataset(transformed_dataset)
 
-    finished_at = datetime.now()
-    log_pipeline_summary(
-        request=request,
-        dataset_id=dataset_id,
-        rows_inserted=rows_inserted,
-        parquet_path=parquet_artifact.path,
-        started_at=started_at,
-        finished_at=finished_at,
-    )
+        # 5. Save Checkpoint 2
+        parquet_artifact = self.storage.save_transformed(
+            df=transformed_dataset.dataset,
+            request=request,
+            downloaded_at=raw_dataset.downloaded_at
+        )
 
-    logger.info("[DONE] Pipeline | %s -> %s", request.start_date, request.end_date)
+        # 6. Load to PostgreSQL
+        dataset_id, rows_inserted = self.loader.load(transformed_dataset)
+
+        finished_at = datetime.now()
+        log_pipeline_summary(
+            request=request,
+            dataset_id=dataset_id,
+            rows_inserted=rows_inserted,
+            parquet_path=parquet_artifact.path,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+
+        logger.info("[DONE] Pipeline | %s -> %s", request.start_date, request.end_date)
 
 
 def run_pipeline_batch() -> None:
@@ -161,11 +164,20 @@ def run_pipeline_batch() -> None:
     requests = split_request_by_month(request)
 
     # 4. Looping untuk setiap bulan
+    extractor = ArcoExtractor(spatial_dataset)
+    storage = LocalDataStorage()
+    transformer = DefaultDataTransformer()
+    loader = PostgresDataLoader()
+
+    pipeline = WeatherPipeline(
+        extractor=extractor,
+        storage=storage,
+        transformer=transformer,
+        loader=loader
+    )
+
     for monthly_request in requests:
-        run_pipeline(
-            request=monthly_request,
-            dataset=spatial_dataset,
-        )
+        pipeline.run(monthly_request)
 
     logger.info("[DONE] Batch Pipeline")
 

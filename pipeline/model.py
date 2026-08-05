@@ -5,8 +5,11 @@ from enum import Enum
 import pandas as pd
 import xarray as xr
 
-from pipeline.storage import DataLayer
 from pathlib import Path
+
+class DataLayer(Enum):
+    RAW = "raw"
+    TRANSFORMED = "transformed"
 
 class DataSource(Enum):
     ARCO = "arco"

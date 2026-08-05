@@ -11,8 +11,9 @@ import xarray as xr
 
 from pipeline.model import (
     RawWeatherDataset,
-    WeatherRequest, LoadedWeatherDataset, DatasetArtifact,
+    WeatherRequest, LoadedWeatherDataset, DatasetArtifact, DataLayer,
 )
+from pipeline.interfaces import DataStorage
 
 from pipeline.logging import (
     log_step,
@@ -38,10 +39,6 @@ VARIABLE_MAP = {
     "surface_solar_radiation_downwards": "ssrd",
     "total_precipitation": "tp",
 }
-
-class DataLayer(Enum):
-    RAW = "raw"
-    TRANSFORMED = "transformed"
 
 @log_step
 def save_raw_netcdf(
@@ -241,3 +238,17 @@ def _format_request_date(
         "-",
         "",
     )
+
+class LocalDataStorage(DataStorage):
+    """
+    SOLID: Single Responsibility & Dependency Inversion.
+    Handles artifact storage and retrieval on local filesystem.
+    """
+    def save_raw(self, dataset: RawWeatherDataset) -> DatasetArtifact:
+        return save_raw_netcdf(dataset)
+
+    def save_transformed(self, df: pd.DataFrame, request: WeatherRequest, downloaded_at: datetime) -> DatasetArtifact:
+        return save_transformed_parquet(df, request, downloaded_at)
+
+    def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
+        return convert_netcdf_to_dataframe(artifact)

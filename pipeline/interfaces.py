@@ -1,6 +1,6 @@
-# pipeline/interfaces.py
 from abc import ABC, abstractmethod
-from pipeline.model import WeatherRequest, RawWeatherDataset, TransformedWeatherDataset, DatasetArtifact
+import pandas as pd
+from pipeline.model import WeatherRequest, RawWeatherDataset, TransformedWeatherDataset, DatasetArtifact, LoadedWeatherDataset
 
 
 class WeatherExtractor(ABC):
@@ -15,7 +15,17 @@ class DataStorage(ABC):
         pass
 
     @abstractmethod
-    def save_transformed(self, df, request: WeatherRequest, downloaded_at) -> DatasetArtifact:
+    def save_transformed(self, df: pd.DataFrame, request: WeatherRequest, downloaded_at) -> DatasetArtifact:
+        pass
+
+    @abstractmethod
+    def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
+        pass
+
+
+class DataTransformer(ABC):
+    @abstractmethod
+    def transform(self, raw_dataset: LoadedWeatherDataset) -> TransformedWeatherDataset:
         pass
 
 

@@ -12,6 +12,8 @@ from pipeline.model import (
     LoadedWeatherDataset
 )
 
+from pipeline.interfaces import DataTransformer
+
 from pipeline.logging import (
     log_step, log_dataframe_changes, log_dataframe_info, _log_dataframe_preview,
 )
@@ -80,3 +82,11 @@ def transform_data(
         transformed_at=datetime.now(UTC),
         dataset=transformed,
     )
+
+class DefaultDataTransformer(DataTransformer):
+    """
+    SOLID: Single Responsibility & Dependency Inversion.
+    Transforms data according to basic pipeline rules.
+    """
+    def transform(self, raw_dataset: LoadedWeatherDataset) -> TransformedWeatherDataset:
+        return transform_data(raw_dataset)
