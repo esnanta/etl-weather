@@ -24,10 +24,11 @@ from pipeline.interfaces import (
 
 from pipeline.extract import (
     open_dataset,
-    split_request_by_month,
     _select_bbox,
     ArcoExtractor
 )
+
+from pipeline.utils import split_request_by_month
 from pipeline.model import (
     BoundingBox,
     DataSource,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 
 import logging
@@ -20,6 +19,11 @@ from pipeline.logging import (
     _log_dataframe_preview,
 )
 
+from pipeline.utils import (
+    format_request_date,
+    build_variable_signature,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,11 +38,6 @@ DATA_DIRECTORY = (
     PROJECT_DIRECTORY
     / "data"
 )
-
-VARIABLE_MAP = {
-    "surface_solar_radiation_downwards": "ssrd",
-    "total_precipitation": "tp",
-}
 
 @log_step
 def save_raw_netcdf(
@@ -174,16 +173,16 @@ def _create_artifact(
     Create artifact metadata.
     """
 
-    start_date = _format_request_date(
+    start_date = format_request_date(
         request.start_date,
     )
 
-    end_date = _format_request_date(
+    end_date = format_request_date(
         request.end_date,
     )
 
     variable_signature = (
-        _build_variable_signature(
+        build_variable_signature(
             request.variables,
         )
     )
@@ -210,34 +209,6 @@ def _create_artifact(
         path=path,
     )
 
-
-def _build_variable_signature(
-    variables: list[str],
-) -> str:
-    """
-    Build a deterministic variable signature.
-    """
-    
-    short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
-
-    return "_".join(
-        sorted(
-            short_variables,
-        )
-    )
-
-
-def _format_request_date(
-    date: str,
-) -> str:
-    """
-    Format request date for filenames.
-    """
-
-    return date.replace(
-        "-",
-        "",
-    )
 
 class LocalDataStorage(DataStorage):
     """

@@ -1,4 +1,3 @@
-# pipeline/extract.py
 from __future__ import annotations
 
 import logging
@@ -6,7 +5,7 @@ from calendar import monthrange
 from dataclasses import replace
 from datetime import datetime
 
-from pipeline.model import WeatherRequest
+from pipeline.model import WeatherRequest, DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,50 @@ ERA5_SINGLE_LEVELS_URL = (
     "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 )
 
+VARIABLE_MAP = {
+    "surface_solar_radiation_downwards": "ssrd",
+    "total_precipitation": "tp",
+}
 
+# =============================================================================
+# REQUEST UTILITIES
+# =============================================================================
+
+def validate_request(request: WeatherRequest) -> None:
+    """Validate a WeatherRequest."""
+    if not isinstance(request.source, DataSource):
+        raise ValueError("Invalid data source.")
+    if not request.dataset.strip():
+        raise ValueError("Dataset must not be empty.")
+    if not request.variables:
+        raise ValueError("At least one variable must be provided.")
+    if not request.start_date.strip():
+        raise ValueError("Start date must not be empty.")
+    if not request.end_date.strip():
+        raise ValueError("End date must not be empty.")
+
+    try:
+        start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(request.end_date, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date format must be YYYY-MM-DD.")
+
+    if start_date > end_date:
+        raise ValueError("Start date must be before end date.")
+
+    bbox = request.bbox
+    if not (-90 <= bbox.south_lat <= 90):
+        raise ValueError("Invalid south latitude.")
+    if not (-90 <= bbox.north_lat <= 90):
+        raise ValueError("Invalid north latitude.")
+    if not (-180 <= bbox.west_lon <= 180):
+        raise ValueError("Invalid west longitude.")
+    if not (-180 <= bbox.east_lon <= 180):
+        raise ValueError("Invalid east longitude.")
+    if bbox.south_lat > bbox.north_lat:
+        raise ValueError("South latitude must be less than or equal to north latitude.")
+    if bbox.west_lon > bbox.east_lon:
+        raise ValueError("West longitude must be less than or equal to east longitude.")
 
 def build_request(request: WeatherRequest) -> WeatherRequest:
     """Build a normalized WeatherRequest."""
@@ -53,9 +95,7 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     supported_variables = SUPPORTED_DATASETS[dataset]
     for variable in variables:
         if variable not in supported_variables:
-            raise ValueError(
-                f"Variable '{variable}' is not supported by dataset '{dataset}'."
-            )
+            raise ValueError(f"Variable '{variable}' is not supported by dataset '{dataset}'.")
 
     return WeatherRequest(
         source=request.source,
@@ -65,7 +105,6 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
         variables=variables,
         bbox=request.bbox,
     )
-
 
 def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
     """Split a WeatherRequest into monthly WeatherRequests."""
@@ -102,3 +141,17 @@ def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
             month += 1
 
     return requests
+
+# =============================================================================
+# STORAGE UTILITIES
+# =============================================================================
+
+def build_variable_signature(variables: list[str]) -> str:
+    """Build a deterministic variable signature."""
+    short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
+    return "_".join(sorted(short_variables))
+
+def format_request_date(date: str) -> str:
+    """Format request date for filenames."""
+    return date.replace("-", "")
+

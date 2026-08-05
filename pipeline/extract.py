@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from calendar import monthrange
 from datetime import datetime
 from datetime import timezone
 
@@ -12,193 +10,14 @@ import logging
 from pipeline.logging import log_step
 from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
 from pipeline.interfaces import WeatherExtractor
-
-logger = logging.getLogger(__name__)
-
-
-ERA5_SINGLE_LEVELS_VARIABLES = {
-    "total_precipitation",
-    "surface_solar_radiation_downwards",
-    "t2m",
-    "u10",
-    "v10",
-    "swh",
-    "msl",
-}
-
-
-SUPPORTED_DATASETS = {
-    "era5-single-levels": ERA5_SINGLE_LEVELS_VARIABLES,
-}
-
-
-ERA5_SINGLE_LEVELS_URL = (
-    "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
+from pipeline.utils import (
+    validate_request,
+    build_request,
+    split_request_by_month,
+    ERA5_SINGLE_LEVELS_URL
 )
 
-
-def validate_request(
-    request: WeatherRequest,
-) -> None:
-    """
-    Validate a WeatherRequest.
-    """
-
-    if not isinstance(
-        request.source,
-        DataSource,
-    ):
-        raise ValueError(
-            "Invalid data source."
-        )
-
-    if not request.dataset.strip():
-        raise ValueError(
-            "Dataset must not be empty."
-        )
-
-    if not request.variables:
-        raise ValueError(
-            "At least one variable "
-            "must be provided."
-        )
-
-    if not request.start_date.strip():
-        raise ValueError(
-            "Start date must not be empty."
-        )
-
-    if not request.end_date.strip():
-        raise ValueError(
-            "End date must not be empty."
-        )
-
-    try:
-        start_date = datetime.strptime(
-            request.start_date,
-            "%Y-%m-%d",
-        )
-
-        end_date = datetime.strptime(
-            request.end_date,
-            "%Y-%m-%d",
-        )
-
-    except ValueError:
-        raise ValueError(
-            "Date format must be "
-            "YYYY-MM-DD."
-        )
-
-    if start_date > end_date:
-        raise ValueError(
-            "Start date must be "
-            "before end date."
-        )
-
-    bbox = request.bbox
-
-    if not (
-        -90 <= bbox.south_lat <= 90
-    ):
-        raise ValueError(
-            "Invalid south latitude."
-        )
-
-    if not (
-        -90 <= bbox.north_lat <= 90
-    ):
-        raise ValueError(
-            "Invalid north latitude."
-        )
-
-    if not (
-        -180 <= bbox.west_lon <= 180
-    ):
-        raise ValueError(
-            "Invalid west longitude."
-        )
-
-    if not (
-        -180 <= bbox.east_lon <= 180
-    ):
-        raise ValueError(
-            "Invalid east longitude."
-        )
-
-    if (
-        bbox.south_lat
-        > bbox.north_lat
-    ):
-        raise ValueError(
-            "South latitude must be "
-            "less than or equal to "
-            "north latitude."
-        )
-
-    if (
-        bbox.west_lon
-        > bbox.east_lon
-    ):
-        raise ValueError(
-            "West longitude must be "
-            "less than or equal to "
-            "east longitude."
-        )
-
-
-def build_request(
-    request: WeatherRequest,
-) -> WeatherRequest:
-    """
-    Build a normalized WeatherRequest.
-    """
-
-    dataset = (
-        request.dataset
-        .strip()
-        .lower()
-    )
-
-    if dataset not in SUPPORTED_DATASETS:
-        raise ValueError(
-            f"Unsupported dataset: {dataset}"
-        )
-
-    variables = [
-        variable.strip().lower()
-        for variable in request.variables
-        if variable.strip()
-    ]
-
-    if not variables:
-        raise ValueError(
-            "At least one variable "
-            "must be provided."
-        )
-
-    supported_variables = (
-        SUPPORTED_DATASETS[
-            dataset
-        ]
-    )
-
-    for variable in variables:
-        if variable not in supported_variables:
-            raise ValueError(
-                f"Variable '{variable}' "
-                f"is not supported by "
-                f"dataset '{dataset}'."
-            )
-
-    return WeatherRequest(
-        source=request.source,
-        dataset=dataset,
-        start_date=request.start_date,
-        end_date=request.end_date,
-        variables=variables,
-        bbox=request.bbox,
-    )
+logger = logging.getLogger(__name__)
 
 
 @log_step
@@ -376,85 +195,6 @@ def extract_data(
         raw_data=filtered_time,
     )
 
-def split_request_by_month(
-    request: WeatherRequest,
-) -> list[WeatherRequest]:
-    """
-    Split a WeatherRequest into
-    monthly WeatherRequests.
-    """
-
-    start_date = datetime.strptime(
-        request.start_date,
-        "%Y-%m-%d",
-    ).date()
-
-    end_date = datetime.strptime(
-        request.end_date,
-        "%Y-%m-%d",
-    ).date()
-
-    requests: list[
-        WeatherRequest
-    ] = []
-
-    year = start_date.year
-    month = start_date.month
-
-    while True:
-
-        month_start = datetime(
-            year,
-            month,
-            1,
-        ).date()
-
-        last_day = monthrange(
-            year,
-            month,
-        )[1]
-
-        month_end = datetime(
-            year,
-            month,
-            last_day,
-        ).date()
-
-        period_start = max(
-            start_date,
-            month_start,
-        )
-
-        period_end = min(
-            end_date,
-            month_end,
-        )
-
-        requests.append(
-            replace(
-                request,
-                start_date=(
-                    period_start.isoformat()
-                ),
-                end_date=(
-                    period_end.isoformat()
-                ),
-            )
-        )
-
-        if (
-            period_end
-            >= end_date
-        ):
-            break
-
-        if month == 12:
-            year += 1
-            month = 1
-        else:
-            month += 1
-
-    return requests
 
 def open_dataset(
     request: WeatherRequest,
@@ -489,4 +229,3 @@ class ArcoExtractor(WeatherExtractor):
 
     def extract(self, request: WeatherRequest) -> RawWeatherDataset:
         return extract_data(request, self.dataset)
-
