@@ -13,7 +13,7 @@ from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
 from pipeline.utils import (
     validate_request,
     build_request,
-    ERA5_SINGLE_LEVELS_URL
+    ERA5_SINGLE_LEVELS_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,18 +32,14 @@ def _download_arco(
         request.dataset,
     )
 
-    # ---------------------------------------------------------
-    # [REVISI] Cara aman membatasi koneksi tanpa memicu error Event Loop
-    # ---------------------------------------------------------
+    # Limit remote connections without relying on a custom event-loop connector.
     custom_storage_options = {
         "token": "anon",
-        # Gunakan parameter bawaan 'connections' milik gcsfs (defaultnya 100)
-        # Ini menggantikan aiohttp.TCPConnector(limit=10)
+        # Use the built-in gcsfs connection limit instead of a custom connector.
         "connections": 10,
         "client_kwargs": {
-            # ClientTimeout hanyalah objek konfigurasi, jadi aman dipanggil di sini
-            "timeout": aiohttp.ClientTimeout(total=1200)
-        }
+            "timeout": aiohttp.ClientTimeout(total=1200),
+        },
     }
 
     dataset = xr.open_zarr(
@@ -91,6 +87,7 @@ DOWNLOAD_STRATEGIES = {
     DataSource.ARCO: _download_arco,
 }
 
+
 @log_step
 def _download_data(
     request: WeatherRequest,
@@ -103,14 +100,13 @@ def _download_data(
     if not strategy:
         if request.source is DataSource.CDS:
             raise NotImplementedError(
-                "CDS data source is not "
-                "implemented yet."
+                "CDS data source is not implemented yet."
             )
         raise ValueError(
-            f"Unsupported data source: "
-            f"{request.source}"
+            f"Unsupported data source: {request.source}"
         )
     return strategy(request)
+
 
 @log_step
 def _select_time(
@@ -175,10 +171,11 @@ def _select_bbox(
 
     return subset
 
+
 @log_step
 def extract_data(
-        request: WeatherRequest,
-        dataset: xr.Dataset | None = None,
+    request: WeatherRequest,
+    dataset: xr.Dataset | None = None,
 ) -> RawWeatherDataset:
     """
     Extract weather data from an already opened and spatially-sliced dataset.
@@ -217,6 +214,7 @@ def open_dataset(
     return _download_data(
         request,
     )
+
 
 class ArcoExtractor(WeatherExtractor):
     """

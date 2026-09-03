@@ -10,7 +10,10 @@ import xarray as xr
 
 from pipeline.model import (
     RawWeatherDataset,
-    WeatherRequest, LoadedWeatherDataset, DatasetArtifact, DataLayer,
+    WeatherRequest,
+    LoadedWeatherDataset,
+    DatasetArtifact,
+    DataLayer,
 )
 from pipeline.interfaces import DataStorage
 
@@ -90,7 +93,10 @@ def convert_netcdf_to_dataframe(
     """
     Load a local NetCDF checkpoint into a Pandas DataFrame.
     """
-    logger.info(f"Membaca lokal NetCDF dari {artifact.path} ke Pandas DataFrame.")
+    logger.info(
+        "Loading local NetCDF checkpoint into a Pandas DataFrame: %s",
+        artifact.path,
+    )
     local_ds = xr.open_dataset(artifact.path)
     df = local_ds.to_dataframe().reset_index()
     local_ds.close()
@@ -102,13 +108,12 @@ def convert_netcdf_to_dataframe(
 
 @log_step
 def save_transformed_parquet(
-        df: pd.DataFrame,
-        request: 'WeatherRequest',
-        downloaded_at: datetime
+    df: pd.DataFrame,
+    request: WeatherRequest,
+    downloaded_at: datetime,
 ) -> DatasetArtifact:
     """
-    [SRP] Tanggung jawab tunggal: Menyimpan DataFrame ke format .parquet.
-    Layer: TRANSFORMED
+    Persist the transformed DataFrame as a Parquet checkpoint.
     """
     parquet_artifact = _create_artifact(
         request=request,
@@ -117,8 +122,14 @@ def save_transformed_parquet(
         extension=".parquet",
         data_directory=DATA_DIRECTORY,
     )
-    parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Menulis Parquet checkpoint (Transformed) ke: {parquet_artifact.path}")
+    parquet_artifact.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    logger.info(
+        "Writing transformed Parquet checkpoint: %s",
+        parquet_artifact.path,
+    )
     df.to_parquet(parquet_artifact.path, index=False)
 
     return parquet_artifact
@@ -126,13 +137,13 @@ def save_transformed_parquet(
 
 @log_step
 def load_raw_dataset(
-        artifact: DatasetArtifact,
-        metadata: RawWeatherDataset,
+    artifact: DatasetArtifact,
+    metadata: RawWeatherDataset,
 ) -> LoadedWeatherDataset:
     """
-    Load a raw Parquet artifact into a Pandas DataFrame.
+    Load a persisted artifact into a Pandas DataFrame.
     """
-    logger.info(f"Loading Parquet from {artifact.path}")
+    logger.info("Loading Parquet artifact: %s", artifact.path)
     df = pd.read_parquet(artifact.path)
 
     return LoadedWeatherDataset(
@@ -154,8 +165,6 @@ def delete_artifact(
     artifact: DatasetArtifact,
 ) -> None:
     """Delete artifact if it exists."""
-
-
 
     if artifact.path.exists():
         artifact.path.unlink()
@@ -218,7 +227,12 @@ class LocalDataStorage(DataStorage):
     def save_raw(self, dataset: RawWeatherDataset) -> DatasetArtifact:
         return save_raw_netcdf(dataset)
 
-    def save_transformed(self, df: pd.DataFrame, request: WeatherRequest, downloaded_at: datetime) -> DatasetArtifact:
+    def save_transformed(
+        self,
+        df: pd.DataFrame,
+        request: WeatherRequest,
+        downloaded_at: datetime,
+    ) -> DatasetArtifact:
         return save_transformed_parquet(df, request, downloaded_at)
 
     def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:

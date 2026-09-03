@@ -25,22 +25,20 @@ from pipeline.interfaces import (
 from pipeline.extract import (
     open_dataset,
     _select_bbox,
-    ArcoExtractor
+    ArcoExtractor,
 )
 
-from pipeline.utils import split_request_by_month, split_request_by_week
+from pipeline.utils import split_request_by_week
 from pipeline.model import (
-    BoundingBox,
-    DataSource,
     WeatherRequest,
     LoadedWeatherDataset,
 )
 from pipeline.storage import (
-    LocalDataStorage
+    LocalDataStorage,
 )
 
 from pipeline.transform import (
-    DefaultDataTransformer
+    DefaultDataTransformer,
 )
 
 from pipeline.validation import (
@@ -49,12 +47,13 @@ from pipeline.validation import (
 )
 
 from pipeline.load import (
-    PostgresDataLoader
+    PostgresDataLoader,
 )
 
 from pipeline.logging import (
     log_pipeline_summary,
 )
+from scripts.config import build_default_request
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,43 +128,24 @@ class WeatherPipeline:
 
 def run_pipeline_batch() -> None:
     """
-    Execute the pipeline for every
-    monthly request.
+    Execute the pipeline for each weekly request in the default range.
     """
     logger.info("[START] Batch Pipeline")
 
-    request = WeatherRequest(
-        source=DataSource.ARCO,
-        dataset="era5-single-levels",
-        start_date="1990-01-01",
-        end_date="1990-03-31",
-        variables=[
-            "surface_solar_radiation_downwards",
-            "total_precipitation",
-        ],
-        bbox=BoundingBox(
-            north_lat=6.0,
-            south_lat=1.0,
-            east_lon=98.5,
-            west_lon=95.0,
-        ),
-    )
+    request = build_default_request()
 
-    # 1. Open ARCO dataset once (Global Data).
+    # Open the dataset once, then reuse the spatial subset for weekly runs.
     global_dataset = open_dataset(request)
 
-    # 2. [OPTIMASI] Potong area Bounding Box dan Variabel SEKALI SAJA.
-    logger.info("Applying spatial (BBox) and variable subsetting on global dataset...")
+    logger.info(
+        "Applying spatial subset and variable selection to the source dataset."
+    )
     spatial_dataset = _select_bbox(global_dataset, request)
     spatial_dataset = spatial_dataset[request.variables]
-
     spatial_dataset = spatial_dataset.chunk("auto")
 
-    # 3. Split by month.
-    # requests = split_request_by_month(request)
-    requests =  split_request_by_week(request)
+    requests = split_request_by_week(request)
 
-    # 4. Looping untuk setiap bulan
     extractor = ArcoExtractor(spatial_dataset)
     storage = LocalDataStorage()
     transformer = DefaultDataTransformer()
@@ -175,11 +155,11 @@ def run_pipeline_batch() -> None:
         extractor=extractor,
         storage=storage,
         transformer=transformer,
-        loader=loader
+        loader=loader,
     )
 
-    for monthly_request in requests:
-        pipeline.run(monthly_request)
+    for weekly_request in requests:
+        pipeline.run(weekly_request)
 
     logger.info("[DONE] Batch Pipeline")
 

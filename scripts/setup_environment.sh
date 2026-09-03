@@ -1,27 +1,30 @@
 #!/bin/bash
-# Setup script for the weather-dataset Python environment
+
+set -euo pipefail
+
+# Prepare the local Python environment for this repository.
 # chmod +x setup_environment.sh
 # ./setup_environment.sh
 
-# Configuration
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIRECTORY/.." && pwd)"
 VENV_NAME="myvenv"
-REQUIREMENTS_FILE="requirements.txt"
-PYTHON_VERSION="python3"
+PYTHON_EXECUTABLE="python3"
+REQUIREMENTS_FILE="$PROJECT_ROOT/requirements.txt"
+VENV_DIRECTORY="$PROJECT_ROOT/$VENV_NAME"
 
-# 1. Create Virtual Environment
-if [ ! -d "$VENV_NAME" ]; then
-    echo "Creating virtual environment..."
-    $PYTHON_VERSION -m venv $VENV_NAME
+if [ ! -d "$VENV_DIRECTORY" ]; then
+    echo "Creating virtual environment at $VENV_DIRECTORY..."
+    "$PYTHON_EXECUTABLE" -m venv "$VENV_DIRECTORY"
 fi
 
-# 2. Activate Virtual Environment
 echo "Activating virtual environment..."
-source "$VENV_NAME/bin/activate"
+# shellcheck disable=SC1091
+source "$VENV_DIRECTORY/bin/activate"
 
-# 3. Install Requirements
 if [ -f "$REQUIREMENTS_FILE" ]; then
-    echo "Installing requirements from $REQUIREMENTS_FILE..."
-    pip install -r $REQUIREMENTS_FILE
+    echo "Installing dependencies from $REQUIREMENTS_FILE..."
+    pip install -r "$REQUIREMENTS_FILE"
 fi
 
-echo "Environment is ready!"
+echo "Environment setup is complete."

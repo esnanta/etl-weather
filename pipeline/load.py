@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -30,16 +31,13 @@ logger = logging.getLogger(__name__)
 
 @log_step
 def insert_dataset(
-        dataset: TransformedWeatherDataset,
-        connection: Connection,
-        config: DatabaseConfig,
+    dataset: TransformedWeatherDataset,
+    connection: Connection,
+    config: DatabaseConfig,
 ) -> int:
     """
     Insert dataset metadata.
     """
-    # Ambil nilai waktu saat ini untuk transformed_at
-    from datetime import datetime, timezone
-
     result = connection.execute(
         text(
             f"""
@@ -65,7 +63,7 @@ def insert_dataset(
         ),
         {
             "dataset_name": dataset.request.dataset,
-            "source": dataset.request.source.value,  # Menarik nilai 'arco' atau 'cds' dari Enum
+            "source": dataset.request.source.value,
             "start_date": dataset.request.start_date,
             "end_date": dataset.request.end_date,
             "transformed_at": datetime.now(timezone.utc),
@@ -75,7 +73,9 @@ def insert_dataset(
     dataset_id = result.scalar()
 
     if dataset_id is None:
-        raise RuntimeError("Gagal mendapatkan ID setelah insert ke weather_dataset.")
+        raise RuntimeError(
+            "Failed to retrieve the dataset id after inserting metadata."
+        )
 
     if isinstance(dataset_id, int):
         return dataset_id
@@ -123,14 +123,18 @@ def insert_observations(
     # Rename long-form variable names to short DB column names expected by
     # weather_dataset_detail. This prevents INSERT failures when the dataset
     # uses original variable names from the source (e.g. Copernicus/ARCO).
-    _column_mapping = {
+    column_mapping = {
         "total_precipitation": "tp",
         "surface_solar_radiation_downwards": "ssrd",
         # keep identity for already-short names (t2m, u10, v10, swh, msl)
     }
 
     # Only apply mappings for columns that actually exist in the dataframe.
-    exist_map = {k: v for k, v in _column_mapping.items() if k in dataframe.columns}
+    exist_map = {
+        source_name: target_name
+        for source_name, target_name in column_mapping.items()
+        if source_name in dataframe.columns
+    }
     if exist_map:
         dataframe = dataframe.rename(columns=exist_map)
 

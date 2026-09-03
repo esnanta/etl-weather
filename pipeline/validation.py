@@ -50,7 +50,7 @@ def _validate_time_dimension(dataset: xr.Dataset) -> None:
 def _record_count(dataset: xr.Dataset) -> int:
     """
     Return logical observation count.
-    Diperbarui untuk merefleksikan dimensi grid (time * lat * lon).
+    Count grid-based observations as time * latitude * longitude.
     """
     return (
         dataset.sizes.get("time", 0)
@@ -68,7 +68,7 @@ def _validate_dataframe_type(dataframe: pd.DataFrame) -> None:
 def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -> None:
     """
     Validate required DataFrame columns.
-    Hanya menuntut time, latitude, longitude, dan variabel request.
+    Require time, latitude, longitude, and the requested variables.
     """
     required_columns = {"time", "latitude", "longitude"}
     required_columns.update(variables)
