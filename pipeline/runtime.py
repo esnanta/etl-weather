@@ -6,7 +6,12 @@ from datetime import datetime
 from pipeline.extract import ArcoExtractor, _select_bbox, open_dataset
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.load import PostgresDataLoader
-from pipeline.logging import log_pipeline_summary
+from pipeline.logging import (
+    log_pipeline_header,
+    log_pipeline_summary,
+    log_section_completed,
+    log_section_start,
+)
 from pipeline.model import DataSource, LoadedWeatherDataset, WeatherRequest
 from pipeline.storage import LocalDataStorage
 from pipeline.transform import DefaultDataTransformer
@@ -35,30 +40,33 @@ class WeatherPipeline:
 
     def run(self, request: WeatherRequest) -> None:
         started_at = datetime.now()
-        logger.info("[START] Pipeline | %s -> %s", request.start_date, request.end_date)
+        log_pipeline_header(request)
 
+        extract_timer = log_section_start("EXTRACT")
         raw_dataset = self.extractor.extract(request)
         validate_raw_dataset(raw_dataset)
-
         nc_artifact = self.storage.save_raw(raw_dataset)
-
         raw_dataframe = self.storage.convert_to_dataframe(nc_artifact)
         loaded_dataset = LoadedWeatherDataset(
             request=request,
             downloaded_at=raw_dataset.downloaded_at,
             raw_data=raw_dataframe,
         )
+        log_section_completed("EXTRACT", extract_timer)
 
+        transform_timer = log_section_start("TRANSFORM")
         transformed_dataset = self.transformer.transform(loaded_dataset)
         validate_transformed_dataset(transformed_dataset)
-
         parquet_artifact = self.storage.save_transformed(
             df=transformed_dataset.dataset,
             request=request,
             downloaded_at=raw_dataset.downloaded_at,
         )
+        log_section_completed("TRANSFORM", transform_timer)
 
+        load_timer = log_section_start("LOAD DATABASE")
         dataset_id, rows_inserted = self.loader.load(transformed_dataset)
+        log_section_completed("LOAD DATABASE", load_timer)
 
         finished_at = datetime.now()
         log_pipeline_summary(
@@ -69,8 +77,6 @@ class WeatherPipeline:
             started_at=started_at,
             finished_at=finished_at,
         )
-
-        logger.info("[DONE] Pipeline | %s -> %s", request.start_date, request.end_date)
 
 
 def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
@@ -104,11 +110,11 @@ def run_weekly_batch(request: WeatherRequest) -> None:
     Execute the pipeline for each weekly request in the requested range.
     """
 
-    logger.info("[START] Batch Pipeline")
+    logger.info("Running weekly pipeline batch.")
 
     pipeline = build_default_pipeline(request)
 
     for weekly_request in split_request_by_week(request):
         pipeline.run(weekly_request)
 
-    logger.info("[DONE] Batch Pipeline")
+    logger.info("Weekly pipeline batch completed.")

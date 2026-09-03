@@ -18,7 +18,7 @@ from pipeline.database import (
 )
 
 from pipeline.logging import (
-    log_step,
+    log_metric,
 )
 
 from pipeline.model import (
@@ -30,7 +30,6 @@ from pipeline.interfaces import DataLoader
 logger = logging.getLogger(__name__)
 
 
-@log_step
 def insert_dataset(
     dataset: TransformedWeatherDataset,
     connection: Connection,
@@ -84,7 +83,6 @@ def insert_dataset(
     return int(str(dataset_id))
 
 
-@log_step
 def insert_observations(
     dataset: TransformedWeatherDataset,
     dataset_id: int,
@@ -149,9 +147,11 @@ def insert_observations(
         chunksize=1000,
     )
 
-    logger.info(
-        "[METRIC] Details weather inserted | rows=%d",
-        len(dataframe),
+    log_metric(
+        "Details weather inserted",
+        {
+            "rows": len(dataframe),
+        },
     )
 
     return len(
@@ -159,7 +159,6 @@ def insert_observations(
     )
 
 
-@log_step
 def load_to_postgresql(
     dataset: TransformedWeatherDataset,
     config: DatabaseConfig | None = None,
@@ -209,12 +208,12 @@ def load_to_postgresql(
             config=resolved_config,
         )
 
-    logger.info(
-        "[METRIC] PostgreSQL load completed | "
-        "dataset_id=%d | "
-        "rows=%d",
-        dataset_id,
-        rows_inserted,
+    log_metric(
+        "PostgreSQL load completed",
+        {
+            "dataset_id": dataset_id,
+            "rows": rows_inserted,
+        },
     )
 
     return (

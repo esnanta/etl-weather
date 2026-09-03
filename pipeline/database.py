@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
-from pipeline.logging import log_step
+from pipeline.logging import log_metric
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,6 @@ def ensure_database_exists(config: DatabaseConfig | None = None) -> None:
     logger.info("Database '%s' created.", resolved_config.database)
 
 
-@log_step
 def create_database_engine(
     config: DatabaseConfig | None = None,
 ) -> Engine:
@@ -147,7 +146,6 @@ def create_database_engine(
     )
 
 
-@log_step
 def create_schema(
     engine: Engine,
     config: DatabaseConfig | None = None,
@@ -167,15 +165,15 @@ def create_schema(
             )
         )
 
-    logger.info(
+    log_metric(
+        "Schema status",
         {
             "schema": resolved_config.schema,
             "status": "ready",
-        }
+        },
     )
 
 
-@log_step
 def create_dataset_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
@@ -216,15 +214,15 @@ def create_dataset_table(
             )
         )
 
-    logger.info(
+    log_metric(
+        "Table status",
         {
             "table": resolved_config.dataset_table,
             "status": "ready",
-        }
+        },
     )
 
 
-@log_step
 def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
@@ -273,9 +271,10 @@ def create_dataset_table_detail(
             )
         )
 
-    logger.info(
+    log_metric(
+        "Table status",
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
-        }
+        },
     )

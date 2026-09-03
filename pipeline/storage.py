@@ -18,7 +18,6 @@ from pipeline.model import (
 from pipeline.interfaces import DataStorage
 
 from pipeline.logging import (
-    log_step,
     _log_dataframe_preview,
 )
 
@@ -42,7 +41,6 @@ DATA_DIRECTORY = (
     / "data"
 )
 
-@log_step
 def save_raw_netcdf(
     dataset: RawWeatherDataset,
 ) -> DatasetArtifact:
@@ -86,7 +84,6 @@ def save_raw_netcdf(
     return nc_artifact
 
 
-@log_step
 def convert_netcdf_to_dataframe(
     artifact: DatasetArtifact,
 ) -> pd.DataFrame:
@@ -106,7 +103,6 @@ def convert_netcdf_to_dataframe(
     return df
 
 
-@log_step
 def save_transformed_parquet(
     df: pd.DataFrame,
     request: WeatherRequest,
@@ -135,7 +131,6 @@ def save_transformed_parquet(
     return parquet_artifact
 
 
-@log_step
 def load_raw_dataset(
     artifact: DatasetArtifact,
     metadata: RawWeatherDataset,

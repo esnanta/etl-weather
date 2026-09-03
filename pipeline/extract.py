@@ -8,7 +8,7 @@ import aiohttp
 import xarray as xr
 
 from pipeline.interfaces import WeatherExtractor
-from pipeline.logging import log_step
+from pipeline.logging import log_metric
 from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
 from pipeline.utils import (
     validate_request,
@@ -19,7 +19,6 @@ from pipeline.utils import (
 logger = logging.getLogger(__name__)
 
 
-@log_step
 def _download_arco(
     request: WeatherRequest,
 ) -> xr.Dataset:
@@ -60,15 +59,12 @@ def _download_arco(
         dataset.time.max().values
     )[:10]
 
-    logger.info(
-        "[METRIC] Server period | %s -> %s",
-        min_time,
-        max_time,
-    )
-
-    logger.info(
-        "[METRIC] Available variables=%d",
-        len(dataset.data_vars),
+    log_metric(
+        "ARCO dataset metadata",
+        {
+            "server_period": f"{min_time} -> {max_time}",
+            "available_variables": len(dataset.data_vars),
+        },
     )
 
     if (
@@ -88,7 +84,6 @@ DOWNLOAD_STRATEGIES = {
 }
 
 
-@log_step
 def _download_data(
     request: WeatherRequest,
 ) -> xr.Dataset:
@@ -108,7 +103,6 @@ def _download_data(
     return strategy(request)
 
 
-@log_step
 def _select_time(
     dataset: xr.Dataset,
     request: WeatherRequest,
@@ -125,7 +119,6 @@ def _select_time(
     )
 
 
-@log_step
 def _select_bbox(
     dataset: xr.Dataset,
     request: WeatherRequest,
@@ -140,14 +133,12 @@ def _select_bbox(
 
     bbox = request.bbox
 
-    logger.info(
-        "[METRIC] Bounding box | "
-        "lat=%.2f..%.2f | "
-        "lon=%.2f..%.2f",
-        bbox.south_lat,
-        bbox.north_lat,
-        bbox.west_lon,
-        bbox.east_lon,
+    log_metric(
+        "Bounding box",
+        {
+            "lat": f"{bbox.south_lat:.2f}..{bbox.north_lat:.2f}",
+            "lon": f"{bbox.west_lon:.2f}..{bbox.east_lon:.2f}",
+        },
     )
 
     subset = dataset.sel(
@@ -161,18 +152,17 @@ def _select_bbox(
         ),
     )
 
-    logger.info(
-        "[METRIC] Spatial subset | "
-        "latitude=%d | "
-        "longitude=%d",
-        subset.sizes["latitude"],
-        subset.sizes["longitude"],
+    log_metric(
+        "Spatial subset",
+        {
+            "latitude": subset.sizes["latitude"],
+            "longitude": subset.sizes["longitude"],
+        },
     )
 
     return subset
 
 
-@log_step
 def extract_data(
     request: WeatherRequest,
     dataset: xr.Dataset | None = None,

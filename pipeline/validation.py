@@ -7,7 +7,7 @@ import pandas as pd
 import xarray as xr
 
 from pipeline.model import RawWeatherDataset
-from pipeline.logging import log_step
+from pipeline.logging import log_metric
 from pipeline.transform import TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
@@ -80,29 +80,27 @@ def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -
 
 def _log_raw_validation_result(dataset: xr.Dataset) -> None:
     """Log raw dataset validation."""
-    logger.info(
-        "[METRIC] RAW Validation PASSED | "
-        "records=%d | "
-        "variables=%s | "
-        "dimensions=%s",
-        _record_count(dataset),
-        list(dataset.data_vars),
-        dict(dataset.sizes),
+    log_metric(
+        "RAW Validation PASSED",
+        {
+            "records": _record_count(dataset),
+            "variables": list(dataset.data_vars),
+            "dimensions": dict(dataset.sizes),
+        },
     )
 
 
 def _log_dataframe_validation_result(dataframe: pd.DataFrame) -> None:
     """Log DataFrame validation."""
-    logger.info(
-        "[METRIC] DataFrame Validation PASSED | "
-        "rows=%d | "
-        "cols=%d",
-        len(dataframe),
-        len(dataframe.columns),
+    log_metric(
+        "DataFrame Validation PASSED",
+        {
+            "rows": len(dataframe),
+            "cols": len(dataframe.columns),
+        },
     )
 
 
-@log_step
 def validate_raw_dataset(raw_dataset: RawWeatherDataset) -> None:
     """Validate raw xarray dataset."""
     _log_validation_plan(
@@ -119,7 +117,6 @@ def validate_raw_dataset(raw_dataset: RawWeatherDataset) -> None:
     _log_raw_validation_result(dataset)
 
 
-@log_step
 def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset) -> None:
     """Validate transformed DataFrame."""
     _log_validation_plan(
@@ -136,4 +133,9 @@ def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset)
 
 def _log_validation_plan(*, target: str, checks: list[str]) -> None:
     """Log validation checklist."""
-    logger.info("[METRIC] Validating %s | checks=%s", target, checks)
+    log_metric(
+        f"Validating {target}",
+        {
+            "checks": checks,
+        },
+    )

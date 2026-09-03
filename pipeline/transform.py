@@ -15,14 +15,16 @@ from pipeline.model import (
 from pipeline.interfaces import DataTransformer
 
 from pipeline.logging import (
-    log_step, log_dataframe_changes, log_dataframe_info, _log_dataframe_preview,
+    _log_dataframe_preview,
+    log_dataframe_changes,
+    log_dataframe_info,
+    log_metric,
 )
 from pipeline.model import TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
 
 
-@log_step
 def _transform_dataset(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -30,9 +32,11 @@ def _transform_dataset(
     Apply transformations to a weather DataFrame.
     """
 
-    logger.info(
-        "[METRIC] Applying transformation | "
-        "drop_columns=['number', 'surface']"
+    log_metric(
+        "Applying transformation",
+        {
+            "drop_columns": ["number", "surface"],
+        },
     )
 
     transformed = dataframe.copy()
@@ -54,7 +58,6 @@ def _transform_dataset(
     return transformed
 
 
-@log_step
 def transform_data(
     raw_dataset: LoadedWeatherDataset,
 ) -> TransformedWeatherDataset:
