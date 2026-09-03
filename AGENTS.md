@@ -20,8 +20,8 @@ If this file and the docs disagree, treat the docs as the more detailed source o
 
 ## Data Storage
 
-- Store project data under `/data`.
-- Do not hardcode storage paths outside `/data`.
+- Store project data under `data`.
+- Do not hardcode storage paths outside `data`.
 - Raw data must be stored as NetCDF files.
 - Transformed data must be stored as Parquet files.
 - Raw and transformed outputs use weekly file naming.
@@ -29,11 +29,11 @@ If this file and the docs disagree, treat the docs as the more detailed source o
   - `19900101_19900107_ssrd_tp.nc`
   - `19900101_19900107_ssrd_tp.parquet`
 - Raw storage layout:
-  - `/data/era5-single-levels/raw/arco/[year]/`
-  - `/data/era5-single-levels/raw/cds/[year]/`
+  - `data/era5-single-levels/raw/arco/[year]/`
+  - `data/era5-single-levels/raw/cds/[year]/`
 - Transformed storage layout:
-  - `/data/era5-single-levels/transformed/arco/[year]/`
-  - `/data/era5-single-levels/transformed/cds/[year]/`
+  - `data/era5-single-levels/transformed/arco/[year]/`
+  - `data/era5-single-levels/transformed/cds/[year]/`
 - Raw files are immutable.
 - Transformed files must always be derived from raw files.
 - Never overwrite a raw file.
