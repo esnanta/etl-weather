@@ -23,8 +23,8 @@ from pipeline.logging import (
 )
 
 from pipeline.utils import (
-    format_request_date,
     build_variable_signature,
+    format_request_period,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,11 +182,8 @@ def _create_artifact(
     Create artifact metadata.
     """
 
-    start_date = format_request_date(
+    period_signature = format_request_period(
         request.start_date,
-    )
-
-    end_date = format_request_date(
         request.end_date,
     )
 
@@ -197,8 +194,7 @@ def _create_artifact(
     )
 
     filename = (
-        f"{start_date}"
-        f"_{end_date}"
+        f"{period_signature}"
         f"_{variable_signature}"
         f"{extension}"
     )
@@ -208,7 +204,7 @@ def _create_artifact(
         / request.dataset
         / layer.value
         / request.source.value
-        / start_date[:4]
+        / request.start_date[:4]
         / filename
     )
 

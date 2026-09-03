@@ -182,6 +182,9 @@ def build_variable_signature(variables: list[str]) -> str:
     short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
     return "_".join(sorted(short_variables))
 
-def format_request_date(date: str) -> str:
-    """Format request date for filenames."""
-    return date.replace("-", "")
+def format_request_period(start_date: str, end_date: str) -> str:
+    """Format a request period for filenames."""
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+
+    return f"{start:%Y}_{start:%m%d}_{end:%m%d}"
