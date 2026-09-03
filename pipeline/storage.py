@@ -73,7 +73,7 @@ def save_raw_netcdf(
     )
 
     logger.info(
-        "Writing RAW NetCDF checkpoint: %s",
+        "Writing RAW NetCDF checkpoint:\n%s",
         nc_artifact.path,
     )
 
@@ -91,7 +91,7 @@ def convert_netcdf_to_dataframe(
     Load a local NetCDF checkpoint into a Pandas DataFrame.
     """
     logger.info(
-        "Loading local NetCDF checkpoint into a Pandas DataFrame: %s",
+        "Loading local NetCDF checkpoint into a Pandas DataFrame:\n%s",
         artifact.path,
     )
     local_ds = xr.open_dataset(artifact.path)
@@ -123,7 +123,7 @@ def save_transformed_parquet(
         exist_ok=True,
     )
     logger.info(
-        "Writing transformed Parquet checkpoint: %s",
+        "Writing transformed Parquet checkpoint:\n%s",
         parquet_artifact.path,
     )
     df.to_parquet(parquet_artifact.path, index=False)
@@ -138,7 +138,7 @@ def load_raw_dataset(
     """
     Load a persisted artifact into a Pandas DataFrame.
     """
-    logger.info("Loading Parquet artifact: %s", artifact.path)
+    logger.info("Loading Parquet artifact:\n%s", artifact.path)
     df = pd.read_parquet(artifact.path)
 
     return LoadedWeatherDataset(

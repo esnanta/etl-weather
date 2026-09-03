@@ -67,23 +67,65 @@ def log_section_completed(section: str, started_at: float) -> None:
 
 
 def log_metric(title: str, metrics: Mapping[str, Any]) -> None:
-    """Log a metric block in a vertical readable format."""
-    metric_lines = "\n".join(
-        f"  - {key}: {value}"
+    """Log a metric block using an ASCII table for compact readability."""
+    table = _build_ascii_table(metrics)
+    logger.info("[METRIC] %s\n%s\n", title, table)
+
+
+def _build_ascii_table(metrics: Mapping[str, Any]) -> str:
+    """Build an ASCII key-value table."""
+    headers = ("field", "value")
+    rows = [
+        (
+            str(key),
+            str(value),
+        )
         for key, value in metrics.items()
+    ]
+
+    field_width = max(
+        len(headers[0]),
+        *(len(field) for field, _ in rows),
     )
-    logger.info("[METRIC] %s\n%s", title, metric_lines)
+    value_width = max(
+        len(headers[1]),
+        *(len(value) for _, value in rows),
+    )
+
+    border = (
+        f"+-{'-' * field_width}-+-{'-' * value_width}-+"
+    )
+    header_row = (
+        f"| {headers[0].ljust(field_width)} | {headers[1].ljust(value_width)} |"
+    )
+    body_rows = "\n".join(
+        f"| {field.ljust(field_width)} | {value.ljust(value_width)} |"
+        for field, value in rows
+    )
+
+    table = (
+        f"{border}\n"
+        f"{header_row}\n"
+        f"{border}\n"
+        f"{body_rows}\n"
+        f"{border}"
+    )
+    return table
 
 
 def log_pipeline_header(request) -> None:
     """Log one headline for a pipeline run."""
+    table = _build_ascii_table(
+        {
+            "dataset": request.dataset,
+            "source": request.source.value,
+            "period": f"{request.start_date} -> {request.end_date}",
+            "variables": ", ".join(request.variables),
+        },
+    )
     logger.info(
-        "[PIPELINE] dataset=%s | source=%s | period=%s -> %s | variables=%s",
-        request.dataset,
-        request.source.value,
-        request.start_date,
-        request.end_date,
-        ", ".join(request.variables),
+        "[PIPELINE] start\n%s\n",
+        table,
     )
 
 
@@ -126,13 +168,15 @@ def log_pipeline_summary(
         / (1024 * 1024)
     )
 
-    logger.info(
-        "[PIPELINE] completed | dataset=%s | source=%s | period=%s -> %s",
-        request.dataset,
-        request.source.value,
-        request.start_date,
-        request.end_date,
+    completion_table = _build_ascii_table(
+        {
+            "dataset": request.dataset,
+            "source": request.source.value,
+            "period": f"{request.start_date} -> {request.end_date}",
+            "status": "completed",
+        },
     )
+    logger.info("[PIPELINE] completed\n%s\n", completion_table)
     log_metric(
         "Pipeline summary",
         {

@@ -110,8 +110,6 @@ def run_weekly_batch(request: WeatherRequest) -> None:
     Execute the pipeline for each weekly request in the requested range.
     """
 
-    logger.info("Running weekly pipeline batch.")
-
     pipeline = build_default_pipeline(request)
 
     for weekly_request in split_request_by_week(request):

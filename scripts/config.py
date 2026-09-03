@@ -5,7 +5,7 @@ from pipeline.model import BoundingBox, DataSource, WeatherRequest
 DEFAULT_DATA_SOURCE = DataSource.ARCO
 DEFAULT_DATASET = "era5-single-levels"
 DEFAULT_START_DATE = "1990-01-01"
-DEFAULT_END_DATE = "1990-01-31"
+DEFAULT_END_DATE = "1990-01-02"
 DEFAULT_VARIABLES = [
     "surface_solar_radiation_downwards",
     "total_precipitation",
