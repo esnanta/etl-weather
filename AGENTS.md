@@ -88,6 +88,7 @@ Keep responsibilities separated by folder:
 - `scripts/`
   - thin entrypoints for local execution and automation
   - command-line wrappers for running pipeline workflows
+  - default local WeatherRequest configuration in `scripts/config.py`
   - environment setup helpers when needed
   - no ETL transformation logic
 
@@ -153,6 +154,14 @@ Keep responsibilities separated by folder:
   - invoking a script or command
   - simple orchestration glue
 - Keep wrapper scripts short, explicit, and easy to audit.
+
+## Script Configuration Rules
+
+- Keep default local execution parameters in `scripts/config.py`.
+- Treat `build_default_request()` as the single source of truth for default local pipeline requests.
+- Do not duplicate default request values in entrypoint scripts such as `scripts/run_pipeline.py`.
+- When default source, dataset, date range, variables, or bbox changes, update `scripts/config.py` first and keep it aligned with project defaults in this guide.
+- Keep script-level configuration typed with `pipeline.model` objects (`DataSource`, `BoundingBox`, `WeatherRequest`) instead of ad-hoc dictionaries.
 
 ## Practical Rule
 
