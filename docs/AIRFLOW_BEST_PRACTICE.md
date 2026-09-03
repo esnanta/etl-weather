@@ -1,5 +1,10 @@
 # AIRFLOW BEST PRACTICES
 
+This document focuses on Airflow DAG design, orchestration behavior,
+task boundaries, retries, scheduling, and operational controls.
+Implementation details for ETL functions, scientific correctness, and
+data-shape rules live in `AIRFLOW_CODING_GUIDELINES.md`.
+
 ## 1. Keep DAGs Declarative, Small, and Human-Readable
 
 A DAG should describe **workflow orchestration**, not contain the full
@@ -88,54 +93,15 @@ Principle:
 
 Airflow-specific code should not own the core ETL logic.
 
-Prefer:
+Task code should stay thin: it should accept artifact references or
+parameters, call the ETL layer, and emit the next artifact reference.
+The implementation details of parsing, validation, transformation, and
+loading belong in `AIRFLOW_CODING_GUIDELINES.md`.
 
-``` text
-project/
-├── orchestration/
-│   ├── dags/
-│   └── tasks/
-│
-├── pipeline/
-│   ├── extract.py
-│   ├── validation.py
-│   ├── transform.py
-│   ├── load.py
-│   └── storage.py
-│
-└── tests/
-```
+Principle:
 
-The `pipeline/` layer should ideally be executable and testable
-independently from Airflow.
-
-For example:
-
-``` python
-def transform_products(data):
-    ...
-```
-
-should contain transformation logic.
-
-The Airflow task should only orchestrate it:
-
-``` python
-def task_transform(input_path):
-    data = load_raw_dataset(input_path)
-    result = transform_products(data)
-    return save_processed_dataset(result)
-```
-
-This produces a **thin orchestrator** architecture.
-
-Benefits:
-
--   easier unit testing;
--   easier debugging;
--   reduced Airflow coupling;
--   reusable pipeline logic;
--   easier migration to another orchestrator if ever required.
+> Airflow decides what runs and when. ETL modules decide how the work is
+> performed.
 
 ------------------------------------------------------------------------
 
@@ -399,46 +365,13 @@ They also make failures easier to isolate.
 
 ## 10. Validate Early and Fail Clearly
 
-Bad input should fail as early as possible.
+If a task receives an unexpected artifact or violated contract, fail
+immediately instead of passing bad state downstream.
 
-A typical pipeline should follow:
-
-``` text
-Extract
-   ↓
-Validate
-   ↓
-Transform
-   ↓
-Load
-```
-
-Validation may include:
-
--   required columns;
--   schema;
--   data types;
--   null constraints;
--   range checks;
--   duplicate detection;
--   record count;
--   business invariants.
-
-Error messages should identify the actual problem.
-
-Prefer:
-
-``` text
-Missing required column: Price
-```
-
-over:
-
-``` text
-Pipeline failed.
-```
-
-Fail fast when continuing would produce incorrect data.
+Use clear error messages that identify the failing task, the artifact
+involved, and the reason the workflow cannot continue. Field-level and
+domain-level validation rules belong in
+`AIRFLOW_CODING_GUIDELINES.md`.
 
 ------------------------------------------------------------------------
 
@@ -735,71 +668,23 @@ The goal is:
 
 ## 22. Test Business Logic Without Airflow
 
-Core ETL code should be testable with ordinary unit tests.
+Airflow tests should focus on DAG structure, task wiring, retries, and
+dependency behavior. Core ETL logic should be covered by ordinary unit
+and integration tests in `AIRFLOW_CODING_GUIDELINES.md`.
 
-For example:
-
-``` python
-def test_transform_products():
-    ...
-```
-
-should not require starting an Airflow scheduler.
-
-Test layers can be separated conceptually into:
-
-``` text
-Unit Tests
-    ↓
-pipeline functions
-
-Integration Tests
-    ↓
-multiple pipeline stages
-
-DAG Tests
-    ↓
-DAG structure and dependencies
-
-End-to-End Tests
-    ↓
-complete execution
-```
-
-Most business logic should be covered at the unit and integration
-levels.
-
-This keeps tests faster and simpler.
+Do not require an Airflow scheduler just to verify pure transformation
+logic.
 
 ------------------------------------------------------------------------
 
 ## 23. Test Pipeline Contracts, Not Only Functions
 
-ETL stages have contracts.
+ETL stages have contracts. Airflow should pass artifact references
+between stages, while `AIRFLOW_CODING_GUIDELINES.md` defines the schema,
+units, and transformation rules that those artifacts must satisfy.
 
-For example, an extraction stage may promise:
-
-``` text
-Title
-Price
-Rating
-Colors
-Size
-Gender
-timestamp
-```
-
-The next stage should be able to rely on that contract.
-
-Tests should therefore verify:
-
--   required columns;
--   schema compatibility;
--   expected data types;
--   artifact existence;
--   record count expectations.
-
-This prevents one pipeline stage from silently breaking another.
+Tests should verify task handoff behavior, artifact existence, and
+contract compatibility so one stage cannot silently break another.
 
 ------------------------------------------------------------------------
 

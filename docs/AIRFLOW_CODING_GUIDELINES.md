@@ -1,5 +1,10 @@
 # PYTHON CODING GUIDELINES FOR AIRFLOW ETL
 
+This document focuses on Python ETL implementation, scientific
+correctness, data contracts, validation, testing, and coding style.
+Airflow DAG design, task orchestration, retries, sensors, concurrency,
+and deployment concerns live in `AIRFLOW_BEST_PRACTICE.md`.
+
 ## Scientific Correctness Is Part of Software Correctness
 
 In weather-data pipelines, technically valid code can still produce scientifically incorrect data.
@@ -119,43 +124,13 @@ Prefer separate responsibilities.
 
 ---
 
-## 3. Separate Airflow Orchestration from ETL Logic
+## 3. Keep ETL Modules Executable and Testable
 
-Airflow code should describe workflow execution.
+Execution wrappers should stay thin. The orchestration rules and DAG
+structure belong in `AIRFLOW_BEST_PRACTICE.md`.
 
-ETL modules should contain data-processing logic.
-
-Recommended structure:
-
-```text
-project/
-├── orchestration/
-│   ├── dags/
-│   │   └── weather_etl.py
-│   └── tasks/
-│       ├── task_extract.py
-│       ├── task_validate.py
-│       ├── task_transform.py
-│       └── task_load.py
-│
-├── pipeline/
-│   ├── extract.py
-│   ├── validation.py
-│   ├── transform.py
-│   ├── load.py
-│   └── storage.py
-│
-└── tests/
-```
-
-Airflow task:
-
-```python
-def task_transform(input_path: str) -> str:
-    raw_data = load_raw_dataset(input_path)
-    processed = transform_weather_data(raw_data)
-    return save_processed_dataset(processed)
-```
+ETL modules should contain data-processing logic that is executable and
+testable without Airflow.
 
 Business logic:
 
@@ -433,6 +408,8 @@ wind_speed_ms
 Code and tests should enforce these contracts.
 
 This prevents upstream changes from silently breaking downstream processing.
+Task handoff conventions and artifact passing rules are documented in
+`AIRFLOW_BEST_PRACTICE.md`.
 
 ---
 
@@ -460,41 +437,12 @@ Avoid naive datetime values when datasets may span multiple systems or regions.
 
 Never use `datetime.now()` to determine the logical period being processed when Airflow already provides a data interval.
 
----
-
-## 13. Use Airflow Data Intervals for Partitioning
-
-Scheduled ETL should process data according to Airflow's logical interval.
-
-Prefer:
-
-```python
-data_interval_start
-data_interval_end
-```
-
-instead of:
-
-```python
-datetime.now()
-```
-
-This makes historical reruns and backfills reproducible.
-
-Example conceptual path:
-
-```text
-raw/weather/
-    year=2026/
-    month=09/
-    day=03/
-```
-
-should correspond to the logical dataset period, not simply the wall-clock task execution time.
+For partitioning and Airflow interval semantics, see
+`AIRFLOW_BEST_PRACTICE.md`.
 
 ---
 
-## 14. Keep Transformations Deterministic
+## 13. Keep Transformations Deterministic
 
 Given:
 
@@ -518,7 +466,7 @@ If randomness is genuinely required, use an explicit seed.
 
 ---
 
-## 15. Prefer Pure Functions Where Practical
+## 14. Prefer Pure Functions Where Practical
 
 A pure transformation function receives data and returns transformed data without external side effects.
 
@@ -542,7 +490,7 @@ Separate computation from side effects.
 
 ---
 
-## 16. Avoid Unnecessary Mutation
+## 15. Avoid Unnecessary Mutation
 
 Avoid modifying input objects unpredictably.
 
@@ -561,7 +509,7 @@ For large datasets where copying has significant memory cost, intentional in-pla
 
 ---
 
-## 17. Fail Fast on Invalid Scientific Assumptions
+## 16. Fail Fast on Invalid Scientific Assumptions
 
 Do not silently accept physically impossible or clearly invalid values.
 
@@ -582,7 +530,7 @@ Do not blindly apply generic thresholds without knowing the dataset specificatio
 
 ---
 
-## 18. Separate Source-Specific Logic from Canonical Data Models
+## 17. Separate Source-Specific Logic from Canonical Data Models
 
 Weather data may come from:
 
@@ -618,7 +566,7 @@ Do not allow provider-specific field names to spread throughout the entire appli
 
 ---
 
-## 19. Avoid Magic Numbers
+## 18. Avoid Magic Numbers
 
 Bad:
 
@@ -640,7 +588,7 @@ However, do not create constants for obvious values simply to create abstraction
 
 ---
 
-## 20. Use Type Hints
+## 19. Use Type Hints
 
 Public functions should normally include type annotations.
 
@@ -666,7 +614,7 @@ Type hints improve readability, IDE support, refactoring, and static analysis.
 
 ---
 
-## 21. Prefer `pathlib` for File Paths
+## 20. Prefer `pathlib` for File Paths
 
 Prefer:
 
@@ -686,7 +634,7 @@ This improves portability and readability.
 
 ---
 
-## 22. Use Meaningful Names
+## 21. Use Meaningful Names
 
 Use domain terminology.
 
@@ -717,7 +665,7 @@ Names should explain both the domain concept and, where relevant, the unit.
 
 ---
 
-## 23. Follow Standard Python Style
+## 22. Follow Standard Python Style
 
 Follow PEP 8 unless the project defines a justified exception.
 
@@ -744,7 +692,7 @@ The exact toolchain should remain consistent across the project.
 
 ---
 
-## 24. Keep Imports Explicit and Organized
+## 23. Keep Imports Explicit and Organized
 
 Avoid:
 
@@ -772,7 +720,7 @@ Avoid expensive or side-effecting imports in DAG files.
 
 ---
 
-## 25. Handle Exceptions at the Correct Layer
+## 24. Handle Exceptions at the Correct Layer
 
 Do not catch every exception simply to continue execution.
 
@@ -805,7 +753,7 @@ Otherwise, allow the exception to propagate so Airflow can correctly mark the ta
 
 ---
 
-## 26. Preserve Error Context
+## 25. Preserve Error Context
 
 When wrapping exceptions:
 
@@ -832,7 +780,7 @@ without leaking credentials.
 
 ---
 
-## 27. Use Logging, Not `print()`
+## 26. Use Logging, Not `print()`
 
 Application and ETL modules should use Python logging.
 
@@ -859,7 +807,7 @@ Airflow can capture Python logger output while preserving log levels and context
 
 ---
 
-## 28. Never Log Secrets or Entire Datasets
+## 27. Never Log Secrets or Entire Datasets
 
 Do not log:
 
@@ -883,7 +831,7 @@ This provides observability without unnecessary exposure or excessive logs.
 
 ---
 
-## 29. Keep External I/O Behind Clear Boundaries
+## 28. Keep External I/O Behind Clear Boundaries
 
 Network, database, and filesystem access should remain easy to identify.
 
@@ -907,7 +855,7 @@ Transformation functions should generally not perform hidden external I/O.
 
 ---
 
-## 30. Apply Dependency Inversion Where It Provides Value
+## 29. Apply Dependency Inversion Where It Provides Value
 
 Core transformation logic should not depend unnecessarily on specific infrastructure.
 
@@ -926,7 +874,7 @@ Introduce abstractions when there are genuine interchangeable implementations or
 
 ---
 
-## 31. Prefer Composition Over Inheritance
+## 30. Prefer Composition Over Inheritance
 
 Python ETL code rarely needs deep inheritance hierarchies.
 
@@ -958,7 +906,7 @@ unless inheritance genuinely represents stable substitutable behavior.
 
 ---
 
-## 32. Keep Interfaces Small
+## 31. Keep Interfaces Small
 
 When using Python protocols or abstract interfaces, expose only the behavior required by consumers.
 
@@ -976,7 +924,7 @@ This follows the Interface Segregation Principle while keeping abstractions prac
 
 ---
 
-## 33. Test Transformations with Small Representative Data
+## 32. Test Transformations with Small Representative Data
 
 Unit tests should use small datasets covering relevant cases.
 
@@ -1005,7 +953,7 @@ repeatable
 
 ---
 
-## 34. Separate Unit Tests from Integration Tests
+## 33. Separate Unit Tests from Integration Tests
 
 A useful structure is:
 
@@ -1031,7 +979,7 @@ Integration tests may verify multiple real components together.
 
 ---
 
-## 35. Mock External Systems, Not Core Business Logic
+## 34. Mock External Systems, Not Core Business Logic
 
 In unit tests, mock:
 
@@ -1057,7 +1005,7 @@ is usually more useful than mocking the entire pipeline.
 
 ---
 
-## 36. Keep Configuration Typed and Centralized
+## 35. Keep Configuration Typed and Centralized
 
 Avoid spreading environment variable reads throughout the project.
 
@@ -1083,7 +1031,7 @@ Load environment-specific configuration at the application boundary and pass it 
 
 ---
 
-## 37. Avoid Global Mutable State
+## 36. Avoid Global Mutable State
 
 Do not use shared mutable module-level objects for runtime pipeline state.
 
@@ -1100,7 +1048,7 @@ This is particularly important because Airflow tasks may execute in different pr
 
 ---
 
-## 38. Optimize Only After Measuring
+## 37. Optimize Only After Measuring
 
 Do not sacrifice readability for speculative performance improvements.
 
@@ -1129,7 +1077,7 @@ For large weather datasets, move beyond Pandas when measurements demonstrate tha
 
 ---
 
-## 39. Prefer Vectorized Operations for Tabular Data
+## 38. Prefer Vectorized Operations for Tabular Data
 
 When using Pandas or NumPy, prefer vectorized operations over row-by-row loops where practical.
 
@@ -1152,7 +1100,7 @@ But readability and correctness remain more important than clever one-line expre
 
 ---
 
-## 40. Keep Scientific Transformations Documented
+## 39. Keep Scientific Transformations Documented
 
 Derived weather variables should document:
 
