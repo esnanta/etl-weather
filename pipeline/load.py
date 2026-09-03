@@ -14,6 +14,7 @@ from pipeline.database import (
     create_dataset_table,
     create_dataset_table_detail,
     create_schema,
+    resolve_database_config,
 )
 
 from pipeline.logging import (
@@ -161,7 +162,7 @@ def insert_observations(
 @log_step
 def load_to_postgresql(
     dataset: TransformedWeatherDataset,
-    config: DatabaseConfig = DatabaseConfig(),
+    config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
     """
     Load a transformed dataset into PostgreSQL.
@@ -172,23 +173,25 @@ def load_to_postgresql(
         (dataset_id, rows_inserted)
     """
 
+    resolved_config = resolve_database_config(config)
+
     engine = create_database_engine(
-        config,
+        resolved_config,
     )
 
     create_schema(
         engine,
-        config,
+        resolved_config,
     )
 
     create_dataset_table(
         engine,
-        config,
+        resolved_config,
     )
 
     create_dataset_table_detail(
         engine,
-        config,
+        resolved_config,
     )
 
     with engine.begin() as connection:
@@ -196,14 +199,14 @@ def load_to_postgresql(
         dataset_id = insert_dataset(
             dataset=dataset,
             connection=connection,
-            config=config,
+            config=resolved_config,
         )
 
         rows_inserted = insert_observations(
             dataset=dataset,
             dataset_id=dataset_id,
             connection=connection,
-            config=config,
+            config=resolved_config,
         )
 
     logger.info(
@@ -224,8 +227,8 @@ class PostgresDataLoader(DataLoader):
     SOLID: Single Responsibility & Dependency Inversion.
     Handles loading dataset into PostgreSQL database.
     """
-    def __init__(self, config: DatabaseConfig = None):
-        self.config = config or DatabaseConfig()
+    def __init__(self, config: DatabaseConfig | None = None):
+        self.config = config
 
     def load(self, dataset: TransformedWeatherDataset) -> tuple[int, int]:
         return load_to_postgresql(dataset, self.config)
