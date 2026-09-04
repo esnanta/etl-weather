@@ -1,57 +1,14 @@
 from __future__ import annotations
 
-import functools
 import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
-
-
-def log_step(
-    func: Callable,
-) -> Callable:
-    """
-    A decorator to log the execution
-    time of a pipeline step.
-    """
-
-    @functools.wraps(func)
-    def wrapper(
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-
-        logger.info(
-            "[START] %s",
-            func.__name__,
-        )
-
-        start_time = time.perf_counter()
-
-        result = func(
-            *args,
-            **kwargs,
-        )
-
-        elapsed_time = (
-            time.perf_counter()
-            - start_time
-        )
-
-        logger.info(
-            "[DONE] %s | Duration: %.2fs",
-            func.__name__,
-            elapsed_time,
-        )
-
-        return result
-
-    return wrapper
 
 
 def log_section_start(section: str) -> float:
@@ -117,8 +74,8 @@ def log_pipeline_header(request) -> None:
     """Log one headline for a pipeline run."""
     table = _build_ascii_table(
         {
-            "dataset": request.dataset,
-            "source": request.source.value,
+            "request_dataset": request.dataset,
+            "source_system": request.source.value,
             "period": f"{request.start_date} -> {request.end_date}",
             "variables": ", ".join(request.variables),
         },
@@ -170,8 +127,8 @@ def log_pipeline_summary(
 
     completion_table = _build_ascii_table(
         {
-            "dataset": request.dataset,
-            "source": request.source.value,
+            "request_dataset": request.dataset,
+            "source_system": request.source.value,
             "period": f"{request.start_date} -> {request.end_date}",
             "status": "completed",
         },
