@@ -11,9 +11,9 @@ from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import WeatherRequest, DataSource, RawWeatherDataset
 from pipeline.utils import (
-    validate_request,
     build_request,
-    ERA5_SINGLE_LEVELS_URL,
+    get_source_dataset_profile,
+    validate_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ def _download_arco(
         "Opening %s.",
         request.dataset,
     )
+    profile = get_source_dataset_profile(request.source, request.dataset)
 
     # Limit remote connections without relying on a custom event-loop connector.
     custom_storage_options = {
@@ -42,7 +43,7 @@ def _download_arco(
     }
 
     dataset = xr.open_zarr(
-        ERA5_SINGLE_LEVELS_URL,
+        profile["zarr_url"],
         chunks=None,
         storage_options=custom_storage_options,
     )
@@ -60,9 +61,20 @@ def _download_arco(
     )[:10]
 
     log_metric(
-        "ARCO dataset metadata",
+        "ARCO source profile",
         {
-            "server_period": f"{min_time} -> {max_time}",
+            "dataset_name": profile["dataset_name"],
+            "data_reference": profile["data_reference"],
+            "grid": profile["grid"],
+            "horizontal_resolution": profile["horizontal_resolution"],
+            "time_steps_utc": profile["time_steps_utc"],
+            "levels": profile["levels"],
+            "total_size": profile["total_size"],
+            "chunking": profile["chunking"],
+            "chunk_size_per_variable": profile["chunk_size_per_variable"],
+            "valid_time_start": dataset.attrs.get("valid_time_start", min_time),
+            "valid_time_stop": dataset.attrs.get("valid_time_stop", max_time),
+            "server_period_scan": f"{min_time} -> {max_time}",
             "available_variables": len(dataset.data_vars),
         },
     )
