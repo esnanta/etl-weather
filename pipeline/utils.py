@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # DOMAIN CONFIGURATIONS
 # =============================================================================
 
-ERA5_SINGLE_LEVELS_VARIABLES = {
+ARCO_ERA5_SINGLE_LEVELS_VARIABLES = {
     "total_precipitation",
     "surface_solar_radiation_downwards",
     "t2m",
@@ -23,13 +23,31 @@ ERA5_SINGLE_LEVELS_VARIABLES = {
     "msl",
 }
 
-SUPPORTED_DATASETS = {
-    "era5-single-levels": ERA5_SINGLE_LEVELS_VARIABLES,
+ARCO_DATASET_PROFILES = {
+    "era5-single-levels": {
+        "dataset_name": "arco-era5",
+        "zarr_url": "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
+        "data_reference": "https://github.com/google-research/arco-era5",
+        "grid": "equiangular lat-lon",
+        "horizontal_resolution": "0.25 deg",
+        "time_steps_utc": "00..23 (hourly)",
+        "levels": "1..1000 hPa (37 levels)",
+        "total_size": "2.05 PB",
+        "chunking": "{time:1, latitude:721, longitude:1440, level:37}",
+        "chunk_size_per_variable": "154 MB",
+        "supported_variables": ARCO_ERA5_SINGLE_LEVELS_VARIABLES,
+    },
 }
 
-ERA5_SINGLE_LEVELS_URL = (
-    "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
-)
+DATASET_ALIASES_BY_SOURCE = {
+    DataSource.ARCO: {
+        "arco-era5": "era5-single-levels",
+    },
+}
+
+DATASET_PROFILES_BY_SOURCE = {
+    DataSource.ARCO: ARCO_DATASET_PROFILES,
+}
 
 VARIABLE_MAP = {
     "surface_solar_radiation_downwards": "ssrd",
@@ -80,8 +98,16 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     """Build a normalized WeatherRequest."""
     dataset = request.dataset.strip().lower()
 
-    if dataset not in SUPPORTED_DATASETS:
-        raise ValueError(f"Unsupported dataset: {dataset}")
+    source_profiles = DATASET_PROFILES_BY_SOURCE.get(request.source)
+    if source_profiles is None:
+        raise ValueError(f"Unsupported source: {request.source.value}")
+
+    canonical_dataset = _resolve_dataset_key(request.source, dataset)
+
+    if canonical_dataset not in source_profiles:
+        raise ValueError(
+            f"Unsupported dataset '{dataset}' for source '{request.source.value}'."
+        )
 
     variables = [
         variable.strip().lower()
@@ -92,14 +118,17 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     if not variables:
         raise ValueError("At least one variable must be provided.")
 
-    supported_variables = SUPPORTED_DATASETS[dataset]
+    supported_variables = source_profiles[canonical_dataset]["supported_variables"]
     for variable in variables:
         if variable not in supported_variables:
-            raise ValueError(f"Variable '{variable}' is not supported by dataset '{dataset}'.")
+            raise ValueError(
+                f"Variable '{variable}' is not supported by dataset '{dataset}' "
+                f"for source '{request.source.value}'."
+            )
 
     return WeatherRequest(
         source=request.source,
-        dataset=dataset,
+        dataset=canonical_dataset,
         start_date=request.start_date,
         end_date=request.end_date,
         variables=variables,
@@ -188,3 +217,26 @@ def format_request_period(start_date: str, end_date: str) -> str:
     end = datetime.strptime(end_date, "%Y-%m-%d")
 
     return f"{start:%Y}_{start:%m%d}_{end:%m%d}"
+
+
+def get_source_dataset_profile(source: DataSource, dataset: str) -> dict:
+    """Return source-specific dataset profile."""
+    source_profiles = DATASET_PROFILES_BY_SOURCE.get(source)
+    if source_profiles is None:
+        raise ValueError(f"Unsupported source: {source.value}")
+
+    dataset_key = dataset.strip().lower()
+    canonical_dataset = _resolve_dataset_key(source, dataset_key)
+    profile = source_profiles.get(canonical_dataset)
+    if profile is None:
+        raise ValueError(
+            f"Unsupported dataset '{dataset_key}' for source '{source.value}'."
+        )
+
+    return profile
+
+
+def _resolve_dataset_key(source: DataSource, dataset_key: str) -> str:
+    """Resolve source-specific dataset aliases to canonical keys."""
+    aliases = DATASET_ALIASES_BY_SOURCE.get(source, {})
+    return aliases.get(dataset_key, dataset_key)
