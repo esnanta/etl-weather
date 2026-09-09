@@ -15,7 +15,7 @@ sys.path.insert(
 )
 
 from pipeline.runtime import run_weekly_batch
-from scripts.config import build_default_request
+from scripts.config import build_google_arco_request
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Run the default weekly pipeline batch."""
-    request = build_default_request()
+    request = build_google_arco_request()
     logger.info("Running default weekly pipeline batch.")
     run_weekly_batch(request)
 
