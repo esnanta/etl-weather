@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from pipeline.extract import RawWeatherDataset
-from pipeline.logging import log_step
+from pipeline.model import RawWeatherDataset
+from pipeline.logging import log_metric
 from pipeline.transform import TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def _validate_time_dimension(dataset: xr.Dataset) -> None:
 def _record_count(dataset: xr.Dataset) -> int:
     """
     Return logical observation count.
-    Diperbarui untuk merefleksikan dimensi grid (time * lat * lon).
+    Count grid-based observations as time * latitude * longitude.
     """
     return (
         dataset.sizes.get("time", 0)
@@ -68,7 +68,7 @@ def _validate_dataframe_type(dataframe: pd.DataFrame) -> None:
 def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -> None:
     """
     Validate required DataFrame columns.
-    Hanya menuntut time, latitude, longitude, dan variabel request.
+    Require time, latitude, longitude, and the requested variables.
     """
     required_columns = {"time", "latitude", "longitude"}
     required_columns.update(variables)
@@ -78,62 +78,69 @@ def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -
         raise ValidationError(f"Missing required columns: {missing}")
 
 
-def _log_raw_validation_result(dataset: xr.Dataset) -> None:
+def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[str]) -> None:
     """Log raw dataset validation."""
-    logger.info(
-        "[METRIC] RAW Validation PASSED | "
-        "records=%d | "
-        "variables=%s | "
-        "dimensions=%s",
-        _record_count(dataset),
-        list(dataset.data_vars),
-        dict(dataset.sizes),
+    required_coords = {"time", "latitude", "longitude"}
+    variables_requested = sorted(requested_variables)
+    variables_in_subset = sorted(list(dataset.data_vars))
+    variables_missing = sorted(set(variables_requested) - set(dataset.data_vars))
+    coordinates_missing = sorted(required_coords - set(dataset.coords))
+    has_time = "time" in dataset.coords
+    time_dtype = str(dataset.time.dtype) if has_time else "missing"
+    time_is_datetime64 = bool(
+        has_time and np.issubdtype(dataset.time.dtype, np.datetime64)
+    )
+
+    log_metric(
+        "RAW Validation PASSED",
+        {
+            "dataset_type": f"{type(dataset).__module__}.{type(dataset).__name__}",
+            "coordinates_required": sorted(required_coords),
+            "coordinates_missing": coordinates_missing,
+            "variables_requested": variables_requested,
+            "variables_in_subset": variables_in_subset,
+            "variables_missing": variables_missing,
+            "time_dtype": time_dtype,
+            "time_is_datetime64": time_is_datetime64,
+            "records": _record_count(dataset),
+            "dimensions": dict(dataset.sizes),
+        },
     )
 
 
-def _log_dataframe_validation_result(dataframe: pd.DataFrame) -> None:
+def _log_dataframe_validation_result(dataframe: pd.DataFrame, requested_variables: list[str]) -> None:
     """Log DataFrame validation."""
-    logger.info(
-        "[METRIC] DataFrame Validation PASSED | "
-        "rows=%d | "
-        "cols=%d",
-        len(dataframe),
-        len(dataframe.columns),
+    required_columns = ["time", "latitude", "longitude", *requested_variables]
+    columns_missing = sorted(set(required_columns) - set(dataframe.columns))
+
+    log_metric(
+        "DataFrame Validation PASSED",
+        {
+            "dataframe_type": f"{type(dataframe).__module__}.{type(dataframe).__name__}",
+            "columns_required": required_columns,
+            "columns_missing": columns_missing,
+            "rows": len(dataframe),
+            "cols": len(dataframe.columns),
+            "columns": list(dataframe.columns),
+        },
     )
 
 
-@log_step
 def validate_raw_dataset(raw_dataset: RawWeatherDataset) -> None:
     """Validate raw xarray dataset."""
-    _log_validation_plan(
-        target="Raw Dataset",
-        checks=["dataset_type", "coordinates", "variables", "time_dimension"],
-    )
-
     dataset = raw_dataset.raw_data
 
     _validate_dataset_type(dataset)
     _validate_dataset_structure(dataset)
     _validate_request_variables(dataset, raw_dataset.request.variables)
     _validate_time_dimension(dataset)
-    _log_raw_validation_result(dataset)
+    _log_raw_validation_result(dataset, raw_dataset.request.variables)
 
 
-@log_step
 def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset) -> None:
     """Validate transformed DataFrame."""
-    _log_validation_plan(
-        target="Transformed DataFrame",
-        checks=["dataframe_type", "required_columns"],
-    )
-
     dataframe = transformed_dataset.dataset
 
     _validate_dataframe_type(dataframe)
     _validate_dataframe_columns(dataframe, transformed_dataset.request.variables)
-    _log_dataframe_validation_result(dataframe)
-
-
-def _log_validation_plan(*, target: str, checks: list[str]) -> None:
-    """Log validation checklist."""
-    logger.info("[METRIC] Validating %s | checks=%s", target, checks)
+    _log_dataframe_validation_result(dataframe, transformed_dataset.request.variables)

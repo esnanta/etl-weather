@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import (
     UTC,
     datetime,
@@ -9,30 +8,23 @@ from datetime import (
 import logging
 import pandas as pd
 
-from pipeline.extract import (
-    LoadedWeatherDataset,
-    WeatherRequest,
+from pipeline.model import (
+    LoadedWeatherDataset
 )
 
+from pipeline.interfaces import DataTransformer
+
 from pipeline.logging import (
-    log_step, log_dataframe_changes, log_dataframe_info, _log_dataframe_preview,
+    _log_dataframe_preview,
+    log_dataframe_changes,
+    log_dataframe_info,
+    log_metric,
 )
+from pipeline.model import TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class TransformedWeatherDataset:
-    """
-    Analysis-ready weather dataset.
-    """
-
-    request: WeatherRequest
-    transformed_at: datetime
-    dataset: pd.DataFrame
-
-
-@log_step
 def _transform_dataset(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -40,9 +32,11 @@ def _transform_dataset(
     Apply transformations to a weather DataFrame.
     """
 
-    logger.info(
-        "[METRIC] Applying transformation | "
-        "drop_columns=['number', 'surface']"
+    log_metric(
+        "Applying transformation",
+        {
+            "drop_columns": ["number", "surface"],
+        },
     )
 
     transformed = dataframe.copy()
@@ -64,7 +58,6 @@ def _transform_dataset(
     return transformed
 
 
-@log_step
 def transform_data(
     raw_dataset: LoadedWeatherDataset,
 ) -> TransformedWeatherDataset:
@@ -92,3 +85,11 @@ def transform_data(
         transformed_at=datetime.now(UTC),
         dataset=transformed,
     )
+
+class DefaultDataTransformer(DataTransformer):
+    """
+    SOLID: Single Responsibility & Dependency Inversion.
+    Transforms data according to basic pipeline rules.
+    """
+    def transform(self, raw_dataset: LoadedWeatherDataset) -> TransformedWeatherDataset:
+        return transform_data(raw_dataset)

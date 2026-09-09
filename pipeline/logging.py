@@ -1,57 +1,89 @@
 from __future__ import annotations
 
-import functools
 import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Mapping
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
-def log_step(
-    func: Callable,
-) -> Callable:
-    """
-    A decorator to log the execution
-    time of a pipeline step.
-    """
+def log_section_start(section: str) -> float:
+    """Log section start and return monotonic start time."""
+    logger.info("[START] %s", section)
+    return time.perf_counter()
 
-    @functools.wraps(func)
-    def wrapper(
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
 
-        logger.info(
-            "[START] %s",
-            func.__name__,
+def log_section_completed(section: str, started_at: float) -> None:
+    """Log section completion with duration."""
+    elapsed_time = time.perf_counter() - started_at
+    logger.info("[DONE] %s completed | duration=%.2fs", section, elapsed_time)
+
+
+def log_metric(title: str, metrics: Mapping[str, Any]) -> None:
+    """Log a metric block using an ASCII table for compact readability."""
+    table = _build_ascii_table(metrics)
+    logger.info("[METRIC] %s\n%s\n", title, table)
+
+
+def _build_ascii_table(metrics: Mapping[str, Any]) -> str:
+    """Build an ASCII key-value table."""
+    headers = ("field", "value")
+    rows = [
+        (
+            str(key),
+            str(value),
         )
+        for key, value in metrics.items()
+    ]
 
-        start_time = time.perf_counter()
+    field_width = max(
+        len(headers[0]),
+        *(len(field) for field, _ in rows),
+    )
+    value_width = max(
+        len(headers[1]),
+        *(len(value) for _, value in rows),
+    )
 
-        result = func(
-            *args,
-            **kwargs,
-        )
+    border = (
+        f"+-{'-' * field_width}-+-{'-' * value_width}-+"
+    )
+    header_row = (
+        f"| {headers[0].ljust(field_width)} | {headers[1].ljust(value_width)} |"
+    )
+    body_rows = "\n".join(
+        f"| {field.ljust(field_width)} | {value.ljust(value_width)} |"
+        for field, value in rows
+    )
 
-        elapsed_time = (
-            time.perf_counter()
-            - start_time
-        )
+    table = (
+        f"{border}\n"
+        f"{header_row}\n"
+        f"{border}\n"
+        f"{body_rows}\n"
+        f"{border}"
+    )
+    return table
 
-        logger.info(
-            "[DONE] %s | Duration: %.2fs",
-            func.__name__,
-            elapsed_time,
-        )
 
-        return result
-
-    return wrapper
+def log_pipeline_header(request) -> None:
+    """Log one headline for a pipeline run."""
+    table = _build_ascii_table(
+        {
+            "request_dataset": request.dataset,
+            "source_system": request.source.value,
+            "period": f"{request.start_date} -> {request.end_date}",
+            "variables": ", ".join(request.variables),
+        },
+    )
+    logger.info(
+        "[PIPELINE] start\n%s\n",
+        table,
+    )
 
 
 def _log_dataframe_preview(
@@ -70,7 +102,6 @@ def _log_dataframe_preview(
     )
 
 
-@log_step
 def log_pipeline_summary(
     *,
     request,
@@ -94,39 +125,24 @@ def log_pipeline_summary(
         / (1024 * 1024)
     )
 
-    logger.info(
-        "\n"
-        "============================================================\n"
-        "                 PIPELINE EXECUTION SUMMARY\n"
-        "============================================================\n"
-        "Status           : SUCCESS\n"
-        "Dataset          : %s\n"
-        "Source           : %s\n"
-        "Period           : %s -> %s\n"
-        "Variables        : %s\n"
-        "\n"
-        "Rows Inserted    : %s\n"
-        "Dataset ID       : %d\n"
-        "\n"
-        "Parquet File     : %s\n"
-        "Parquet Size     : %.2f MB\n"
-        "\n"
-        "Started At       : %s\n"
-        "Finished At      : %s\n"
-        "Duration         : %.2f s\n"
-        "============================================================",
-        request.dataset,
-        request.source.value,
-        request.start_date,
-        request.end_date,
-        ", ".join(request.variables),
-        f"{rows_inserted:,}",
-        dataset_id,
-        parquet_path.name,
-        file_size_mb,
-        started_at.strftime("%Y-%m-%d %H:%M:%S"),
-        finished_at.strftime("%Y-%m-%d %H:%M:%S"),
-        duration,
+    completion_table = _build_ascii_table(
+        {
+            "request_dataset": request.dataset,
+            "source_system": request.source.value,
+            "period": f"{request.start_date} -> {request.end_date}",
+            "status": "completed",
+        },
+    )
+    logger.info("[PIPELINE] completed\n%s\n", completion_table)
+    log_metric(
+        "Pipeline summary",
+        {
+            "rows_inserted": f"{rows_inserted:,}",
+            "dataset_id": dataset_id,
+            "parquet_file": parquet_path.name,
+            "parquet_size_mb": f"{file_size_mb:.2f}",
+            "duration_seconds": f"{duration:.2f}",
+        },
     )
 
 
@@ -140,15 +156,13 @@ def log_dataframe_info(
     Log basic DataFrame information.
     """
 
-    logger.info(
-        "[METRIC] %s | "
-        "rows=%d | "
-        "cols=%d | "
-        "columns=%s",
+    log_metric(
         title,
-        len(dataframe),
-        len(dataframe.columns),
-        list(dataframe.columns),
+        {
+            "rows": len(dataframe),
+            "cols": len(dataframe.columns),
+            "columns": list(dataframe.columns),
+        },
     )
 
 
@@ -173,17 +187,14 @@ def log_dataframe_changes(
         after_columns - before_columns
     )
 
-    logger.info(
-        "[METRIC] %s | "
-        "rows=%d -> %d | "
-        "cols=%d -> %d | "
-        "removed=%s | "
-        "added=%s",
+    log_metric(
         step,
-        len(before),
-        len(after),
-        len(before.columns),
-        len(after.columns),
-        removed,
-        added,
+        {
+            "rows_before": len(before),
+            "rows_after": len(after),
+            "cols_before": len(before.columns),
+            "cols_after": len(after.columns),
+            "removed": removed,
+            "added": added,
+        },
     )

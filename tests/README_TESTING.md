@@ -1,28 +1,32 @@
 # Pipeline Testing
 
-> This document describes the testing strategy for the Weather ETL Pipeline. The primary goal is to ensure that every pipeline component behaves correctly in isolation and that the complete ETL workflow functions correctly before introducing Apache Airflow orchestration.
+This document describes the testing strategy for the Weather ETL pipeline.
+The primary goal is to ensure that every pipeline component behaves correctly in isolation and that the complete ETL workflow functions correctly.
 
-The project prioritizes simple, readable, and maintainable tests. Most tests are unit tests because they are fast, deterministic, and isolate failures effectively. A small number of integration tests are used to verify end-to-end pipeline behavior.
+The project prioritizes simple, readable, maintainable, and offline-first tests.
+Most tests are unit tests because they are fast, deterministic, and isolate failures effectively.
+A smaller number of integration tests are used to verify coordinated pipeline behavior.
 
 ---
 
 ## Testing Philosophy
 
-The project follows the following principles:
+The project follows these principles:
 
-* Prefer Pytest over unittest.
-* Tests are functions until they have a good reason not to be.
-* One module should have one test file.
-* Prefer real implementations whenever possible.
-* Mock only external dependencies.
-* Keep tests independent, readable, and repeatable.
-* Unit tests should significantly outnumber integration tests.
-* Apache Airflow orchestration will be tested separately after the Python ETL pipeline is stable.
+- Prefer `pytest` over `unittest`.
+- Prefer test functions over test classes unless there is a clear reason otherwise.
+- Keep one module aligned with one test file where practical.
+- Prefer real implementations whenever possible.
+- Mock only external dependencies.
+- Keep tests independent, readable, repeatable, and deterministic.
+- Prefer offline execution by default.
+- Unit tests should significantly outnumber integration tests.
+- Airflow orchestration is tested separately from the core ETL logic, but DAG parse and task wiring checks belong in the test strategy.
 
 The project follows a two-layer testing strategy:
 
-* Unit Tests validate each pipeline module independently.
-* Integration Tests verify that all pipeline modules work together as a complete ETL pipeline.
+- Unit tests validate each pipeline module independently.
+- Integration tests verify that multiple pipeline modules work together as a complete ETL pipeline.
 
 ```text
                   Integration Tests
@@ -58,6 +62,8 @@ tests/
     └── test_run_pipeline.py
 ```
 
+This directory structure is formal and should remain stable.
+
 ---
 
 ## Unit Tests
@@ -66,9 +72,9 @@ Each unit test validates a single pipeline component in isolation.
 
 | Test File          | Purpose                                                                          |
 | ------------------ | -------------------------------------------------------------------------------- |
-| test_extract.py    | Verifies dataset downloading, spatial subsetting, and temporal subsetting logic. |
+| test_extract.py    | Verifies request validation and extraction-related helpers.                      |
 | test_validation.py | Validates dataset dimensions, variables, and required metadata.                  |
-| test_transform.py  | Verifies dataframe transformation and aggregation logic.                         |
+| test_transform.py  | Verifies dataframe transformation and normalization logic.                       |
 | test_storage.py    | Verifies artifact creation, persistence, loading, and deletion.                  |
 | test_load.py       | Verifies export functionality such as CSV and Parquet generation.                |
 
@@ -76,12 +82,13 @@ Each unit test validates a single pipeline component in isolation.
 
 Unit tests should:
 
-* Validate only one component at a time.
-* Avoid depending on other pipeline modules.
-* Prefer using small sample datasets.
-* Avoid external network access whenever possible.
-* Be fast and deterministic.
-* Be readable and easy to maintain.
+- Validate only one component at a time.
+- Avoid depending on other pipeline modules unless that dependency is the subject under test.
+- Prefer small synthetic data and small sample data when appropriate.
+- Avoid external network access.
+- Be fast and deterministic.
+- Be readable and easy to maintain.
+- Prefer offline execution.
 
 Example:
 
@@ -104,7 +111,7 @@ Only the behavior of `save_raw_dataset()` should be validated. Other pipeline mo
 
 ## Integration Tests
 
-### test_run_pipeline.py
+### `test_run_pipeline.py`
 
 Integration tests execute the complete ETL workflow using the actual pipeline implementation.
 
@@ -133,19 +140,20 @@ Integration tests execute the complete ETL workflow using the actual pipeline im
 
 Integration tests should:
 
-* Execute the real pipeline implementation.
-* Use temporary directories whenever possible.
-* Mock only external dependencies when necessary.
-* Verify that all artifacts are created successfully.
-* Verify that every pipeline stage communicates correctly with the next stage.
+- Execute the real pipeline implementation.
+- Use temporary directories whenever possible.
+- Mock only external dependencies when necessary.
+- Verify that all artifacts are created successfully.
+- Verify that every pipeline stage communicates correctly with the next stage.
+- Stay focused on pipeline behavior rather than Airflow orchestration details.
 
 External services may be mocked when required.
 
 Examples:
 
-* Remote dataset providers.
-* Cloud storage services.
-* Third-party APIs.
+- Remote dataset providers.
+- Cloud storage services.
+- Third-party APIs.
 
 Internal pipeline modules should use their real implementations.
 
@@ -155,15 +163,15 @@ Internal pipeline modules should use their real implementations.
 
 The integration test succeeds only if all of the following conditions are satisfied:
 
-* The pipeline completes without exceptions.
-* The raw dataset artifact is created successfully.
-* The processed dataset artifact is created successfully.
-* The export artifact is created successfully.
-* Dataset validation succeeds.
-* Dataset transformation succeeds.
-* The exported dataset contains the expected output.
-* All generated artifacts can be loaded successfully.
-* The complete pipeline executes successfully from Extract through Export.
+- The pipeline completes without exceptions.
+- The raw dataset artifact is created successfully.
+- The processed dataset artifact is created successfully.
+- The export artifact is created successfully.
+- Dataset validation succeeds.
+- Dataset transformation succeeds.
+- The exported dataset contains the expected output.
+- All generated artifacts can be loaded successfully.
+- The complete pipeline executes successfully from Extract through Export.
 
 ```text
             Extract
@@ -225,9 +233,9 @@ pytest --cov
 
 ## Future Direction
 
-Apache Airflow will be introduced only after the Python ETL pipeline is considered stable.
+Apache Airflow is part of the project and its orchestration checks are included in the testing strategy.
 
-The Airflow project will follow the Thin Orchestrator principle:
+The Airflow project follows the Thin Orchestrator principle:
 
 ```text
             Apache Airflow
@@ -245,4 +253,4 @@ The Airflow project will follow the Thin Orchestrator principle:
        Extract → Validate → Transform → Export
 ```
 
-The ETL Pipeline remains responsible for all business logic and data processing, while Apache Airflow is responsible only for orchestration, scheduling, metadata communication, and task execution management.
+The ETL pipeline remains responsible for all business logic and data processing, while Apache Airflow is responsible only for orchestration, scheduling, metadata communication, and task execution management.

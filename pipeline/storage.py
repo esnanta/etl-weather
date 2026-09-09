@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import (
-    dataclass,
-)
-
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 
 import logging
@@ -13,14 +8,22 @@ import logging
 import pandas as pd
 import xarray as xr
 
-from pipeline.extract import (
+from pipeline.model import (
     RawWeatherDataset,
-    WeatherRequest, LoadedWeatherDataset,
+    WeatherRequest,
+    LoadedWeatherDataset,
+    DatasetArtifact,
+    DataLayer,
 )
+from pipeline.interfaces import DataStorage
 
 from pipeline.logging import (
-    log_step,
     _log_dataframe_preview,
+)
+
+from pipeline.utils import (
+    build_variable_signature,
+    format_request_period,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,27 +41,6 @@ DATA_DIRECTORY = (
     / "data"
 )
 
-VARIABLE_MAP = {
-    "surface_solar_radiation_downwards": "ssrd",
-    "total_precipitation": "tp",
-}
-
-
-class DataLayer(Enum):
-    RAW = "raw"
-    TRANSFORMED = "transformed"
-
-
-@dataclass(frozen=True)
-class DatasetArtifact:
-    """Metadata describing a stored artifact."""
-
-    layer: DataLayer
-    created_at: datetime
-    path: Path
-
-
-@log_step
 def save_raw_netcdf(
     dataset: RawWeatherDataset,
 ) -> DatasetArtifact:
@@ -91,7 +73,7 @@ def save_raw_netcdf(
     )
 
     logger.info(
-        "Writing RAW NetCDF checkpoint: %s",
+        "Writing RAW NetCDF checkpoint:\n%s",
         nc_artifact.path,
     )
 
@@ -102,14 +84,16 @@ def save_raw_netcdf(
     return nc_artifact
 
 
-@log_step
 def convert_netcdf_to_dataframe(
     artifact: DatasetArtifact,
 ) -> pd.DataFrame:
     """
     Load a local NetCDF checkpoint into a Pandas DataFrame.
     """
-    logger.info(f"Membaca lokal NetCDF dari {artifact.path} ke Pandas DataFrame.")
+    logger.info(
+        "Loading local NetCDF checkpoint into a Pandas DataFrame:\n%s",
+        artifact.path,
+    )
     local_ds = xr.open_dataset(artifact.path)
     df = local_ds.to_dataframe().reset_index()
     local_ds.close()
@@ -119,15 +103,13 @@ def convert_netcdf_to_dataframe(
     return df
 
 
-@log_step
 def save_transformed_parquet(
-        df: pd.DataFrame,
-        request: 'WeatherRequest',
-        downloaded_at: datetime
+    df: pd.DataFrame,
+    request: WeatherRequest,
+    downloaded_at: datetime,
 ) -> DatasetArtifact:
     """
-    [SRP] Tanggung jawab tunggal: Menyimpan DataFrame ke format .parquet.
-    Layer: TRANSFORMED
+    Persist the transformed DataFrame as a Parquet checkpoint.
     """
     parquet_artifact = _create_artifact(
         request=request,
@@ -136,22 +118,27 @@ def save_transformed_parquet(
         extension=".parquet",
         data_directory=DATA_DIRECTORY,
     )
-    parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Menulis Parquet checkpoint (Transformed) ke: {parquet_artifact.path}")
+    parquet_artifact.path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    logger.info(
+        "Writing transformed Parquet checkpoint:\n%s",
+        parquet_artifact.path,
+    )
     df.to_parquet(parquet_artifact.path, index=False)
 
     return parquet_artifact
 
 
-@log_step
 def load_raw_dataset(
-        artifact: DatasetArtifact,
-        metadata: RawWeatherDataset,
+    artifact: DatasetArtifact,
+    metadata: RawWeatherDataset,
 ) -> LoadedWeatherDataset:
     """
-    Load a raw Parquet artifact into a Pandas DataFrame.
+    Load a persisted artifact into a Pandas DataFrame.
     """
-    logger.info(f"Loading Parquet from {artifact.path}")
+    logger.info("Loading Parquet artifact:\n%s", artifact.path)
     df = pd.read_parquet(artifact.path)
 
     return LoadedWeatherDataset(
@@ -174,8 +161,6 @@ def delete_artifact(
 ) -> None:
     """Delete artifact if it exists."""
 
-
-
     if artifact.path.exists():
         artifact.path.unlink()
 
@@ -192,23 +177,19 @@ def _create_artifact(
     Create artifact metadata.
     """
 
-    start_date = _format_request_date(
+    period_signature = format_request_period(
         request.start_date,
-    )
-
-    end_date = _format_request_date(
         request.end_date,
     )
 
     variable_signature = (
-        _build_variable_signature(
+        build_variable_signature(
             request.variables,
         )
     )
 
     filename = (
-        f"{start_date}"
-        f"_{end_date}"
+        f"{period_signature}"
         f"_{variable_signature}"
         f"{extension}"
     )
@@ -218,7 +199,7 @@ def _create_artifact(
         / request.dataset
         / layer.value
         / request.source.value
-        / start_date[:4]
+        / request.start_date[:4]
         / filename
     )
 
@@ -229,30 +210,21 @@ def _create_artifact(
     )
 
 
-def _build_variable_signature(
-    variables: list[str],
-) -> str:
+class LocalDataStorage(DataStorage):
     """
-    Build a deterministic variable signature.
+    SOLID: Single Responsibility & Dependency Inversion.
+    Handles artifact storage and retrieval on local filesystem.
     """
-    
-    short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
+    def save_raw(self, dataset: RawWeatherDataset) -> DatasetArtifact:
+        return save_raw_netcdf(dataset)
 
-    return "_".join(
-        sorted(
-            short_variables,
-        )
-    )
+    def save_transformed(
+        self,
+        df: pd.DataFrame,
+        request: WeatherRequest,
+        downloaded_at: datetime,
+    ) -> DatasetArtifact:
+        return save_transformed_parquet(df, request, downloaded_at)
 
-
-def _format_request_date(
-    date: str,
-) -> str:
-    """
-    Format request date for filenames.
-    """
-
-    return date.replace(
-        "-",
-        "",
-    )
+    def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
+        return convert_netcdf_to_dataframe(artifact)
