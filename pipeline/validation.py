@@ -81,8 +81,9 @@ def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -
 def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[str]) -> None:
     """Log raw dataset validation."""
     required_coords = {"time", "latitude", "longitude"}
-    required_variables = sorted(requested_variables)
-    variables_missing = sorted(set(required_variables) - set(dataset.data_vars))
+    variables_requested = sorted(requested_variables)
+    variables_in_subset = sorted(list(dataset.data_vars))
+    variables_missing = sorted(set(variables_requested) - set(dataset.data_vars))
     coordinates_missing = sorted(required_coords - set(dataset.coords))
     has_time = "time" in dataset.coords
     time_dtype = str(dataset.time.dtype) if has_time else "missing"
@@ -96,8 +97,8 @@ def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[st
             "dataset_type": f"{type(dataset).__module__}.{type(dataset).__name__}",
             "coordinates_required": sorted(required_coords),
             "coordinates_missing": coordinates_missing,
-            "variables_required": required_variables,
-            "variables_found": sorted(list(dataset.data_vars)),
+            "variables_requested": variables_requested,
+            "variables_in_subset": variables_in_subset,
             "variables_missing": variables_missing,
             "time_dtype": time_dtype,
             "time_is_datetime64": time_is_datetime64,
