@@ -25,8 +25,8 @@ CDS_DATASET = "reanalysis-era5-single-levels"
 CDS_START_DATE = "2022-01-01"
 CDS_END_DATE = "2022-01-03"
 CDS_VARIABLES = [
-    "ssrd",
-    "tp",
+    "surface_solar_radiation_downwards",
+    "total_precipitation",
 ]
 
 def build_arco_request() -> WeatherRequest:
