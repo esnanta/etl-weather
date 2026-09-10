@@ -114,6 +114,7 @@ Only the behavior of `save_raw_dataset()` should be validated. Other pipeline mo
 ### `test_run_pipeline.py`
 
 Integration tests execute the complete ETL workflow using the actual pipeline implementation.
+The integration entrypoint uses `scripts/run_pipeline_arco.py`.
 
 ### Pipeline Flow
 

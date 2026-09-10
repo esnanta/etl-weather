@@ -36,9 +36,14 @@ Create and install the local Python environment with:
 
 The script creates a virtual environment, activates it, and installs the project dependencies from `requirements.txt`.
 
+Configure credentials in `.env`:
+
+- For CDS runs, set `CDSAPI_URL` and `CDSAPI_KEY`
+
 ## Running the Pipeline
 
-The local runner lives in `scripts/run_pipeline.py`.
+- ARCO entrypoint: `python3 scripts/run_pipeline_arco.py`
+- CDS entrypoint: `python3 scripts/run_pipeline_cds.py`
 
 ## Data Layout
 

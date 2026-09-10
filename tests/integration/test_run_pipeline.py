@@ -1,4 +1,4 @@
-from scripts.run_pipeline import main
+from scripts.run_pipeline_arco import main
 
 
 def test_run_pipeline():

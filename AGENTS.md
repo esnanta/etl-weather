@@ -56,11 +56,11 @@ If this file and the docs disagree, treat the docs as the more detailed source o
 ## Project-Specific Defaults
 
 - Use the Aceh bounding box as the default regional reference unless a task says otherwise.
-- ARCO default bbox:
-  - `lat 6.0..1.0`
-  - `lon 95.0..98.5`
-- Copernicus CDS request area:
-  - `[6.0, 94.5, 5.0, 96.0]`
+- ACEH bbox:
+    north_lat=6.2,
+    south_lat=1.8,
+    east_lon=98.6,
+    west_lon=94.8,
 
 ## Repository Structure
 
@@ -158,8 +158,8 @@ Keep responsibilities separated by folder:
 ## Script Configuration Rules
 
 - Keep default local execution parameters in `scripts/config.py`.
-- Treat `build_default_request()` as the single source of truth for default local pipeline requests.
-- Do not duplicate default request values in entrypoint scripts such as `scripts/run_pipeline.py`.
+- Treat `build_arco_request()` and `build_cds_request()` as the source of truth for default local pipeline requests.
+- Do not duplicate default request values in entrypoint scripts such as `scripts/run_pipeline_arco.py` and `scripts/run_pipeline_cds.py`.
 - When default source, dataset, date range, variables, or bbox changes, update `scripts/config.py` first and keep it aligned with project defaults in this guide.
 - Keep script-level configuration typed with `pipeline.model` objects (`DataSource`, `BoundingBox`, `WeatherRequest`) instead of ad-hoc dictionaries.
 
