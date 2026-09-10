@@ -1,32 +1,80 @@
 from __future__ import annotations
 
+import os
+
+from dotenv import load_dotenv
+
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
-GOOGLE_ARCO_DATA_SOURCE = DataSource.ARCO
-GOOGLE_ARCO_DATASET = "era5-single-levels"
-GOOGLE_ARCO_START_DATE = "1990-01-01"
-GOOGLE_ARCO_END_DATE = "1990-01-02"
-GOOGLE_ARCO_VARIABLES = [
+ACEH_BBOX = BoundingBox(
+    north_lat=6.2,
+    south_lat=1.8,
+    east_lon=98.6,
+    west_lon=94.8,
+)
+
+ARCO_DATASET = "era5-single-levels"
+ARCO_START_DATE = "1990-01-01"
+ARCO_END_DATE = "1990-01-02"
+ARCO_VARIABLES = [
     "surface_solar_radiation_downwards",
     "total_precipitation",
 ]
 
-GOOGLE_ARCO_BBOX = BoundingBox(
-    north_lat=6.0,
-    south_lat=1.0,
-    east_lon=98.5,
-    west_lon=95.0,
-)
+CDS_DATASET = "reanalysis-era5-single-levels"
+CDS_START_DATE = "2022-01-01"
+CDS_END_DATE = "2022-01-03"
+CDS_VARIABLES = [
+    "surface_solar_radiation_downwards",
+    "total_precipitation",
+]
 
-
-def build_google_arco_request() -> WeatherRequest:
-    """Return the default local execution request for the pipeline."""
-
+def build_arco_request() -> WeatherRequest:
+    """Return default local request for ARCO source."""
     return WeatherRequest(
-        source=GOOGLE_ARCO_DATA_SOURCE,
-        dataset=GOOGLE_ARCO_DATASET,
-        start_date=GOOGLE_ARCO_START_DATE,
-        end_date=GOOGLE_ARCO_END_DATE,
-        variables=GOOGLE_ARCO_VARIABLES.copy(),
-        bbox=GOOGLE_ARCO_BBOX,
+        source=DataSource.ARCO,
+        dataset=ARCO_DATASET,
+        start_date=ARCO_START_DATE,
+        end_date=ARCO_END_DATE,
+        variables=ARCO_VARIABLES.copy(),
+        bbox=ACEH_BBOX,
     )
+
+
+def build_cds_request() -> WeatherRequest:
+    """Return default local request for CDS source."""
+    _require_cds_api_key()
+    return WeatherRequest(
+        source=DataSource.CDS,
+        dataset=CDS_DATASET,
+        start_date=CDS_START_DATE,
+        end_date=CDS_END_DATE,
+        variables=CDS_VARIABLES.copy(),
+        bbox=ACEH_BBOX,
+    )
+
+
+def build_request_from_env() -> WeatherRequest:
+    """Wrapper helper for selecting source via WEATHER_DATA_SOURCE."""
+    load_dotenv()
+    source_name = os.getenv("WEATHER_DATA_SOURCE", DataSource.ARCO.value).strip().lower()
+
+    if source_name == DataSource.ARCO.value:
+        return build_arco_request()
+
+    if source_name == DataSource.CDS.value:
+        return build_cds_request()
+
+    raise ValueError(
+        f"Invalid WEATHER_DATA_SOURCE: '{source_name}'. "
+        f"Supported values: {DataSource.ARCO.value}, {DataSource.CDS.value}."
+    )
+
+
+def _require_cds_api_key() -> None:
+    """Fail fast when CDS run is selected without CDS API key."""
+    load_dotenv()
+    if not os.getenv("CDSAPI_KEY", "").strip():
+        raise ValueError(
+            "CDSAPI_KEY is missing. Set CDSAPI_KEY=YOUR_UID:YOUR_API_KEY in .env."
+        )

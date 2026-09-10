@@ -94,9 +94,32 @@ def _log_dataframe_preview(
     Log the first rows of a DataFrame.
     """
 
+    preview = dataframe.head(rows).copy()
+    if "time" in dataframe.columns:
+        time_values = pd.to_datetime(
+            dataframe["time"]
+        )
+
+        log_metric(
+            "Time coverage",
+            {
+                "time_start": time_values.min(),
+                "time_end": time_values.max(),
+                "unique_time_steps": time_values.nunique(),
+                "time_interval": (
+                    time_values.drop_duplicates()
+                    .sort_values()
+                    .diff()
+                    .dropna()
+                    .mode()
+                    .iloc[0]
+                ),
+            },
+        )
+
     logger.info(
         "[PREVIEW]\n%s",
-        dataframe.head(rows).to_string(
+        preview.to_string(
             index=False,
         ),
     )

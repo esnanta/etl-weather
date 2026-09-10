@@ -45,6 +45,7 @@ def _transform_dataset(
         columns=[
             "number",
             "surface",
+            "expver"
         ],
         errors="ignore",
     )

@@ -86,9 +86,9 @@ The pipeline is divided into several layers, each with a specific responsibility
 - Contains functions to connect to a PostgreSQL database.
 - Handles schema creation and data insertion from an xarray Dataset.
 
-### `scripts/run_pipeline.py`
-- An executable script that runs the end-to-end pipeline.
-- It builds a `WeatherRequest`, extracts the data, validates it, saves the raw version, transforms it, validates the transformed version, and finally exports it to a CSV file.
+### `scripts/run_pipeline_arco.py` and `scripts/run_pipeline_cds.py`
+- Executable scripts that run the end-to-end pipeline for ARCO and CDS respectively.
+- Each script builds its source-specific `WeatherRequest`, then extracts, validates, saves raw data, transforms, validates transformed data, and loads it.
 
 ## Data Storage
 
@@ -115,13 +115,14 @@ data/
 
 ## How to Run the Pipeline
 
-The pipeline can be executed by running the `run_pipeline.py` script:
+The pipeline can be executed by running one of these scripts:
 
 ```bash
-python scripts/run_pipeline.py
+python scripts/run_pipeline_arco.py
+python scripts/run_pipeline_cds.py
 ```
 
-This will execute the predefined request in the script and save the output to the `data/transformed` directory. You can modify `scripts/run_pipeline.py` to change the request parameters (dates, variables, bounding box).
+This will execute the predefined source-specific request in `scripts/config.py` and save outputs to the configured data directories.
 
 ## Supported Datasets and Variables
 

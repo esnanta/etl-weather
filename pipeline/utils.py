@@ -23,6 +23,17 @@ ARCO_ERA5_SINGLE_LEVELS_VARIABLES = {
     "msl",
 }
 
+CDS_ERA5_SINGLE_LEVELS_VARIABLES = {
+    "2m_temperature",
+    "10m_u_component_of_wind",
+    "10m_v_component_of_wind",
+    "mean_sea_level_pressure",
+    "surface_solar_radiation_downwards",
+    "total_precipitation",
+    "sea_surface_temperature",
+    "significant_height_of_combined_wind_waves_and_swell",
+}
+
 ARCO_DATASET_PROFILES = {
     "era5-single-levels": {
         "dataset_name": "arco-era5",
@@ -39,19 +50,22 @@ ARCO_DATASET_PROFILES = {
     },
 }
 
-DATASET_ALIASES_BY_SOURCE = {
-    DataSource.ARCO: {
-        "arco-era5": "era5-single-levels",
+CDS_DATASET_PROFILES = {
+    "reanalysis-era5-single-levels": {
+        "dataset_name": "copernicus-cds-era5-single-levels",
+        "api_dataset": "reanalysis-era5-single-levels",
+        "data_reference": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels",
+        "grid": "regular lat-lon",
+        "horizontal_resolution": "0.25 deg",
+        "time_steps_utc": "00..23 (hourly)",
+        "levels": "single level",
+        "supported_variables": CDS_ERA5_SINGLE_LEVELS_VARIABLES,
     },
 }
 
 DATASET_PROFILES_BY_SOURCE = {
     DataSource.ARCO: ARCO_DATASET_PROFILES,
-}
-
-VARIABLE_MAP = {
-    "surface_solar_radiation_downwards": "ssrd",
-    "total_precipitation": "tp",
+    DataSource.CDS: CDS_DATASET_PROFILES,
 }
 
 # =============================================================================
@@ -102,23 +116,17 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     if source_profiles is None:
         raise ValueError(f"Unsupported source: {request.source.value}")
 
-    canonical_dataset = _resolve_dataset_key(request.source, dataset)
-
-    if canonical_dataset not in source_profiles:
+    if dataset not in source_profiles:
         raise ValueError(
             f"Unsupported dataset '{dataset}' for source '{request.source.value}'."
         )
 
-    variables = [
-        variable.strip().lower()
-        for variable in request.variables
-        if variable.strip()
-    ]
+    variables = [variable.strip().lower() for variable in request.variables if variable.strip()]
 
     if not variables:
         raise ValueError("At least one variable must be provided.")
 
-    supported_variables = source_profiles[canonical_dataset]["supported_variables"]
+    supported_variables = source_profiles[dataset]["supported_variables"]
     for variable in variables:
         if variable not in supported_variables:
             raise ValueError(
@@ -128,7 +136,7 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
 
     return WeatherRequest(
         source=request.source,
-        dataset=canonical_dataset,
+        dataset=dataset,
         start_date=request.start_date,
         end_date=request.end_date,
         variables=variables,
@@ -208,8 +216,7 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 
 def build_variable_signature(variables: list[str]) -> str:
     """Build a deterministic variable signature."""
-    short_variables = [VARIABLE_MAP.get(var, var) for var in variables]
-    return "_".join(sorted(short_variables))
+    return "_".join(sorted(variables))
 
 def format_request_period(start_date: str, end_date: str) -> str:
     """Format a request period for filenames."""
@@ -226,17 +233,10 @@ def get_source_dataset_profile(source: DataSource, dataset: str) -> dict:
         raise ValueError(f"Unsupported source: {source.value}")
 
     dataset_key = dataset.strip().lower()
-    canonical_dataset = _resolve_dataset_key(source, dataset_key)
-    profile = source_profiles.get(canonical_dataset)
+    profile = source_profiles.get(dataset_key)
     if profile is None:
         raise ValueError(
             f"Unsupported dataset '{dataset_key}' for source '{source.value}'."
         )
 
     return profile
-
-
-def _resolve_dataset_key(source: DataSource, dataset_key: str) -> str:
-    """Resolve source-specific dataset aliases to canonical keys."""
-    aliases = DATASET_ALIASES_BY_SOURCE.get(source, {})
-    return aliases.get(dataset_key, dataset_key)
