@@ -42,6 +42,19 @@ CDS_ERA5_LAND_VARIABLES = {
     "volumetric_soil_water_layer_1",
 }
 
+CANONICAL_TO_SHORT_VARIABLE_NAMES = {
+    "total_precipitation": "tp",
+    "surface_solar_radiation_downwards": "ssrd",
+    "2m_temperature": "t2m",
+    "2m_dewpoint_temperature": "d2m",
+    "volumetric_soil_water_layer_1": "swvl1",
+    "10m_u_component_of_wind": "u10",
+    "10m_v_component_of_wind": "v10",
+    "mean_sea_level_pressure": "msl",
+    "sea_surface_temperature": "sst",
+    "significant_height_of_combined_wind_waves_and_swell": "swh",
+}
+
 ARCO_DATASET_PROFILES = {
     "era5-single-levels": {
         "dataset_name": "arco-era5",
@@ -226,7 +239,12 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 
 def build_variable_signature(variables: list[str]) -> str:
     """Build a deterministic variable signature."""
-    return "_".join(sorted(variables))
+    canonical_sorted = sorted(variables)
+    short_names = [
+        CANONICAL_TO_SHORT_VARIABLE_NAMES.get(variable, variable)
+        for variable in canonical_sorted
+    ]
+    return "_".join(short_names)
 
 
 def format_request_period(start_date: str, end_date: str) -> str:
