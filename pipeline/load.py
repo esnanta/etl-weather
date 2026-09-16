@@ -19,6 +19,7 @@ from pipeline.database import (
 from pipeline.logging import log_metric
 from pipeline.model import TransformedWeatherDataset
 from pipeline.interfaces import DataLoader
+from pipeline.utils import CANONICAL_TO_SHORT_VARIABLE_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -83,17 +84,9 @@ def insert_observations(
 
     dataframe["dataset_id"] = dataset_id
 
-    column_mapping = {
-        "total_precipitation": "tp",
-        "surface_solar_radiation_downwards": "ssrd",
-        "2m_temperature": "t2m",
-        "2m_dewpoint_temperature": "d2m",
-        "volumetric_soil_water_layer_1": "swvl1",
-    }
-
     exist_map = {
         source_name: target_name
-        for source_name, target_name in column_mapping.items()
+        for source_name, target_name in CANONICAL_TO_SHORT_VARIABLE_NAMES.items()
         if source_name in dataframe.columns
     }
     if exist_map:

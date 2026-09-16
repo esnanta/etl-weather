@@ -14,6 +14,7 @@ from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
 from pipeline.utils import (
+    CDS_SHORT_TO_CANONICAL_VARIABLES,
     build_request,
     get_source_dataset_profile,
     validate_request,
@@ -24,14 +25,6 @@ logger = logging.getLogger(__name__)
 CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
-
-CDS_SHORT_TO_CANONICAL_VARIABLES = {
-    "tp": "total_precipitation",
-    "ssrd": "surface_solar_radiation_downwards",
-    "t2m": "2m_temperature",
-    "d2m": "2m_dewpoint_temperature",
-    "swvl1": "volumetric_soil_water_layer_1",
-}
 
 
 # =============================================================================

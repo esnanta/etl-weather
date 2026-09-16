@@ -42,12 +42,19 @@ CDS_ERA5_LAND_VARIABLES = {
     "volumetric_soil_water_layer_1",
 }
 
+# Shared CDS variable-name mappings used by extraction/loading boundaries.
+CDS_SHORT_TO_CANONICAL_VARIABLES = {
+    "tp": "total_precipitation",
+    "ssrd": "surface_solar_radiation_downwards",
+    "t2m": "2m_temperature",
+    "d2m": "2m_dewpoint_temperature",
+    "swvl1": "volumetric_soil_water_layer_1",
+}
+
 CANONICAL_TO_SHORT_VARIABLE_NAMES = {
-    "total_precipitation": "tp",
-    "surface_solar_radiation_downwards": "ssrd",
-    "2m_temperature": "t2m",
-    "2m_dewpoint_temperature": "d2m",
-    "volumetric_soil_water_layer_1": "swvl1",
+    canonical_name: short_name
+    for short_name, canonical_name in CDS_SHORT_TO_CANONICAL_VARIABLES.items()
+} | {
     "10m_u_component_of_wind": "u10",
     "10m_v_component_of_wind": "v10",
     "mean_sea_level_pressure": "msl",
