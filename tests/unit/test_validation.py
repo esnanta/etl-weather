@@ -1,22 +1,16 @@
-# tests/unit/test_validation.py
+from datetime import datetime, timezone
 
-from datetime import datetime
-from datetime import timezone
-
-import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
-from pipeline.extract import (
+from pipeline.model import (
     BoundingBox,
+    DataSource,
     RawWeatherDataset,
+    TransformedWeatherDataset,
     WeatherRequest,
 )
-
-from pipeline.transform import (
-    TransformedWeatherDataset,
-)
-
 from pipeline.validation import (
     ValidationError,
     validate_raw_dataset,
@@ -24,468 +18,136 @@ from pipeline.validation import (
 )
 
 
-def create_request():
-
+def _request() -> WeatherRequest:
     return WeatherRequest(
-        dataset="era5-single-levels",
-        start_date="2015-01-01",
-        end_date="2015-12-31",
+        source=DataSource.CDS,
+        dataset="reanalysis-era5-land",
+        start_date="2022-01-01",
+        end_date="2022-01-03",
         variables=[
-            "tp",
+            "total_precipitation",
+            "2m_temperature",
         ],
         bbox=BoundingBox(
-            north_lat=6.0,
-            west_lon=95.0,
-            south_lat=1.0,
-            east_lon=98.5,
+            north_lat=5.2,
+            west_lon=96.1,
+            south_lat=3.4,
+            east_lon=97.6,
         ),
     )
 
 
-def create_raw_dataset():
+def _raw_dataset(valid_time: pd.DatetimeIndex | None = None) -> RawWeatherDataset:
+    if valid_time is None:
+        valid_time = pd.date_range(
+            "2021-12-31 00:00:00",
+            "2022-01-03 23:00:00",
+            freq="h",
+        )
 
-    return xr.Dataset(
-        {
-            "tp": (
-                (
-                    "time",
-                    "values",
-                ),
-                [[1.0]],
-            ),
-        },
-        coords={
-            "time": [
-                "2015-01-01",
-            ],
-            "values": [
-                0,
-            ],
-            "latitude": (
-                "values",
-                [5.0],
-            ),
-            "longitude": (
-                "values",
-                [95.0],
-            ),
-        },
-    )
-
-
-def create_transformed_dataset():
-
-    return xr.Dataset(
-        {
+    dataset = xr.Dataset(
+        data_vars={
             "total_precipitation": (
-                (
-                    "time",
-                    "values",
-                ),
-                np.array(
-                    [[1.0]],
-                    dtype="float32",
-                ),
+                ("valid_time", "latitude", "longitude"),
+                [[[0.001]] for _ in valid_time],
+            ),
+            "2m_temperature": (
+                ("valid_time", "latitude", "longitude"),
+                [[[300.0]] for _ in valid_time],
             ),
         },
         coords={
-            "time": [
-                "2015-01-01",
-            ],
-            "values": np.array(
-                [0],
-                dtype="int32",
-            ),
-            "latitude": (
-                "values",
-                np.array(
-                    [5.0],
-                    dtype="float32",
-                ),
-            ),
-            "longitude": (
-                "values",
-                np.array(
-                    [95.0],
-                    dtype="float32",
-                ),
-            ),
+            "valid_time": valid_time,
+            "latitude": [4.5],
+            "longitude": [96.8],
         },
     )
 
-
-def create_transformed_weather_dataset():
-
-    return (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=(
-                create_transformed_dataset()
-            ),
-        )
+    return RawWeatherDataset(
+        request=_request(),
+        downloaded_at=datetime.now(timezone.utc),
+        raw_data=dataset,
     )
 
 
-# ------------------------------------------------------------------
-# RAW DATASET
-# ------------------------------------------------------------------
-
-
-def test_validation_success():
-
-    raw_dataset = (
-        RawWeatherDataset(
-            request=create_request(),
-            downloaded_at=datetime.now(
-                timezone.utc,
-            ),
-            raw_data=create_raw_dataset(),
-        )
+def _transformed_dataframe() -> pd.DataFrame:
+    valid_time_local = pd.date_range(
+        "2022-01-01 00:00:00",
+        "2022-01-03 00:00:00",
+        freq="D",
     )
+    valid_time = valid_time_local - pd.Timedelta(hours=7)
 
-    validate_raw_dataset(
-        raw_dataset,
-    )
-
-
-def test_empty_dataset():
-
-    raw_dataset = (
-        RawWeatherDataset(
-            request=create_request(),
-            downloaded_at=datetime.now(
-                timezone.utc,
-            ),
-            raw_data=xr.Dataset(),
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_raw_dataset(
-            raw_dataset,
-        )
-
-
-def test_none_raw_dataset():
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_raw_dataset(
-            None,
-        )
-
-
-# ------------------------------------------------------------------
-# TRANSFORMED DATASET
-# ------------------------------------------------------------------
-
-
-def test_validate_transformed_dataset_success():
-
-    validate_transformed_dataset(
-        create_transformed_weather_dataset(),
-    )
-
-
-def test_none_transformed_dataset():
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            None,
-        )
-
-
-def test_empty_transformed_dataset():
-
-    dataset = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=xr.Dataset(),
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            dataset,
-        )
-
-
-def test_missing_time_dimension():
-
-    dataset = (
-        create_transformed_dataset()
-        .drop_dims("time")
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_missing_values_dimension():
-
-    dataset = (
-        create_transformed_dataset()
-        .drop_dims("values")
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_missing_latitude_coordinate():
-
-    dataset = (
-        create_transformed_dataset()
-        .drop_vars("latitude")
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_missing_longitude_coordinate():
-
-    dataset = (
-        create_transformed_dataset()
-        .drop_vars("longitude")
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_missing_values_coordinate():
-
-    dataset = (
-        create_transformed_dataset()
-        .drop_vars("values")
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_invalid_latitude_dtype():
-
-    dataset = (
-        create_transformed_dataset()
-    )
-
-    dataset["latitude"] = (
-        dataset.latitude.astype(
-            "float64",
-        )
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_invalid_longitude_dtype():
-
-    dataset = (
-        create_transformed_dataset()
-    )
-
-    dataset["longitude"] = (
-        dataset.longitude.astype(
-            "float64",
-        )
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_invalid_values_dtype():
-
-    dataset = (
-        create_transformed_dataset()
-    )
-
-    dataset["values"] = (
-        dataset["values"].astype(
-            "int64",
-        )
-    )
-
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
-
-
-def test_variable_not_transformed():
-
-    dataset = (
-        create_transformed_dataset()
-    )
-
-    dataset = dataset.rename(
+    return pd.DataFrame(
         {
-            "total_precipitation":
-            "tp",
+            "valid_time": valid_time,
+            "valid_time_local": valid_time_local,
+            "latitude": 4.5,
+            "longitude": 96.8,
+            "total_precipitation": [10.0, 20.0, 30.0],
+            "2m_temperature": [26.0, 27.0, 28.0],
         }
     )
 
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
+
+def _transformed_dataset(
+    dataframe: pd.DataFrame | None = None,
+) -> TransformedWeatherDataset:
+    return TransformedWeatherDataset(
+        request=_request(),
+        transformed_at=datetime.now(timezone.utc),
+        dataset=(
+            _transformed_dataframe()
+            if dataframe is None
+            else dataframe
+        ),
     )
 
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
+
+def test_raw_temporal_validation_accepts_continuous_hourly_data() -> None:
+    validate_raw_dataset(_raw_dataset())
 
 
-def test_invalid_variable_dtype():
+def test_raw_temporal_validation_rejects_missing_hour() -> None:
+    valid_time = pd.date_range(
+        "2021-12-31 00:00:00",
+        "2022-01-03 23:00:00",
+        freq="h",
+    ).delete(12)
 
-    dataset = (
-        create_transformed_dataset()
+    with pytest.raises(ValidationError):
+        validate_raw_dataset(_raw_dataset(valid_time))
+
+
+def test_transformed_temporal_validation_accepts_utc_plus_7_contract() -> None:
+    validate_transformed_dataset(_transformed_dataset())
+
+
+def test_transformed_temporal_validation_rejects_wrong_local_offset() -> None:
+    dataframe = _transformed_dataframe()
+    dataframe.loc[0, "valid_time_local"] = pd.Timestamp(
+        "2022-01-01 01:00:00"
     )
 
-    dataset[
-        "total_precipitation"
-    ] = (
-        dataset[
-            "total_precipitation"
-        ].astype(
-            "float64",
-        )
+    with pytest.raises(ValidationError):
+        validate_transformed_dataset(_transformed_dataset(dataframe))
+
+
+def test_transformed_temporal_validation_rejects_missing_local_day() -> None:
+    dataframe = _transformed_dataframe().iloc[[0, 2]].copy()
+
+    with pytest.raises(ValidationError):
+        validate_transformed_dataset(_transformed_dataset(dataframe))
+
+
+def test_transformed_temporal_validation_rejects_duplicate_grid_record() -> None:
+    dataframe = pd.concat(
+        [
+            _transformed_dataframe(),
+            _transformed_dataframe().iloc[[0]],
+        ],
+        ignore_index=True,
     )
 
-    transformed = (
-        TransformedWeatherDataset(
-            transformed_at=datetime.now(
-                timezone.utc,
-            ),
-            dataset=dataset,
-        )
-    )
-
-    with pytest.raises(
-        ValidationError,
-    ):
-        validate_transformed_dataset(
-            transformed,
-        )
+    with pytest.raises(ValidationError):
+        validate_transformed_dataset(_transformed_dataset(dataframe))
