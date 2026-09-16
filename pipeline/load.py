@@ -16,15 +16,8 @@ from pipeline.database import (
     create_schema,
     resolve_database_config,
 )
-
-from pipeline.logging import (
-    log_metric,
-)
-
-from pipeline.model import (
-    TransformedWeatherDataset,
-)
-
+from pipeline.logging import log_metric
+from pipeline.model import TransformedWeatherDataset
 from pipeline.interfaces import DataLoader
 
 logger = logging.getLogger(__name__)
@@ -35,9 +28,7 @@ def insert_dataset(
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """
-    Insert dataset metadata.
-    """
+    """Insert dataset metadata."""
     result = connection.execute(
         text(
             f"""
@@ -71,15 +62,10 @@ def insert_dataset(
     )
 
     dataset_id = result.scalar()
-
     if dataset_id is None:
-        raise RuntimeError(
-            "Failed to retrieve the dataset id after inserting metadata."
-        )
-
+        raise RuntimeError("Failed to retrieve the dataset id after inserting metadata.")
     if isinstance(dataset_id, int):
         return dataset_id
-
     return int(str(dataset_id))
 
 
@@ -89,46 +75,22 @@ def insert_observations(
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """
-    Insert weather observations.
-    """
-
+    """Insert weather observations."""
     dataframe = dataset.dataset.copy()
 
-    if (
-        "step" in dataframe.columns
-        and pd.api.types.is_timedelta64_dtype(
-            dataframe["step"]
-        )
-    ):
-        dataframe["step"] = (
-            dataframe["step"]
-            .dt.total_seconds()
-            .floordiv(3600)
-            .astype("int16")
-        )
-
-    for column in (
-        "time",
-        "valid_time",
-    ):
-        if column in dataframe.columns:
-            dataframe[column] = pd.to_datetime(
-                dataframe[column],
-            )
+    if "valid_time" in dataframe.columns:
+        dataframe["valid_time"] = pd.to_datetime(dataframe["valid_time"])
 
     dataframe["dataset_id"] = dataset_id
 
-    # Rename long-form variable names to short DB column names expected by
-    # weather_dataset_detail. This prevents INSERT failures when the dataset
-    # uses original variable names from the source (e.g. Copernicus/ARCO).
     column_mapping = {
         "total_precipitation": "tp",
         "surface_solar_radiation_downwards": "ssrd",
-        # keep identity for already-short names (t2m, u10, v10, swh, msl)
+        "2m_temperature": "t2m",
+        "2m_dewpoint_temperature": "d2m",
+        "volumetric_soil_water_layer_1": "swvl1",
     }
 
-    # Only apply mappings for columns that actually exist in the dataframe.
     exist_map = {
         source_name: target_name
         for source_name, target_name in column_mapping.items()
@@ -154,53 +116,27 @@ def insert_observations(
         },
     )
 
-    return len(
-        dataframe,
-    )
+    return len(dataframe)
 
 
 def load_to_postgresql(
     dataset: TransformedWeatherDataset,
     config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
-    """
-    Load a transformed dataset into PostgreSQL.
-
-    Returns
-    -------
-    tuple[int, int]
-        (dataset_id, rows_inserted)
-    """
-
+    """Load a transformed dataset into PostgreSQL."""
     resolved_config = resolve_database_config(config)
+    engine = create_database_engine(resolved_config)
 
-    engine = create_database_engine(
-        resolved_config,
-    )
-
-    create_schema(
-        engine,
-        resolved_config,
-    )
-
-    create_dataset_table(
-        engine,
-        resolved_config,
-    )
-
-    create_dataset_table_detail(
-        engine,
-        resolved_config,
-    )
+    create_schema(engine, resolved_config)
+    create_dataset_table(engine, resolved_config)
+    create_dataset_table_detail(engine, resolved_config)
 
     with engine.begin() as connection:
-
         dataset_id = insert_dataset(
             dataset=dataset,
             connection=connection,
             config=resolved_config,
         )
-
         rows_inserted = insert_observations(
             dataset=dataset,
             dataset_id=dataset_id,
@@ -216,16 +152,12 @@ def load_to_postgresql(
         },
     )
 
-    return (
-        dataset_id,
-        rows_inserted,
-    )
+    return dataset_id, rows_inserted
+
 
 class PostgresDataLoader(DataLoader):
-    """
-    SOLID: Single Responsibility & Dependency Inversion.
-    Handles loading dataset into PostgreSQL database.
-    """
+    """Handles loading transformed weather data into PostgreSQL."""
+
     def __init__(self, config: DatabaseConfig | None = None):
         self.config = config
 
