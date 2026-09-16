@@ -25,7 +25,7 @@ def _validate_dataset_type(dataset: xr.Dataset) -> None:
 
 def _validate_dataset_structure(dataset: xr.Dataset) -> None:
     """Validate required coordinates."""
-    required_coords = {"time", "latitude", "longitude"}
+    required_coords = {"valid_time", "latitude", "longitude"}
     missing = required_coords - set(dataset.coords)
     if missing:
         raise ValidationError(f"Missing required coordinates: {missing}")
@@ -39,21 +39,18 @@ def _validate_request_variables(dataset: xr.Dataset, variables: list[str]) -> No
 
 
 def _validate_time_dimension(dataset: xr.Dataset) -> None:
-    """Validate time coordinate."""
-    if "time" not in dataset.coords:
-        raise ValidationError("Time coordinate is missing.")
+    """Validate canonical valid_time coordinate."""
+    if "valid_time" not in dataset.coords:
+        raise ValidationError("valid_time coordinate is missing.")
 
-    if not np.issubdtype(dataset.time.dtype, np.datetime64):
-        raise ValidationError("Time coordinate must be datetime64.")
+    if not np.issubdtype(dataset.valid_time.dtype, np.datetime64):
+        raise ValidationError("valid_time coordinate must be datetime64.")
 
 
 def _record_count(dataset: xr.Dataset) -> int:
-    """
-    Return logical observation count.
-    Count grid-based observations as time * latitude * longitude.
-    """
+    """Return logical grid observation count."""
     return (
-        dataset.sizes.get("time", 0)
+        dataset.sizes.get("valid_time", 0)
         * dataset.sizes.get("latitude", 1)
         * dataset.sizes.get("longitude", 1)
     )
@@ -66,11 +63,8 @@ def _validate_dataframe_type(dataframe: pd.DataFrame) -> None:
 
 
 def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -> None:
-    """
-    Validate required DataFrame columns.
-    Require time, latitude, longitude, and the requested variables.
-    """
-    required_columns = {"time", "latitude", "longitude"}
+    """Validate required canonical DataFrame columns."""
+    required_columns = {"valid_time", "latitude", "longitude"}
     required_columns.update(variables)
 
     missing = required_columns - set(dataframe.columns)
@@ -80,15 +74,16 @@ def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -
 
 def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[str]) -> None:
     """Log raw dataset validation."""
-    required_coords = {"time", "latitude", "longitude"}
+    required_coords = {"valid_time", "latitude", "longitude"}
     variables_requested = sorted(requested_variables)
     variables_in_subset = sorted(list(dataset.data_vars))
     variables_missing = sorted(set(variables_requested) - set(dataset.data_vars))
     coordinates_missing = sorted(required_coords - set(dataset.coords))
-    has_time = "time" in dataset.coords
-    time_dtype = str(dataset.time.dtype) if has_time else "missing"
+    has_valid_time = "valid_time" in dataset.coords
+    time_dtype = str(dataset.valid_time.dtype) if has_valid_time else "missing"
     time_is_datetime64 = bool(
-        has_time and np.issubdtype(dataset.time.dtype, np.datetime64)
+        has_valid_time
+        and np.issubdtype(dataset.valid_time.dtype, np.datetime64)
     )
 
     log_metric(
@@ -100,8 +95,8 @@ def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[st
             "variables_requested": variables_requested,
             "variables_in_subset": variables_in_subset,
             "variables_missing": variables_missing,
-            "time_dtype": time_dtype,
-            "time_is_datetime64": time_is_datetime64,
+            "valid_time_dtype": time_dtype,
+            "valid_time_is_datetime64": time_is_datetime64,
             "records": _record_count(dataset),
             "dimensions": dict(dataset.sizes),
         },
@@ -110,7 +105,7 @@ def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[st
 
 def _log_dataframe_validation_result(dataframe: pd.DataFrame, requested_variables: list[str]) -> None:
     """Log DataFrame validation."""
-    required_columns = ["time", "latitude", "longitude", *requested_variables]
+    required_columns = ["valid_time", "latitude", "longitude", *requested_variables]
     columns_missing = sorted(set(required_columns) - set(dataframe.columns))
 
     log_metric(
