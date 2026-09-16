@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import cast
 
 import pandas as pd
 
@@ -128,13 +129,19 @@ def _aggregate_accumulated_variable(
     non-UTC daily accumulation boundary method and does not reconstruct
     hourly increments.
     """
-    working = dataframe[
-        ["valid_time", "latitude", "longitude", variable]
-    ].copy()
+    working = cast(
+        pd.DataFrame,
+        dataframe[
+            ["valid_time", "latitude", "longitude", variable]
+        ].copy(),
+    )
 
-    utc_midnight = working.loc[
-        working["valid_time"].dt.hour.eq(0)
-    ].copy()
+    utc_midnight = cast(
+        pd.DataFrame,
+        working.loc[
+            working["valid_time"].dt.hour.eq(0)
+        ].copy(),
+    )
     utc_midnight["_local_day"] = utc_midnight["valid_time"].dt.floor("D")
     utc_midnight = utc_midnight.rename(
         columns={variable: "_utc_midnight_value"}
@@ -147,9 +154,12 @@ def _aggregate_accumulated_variable(
         ]
     ]
 
-    local_midnight = working.loc[
-        working["valid_time"].dt.hour.eq(LOCAL_MIDNIGHT_IN_UTC_HOUR)
-    ].copy()
+    local_midnight = cast(
+        pd.DataFrame,
+        working.loc[
+            working["valid_time"].dt.hour.eq(LOCAL_MIDNIGHT_IN_UTC_HOUR)
+        ].copy(),
+    )
     local_midnight["_utc_day"] = local_midnight["valid_time"].dt.floor("D")
 
     current_local_midnight = local_midnight.rename(
@@ -166,7 +176,7 @@ def _aggregate_accumulated_variable(
         ]
     ]
 
-    previous_local_midnight = local_midnight.copy()
+    previous_local_midnight: pd.DataFrame = local_midnight.copy()
     previous_local_midnight["_local_day"] = (
         previous_local_midnight["_utc_day"]
         + pd.Timedelta(days=1)
@@ -346,28 +356,33 @@ def _aggregate_era5_land_daily(
                 validate="one_to_one",
             )
 
-    if daily is None or daily.empty:
+    if daily is None:
         raise ValueError(
             "ERA5-Land daily aggregation produced no complete local days."
         )
+    if daily.empty:
+        raise ValueError(
+            "ERA5-Land daily aggregation produced no complete local days."
+        )
+    daily_frame: pd.DataFrame = daily
 
-    daily = _attach_daily_time_columns(daily)
-    daily = _filter_target_period(
-        daily,
+    daily_frame = _attach_daily_time_columns(daily_frame)
+    daily_frame = _filter_target_period(
+        daily_frame,
         request,
     )
 
-    if daily.empty:
+    if daily_frame.empty:
         raise ValueError(
             "ERA5-Land daily aggregation contains no rows inside the target period."
         )
 
-    daily = _convert_era5_land_units(
-        daily,
+    daily_frame = _convert_era5_land_units(
+        daily_frame,
         request,
     )
 
-    daily = daily[
+    daily_frame = daily_frame[
         [
             "valid_time",
             "valid_time_local",
@@ -382,21 +397,21 @@ def _aggregate_era5_land_daily(
     log_metric(
         "Daily aggregation result",
         {
-            "local_days": int(daily["valid_time_local"].nunique()),
-            "valid_time_utc_start": daily["valid_time"].min(),
-            "valid_time_utc_end": daily["valid_time"].max(),
-            "valid_time_local_start": daily["valid_time_local"].min(),
-            "valid_time_local_end": daily["valid_time_local"].max(),
+            "local_days": int(daily_frame["valid_time_local"].nunique()),
+            "valid_time_utc_start": daily_frame["valid_time"].min(),
+            "valid_time_utc_end": daily_frame["valid_time"].max(),
+            "valid_time_local_start": daily_frame["valid_time_local"].min(),
+            "valid_time_local_end": daily_frame["valid_time_local"].max(),
             "grid_cells": int(
-                daily[["latitude", "longitude"]]
+                daily_frame[["latitude", "longitude"]]
                 .drop_duplicates()
                 .shape[0]
             ),
-            "rows": len(daily),
+            "rows": len(daily_frame),
         },
     )
 
-    return daily
+    return daily_frame
 
 
 # =============================================================================
