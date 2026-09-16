@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from pipeline.utils import (
     CDS_SHORT_TO_CANONICAL_VARIABLES,
     build_request,
     get_source_dataset_profile,
+    split_request_by_month,
     validate_request,
 )
 
@@ -25,6 +27,9 @@ logger = logging.getLogger(__name__)
 CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
+ERA5_LAND_DATASET = "reanalysis-era5-land"
+ERA5_LAND_START_DATE = "1950-01-01"
+LOCAL_DAY_CONTEXT_DAYS = 1
 
 
 # =============================================================================
@@ -197,6 +202,29 @@ def _build_cds_request_payload(
     return payload
 
 
+def _build_era5_land_retrieval_request(
+    request: WeatherRequest,
+) -> WeatherRequest:
+    """
+    Add one preceding UTC day for UTC+7 local-day aggregation.
+
+    The request metadata still represents the target period. The extra day is
+    retrieval context only and is retained in the RAW hourly checkpoint.
+    """
+    start = datetime.strptime(request.start_date, "%Y-%m-%d").date()
+    dataset_start = datetime.strptime(ERA5_LAND_START_DATE, "%Y-%m-%d").date()
+
+    buffered_start = max(
+        start - timedelta(days=LOCAL_DAY_CONTEXT_DAYS),
+        dataset_start,
+    )
+
+    return replace(
+        request,
+        start_date=buffered_start.isoformat(),
+    )
+
+
 # =============================================================================
 # CDS DOWNLOAD
 # =============================================================================
@@ -205,7 +233,7 @@ def _build_cds_request_payload(
 def _download_cds(
     request: WeatherRequest,
 ) -> xr.Dataset:
-    """Download a CDS dataset from Copernicus as NetCDF."""
+    """Download one calendar-month CDS request from Copernicus as NetCDF."""
     try:
         import cdsapi
     except ModuleNotFoundError as error:
@@ -237,7 +265,11 @@ def _download_cds(
     if temp_path.exists():
         temp_path.unlink()
 
-    logger.info("Downloading CDS dataset from Copernicus API.")
+    logger.info(
+        "Downloading CDS dataset from Copernicus API | period=%s -> %s.",
+        request.start_date,
+        request.end_date,
+    )
 
     try:
         client.retrieve(
@@ -263,13 +295,43 @@ def _download_cds(
             "horizontal_resolution": profile["horizontal_resolution"],
             "time_steps_utc": profile["time_steps_utc"],
             "levels": profile["levels"],
-            "requested_period": f"{request.start_date} -> {request.end_date}",
+            "retrieved_period": f"{request.start_date} -> {request.end_date}",
             "requested_variables": ", ".join(request.variables),
             "available_variables": len(dataset.data_vars),
         },
     )
 
     return dataset
+
+
+def _download_cds_period(request: WeatherRequest) -> xr.Dataset:
+    """
+    Download a possibly cross-month CDS retrieval period and concatenate it.
+
+    This is primarily used by ERA5-Land because local-day aggregation requires
+    one context day before the target month.
+    """
+    chunks = split_request_by_month(request)
+    datasets = [_download_cds(chunk) for chunk in chunks]
+
+    if len(datasets) == 1:
+        return datasets[0]
+
+    combined = xr.concat(
+        datasets,
+        dim="valid_time",
+        data_vars="minimal",
+        coords="minimal",
+        compat="override",
+    ).sortby("valid_time")
+
+    valid_time_index = combined.get_index("valid_time")
+    if valid_time_index.has_duplicates:
+        combined = combined.isel(
+            valid_time=~valid_time_index.duplicated(keep="first")
+        )
+
+    return combined
 
 
 # =============================================================================
@@ -279,7 +341,7 @@ def _download_cds(
 
 DOWNLOAD_STRATEGIES = {
     DataSource.ARCO: _download_arco,
-    DataSource.CDS: _download_cds,
+    DataSource.CDS: _download_cds_period,
 }
 
 
@@ -408,8 +470,19 @@ class CdsExtractor(WeatherExtractor):
         validate_request(request)
         normalized_request = build_request(request)
 
-        dataset = _download_cds(normalized_request)
-        dataset = _select_time(dataset, normalized_request)
+        retrieval_request = normalized_request
+        if normalized_request.dataset == ERA5_LAND_DATASET:
+            retrieval_request = _build_era5_land_retrieval_request(
+                normalized_request
+            )
+
+        dataset = _download_cds_period(retrieval_request)
+
+        # ERA5-Land retains the preceding context day in RAW because it is
+        # required to calculate complete UTC+7 local days. Other CDS datasets
+        # keep the historical exact-range behaviour.
+        if normalized_request.dataset != ERA5_LAND_DATASET:
+            dataset = _select_time(dataset, normalized_request)
 
         missing_variables = [
             variable

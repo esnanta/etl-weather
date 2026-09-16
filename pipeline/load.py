@@ -79,8 +79,9 @@ def insert_observations(
     """Insert weather observations."""
     dataframe = dataset.dataset.copy()
 
-    if "valid_time" in dataframe.columns:
-        dataframe["valid_time"] = pd.to_datetime(dataframe["valid_time"])
+    for time_column in ("valid_time", "valid_time_local"):
+        if time_column in dataframe.columns:
+            dataframe[time_column] = pd.to_datetime(dataframe[time_column])
 
     dataframe["dataset_id"] = dataset_id
 

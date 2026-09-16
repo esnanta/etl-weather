@@ -191,7 +191,7 @@ def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create or minimally migrate the hourly weather detail table."""
+    """Create or minimally migrate the weather detail table."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
 
@@ -205,6 +205,7 @@ def create_dataset_table_detail(
                     dataset_id BIGINT NOT NULL,
 
                     valid_time TIMESTAMP NOT NULL,
+                    valid_time_local TIMESTAMP,
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
 
@@ -251,6 +252,15 @@ def create_dataset_table_detail(
                     END IF;
                 END $$;
                 """
+            )
+        )
+
+        # Existing historical rows predate explicit local-time tracking, so
+        # the migration intentionally leaves valid_time_local NULL for them.
+        connection.execute(
+            text(
+                f"ALTER TABLE {table} "
+                "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
             )
         )
 

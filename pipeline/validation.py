@@ -8,7 +8,7 @@ import xarray as xr
 
 from pipeline.model import RawWeatherDataset
 from pipeline.logging import log_metric
-from pipeline.transform import TransformedWeatherDataset
+from pipeline.transform import ERA5_LAND_DATASET, TransformedWeatherDataset
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +62,31 @@ def _validate_dataframe_type(dataframe: pd.DataFrame) -> None:
         raise ValidationError(f"Expected pandas.DataFrame, got {type(dataframe)}")
 
 
-def _validate_dataframe_columns(dataframe: pd.DataFrame, variables: list[str]) -> None:
+def _required_dataframe_columns(
+    *,
+    dataset_name: str,
+    variables: list[str],
+) -> list[str]:
+    required_columns = ["valid_time"]
+    if dataset_name == ERA5_LAND_DATASET:
+        required_columns.append("valid_time_local")
+    required_columns.extend(["latitude", "longitude", *variables])
+    return required_columns
+
+
+def _validate_dataframe_columns(
+    dataframe: pd.DataFrame,
+    *,
+    dataset_name: str,
+    variables: list[str],
+) -> None:
     """Validate required canonical DataFrame columns."""
-    required_columns = {"valid_time", "latitude", "longitude"}
-    required_columns.update(variables)
+    required_columns = set(
+        _required_dataframe_columns(
+            dataset_name=dataset_name,
+            variables=variables,
+        )
+    )
 
     missing = required_columns - set(dataframe.columns)
     if missing:
@@ -103,9 +124,17 @@ def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[st
     )
 
 
-def _log_dataframe_validation_result(dataframe: pd.DataFrame, requested_variables: list[str]) -> None:
+def _log_dataframe_validation_result(
+    dataframe: pd.DataFrame,
+    *,
+    dataset_name: str,
+    requested_variables: list[str],
+) -> None:
     """Log DataFrame validation."""
-    required_columns = ["valid_time", "latitude", "longitude", *requested_variables]
+    required_columns = _required_dataframe_columns(
+        dataset_name=dataset_name,
+        variables=requested_variables,
+    )
     columns_missing = sorted(set(required_columns) - set(dataframe.columns))
 
     log_metric(
@@ -137,5 +166,13 @@ def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset)
     dataframe = transformed_dataset.dataset
 
     _validate_dataframe_type(dataframe)
-    _validate_dataframe_columns(dataframe, transformed_dataset.request.variables)
-    _log_dataframe_validation_result(dataframe, transformed_dataset.request.variables)
+    _validate_dataframe_columns(
+        dataframe,
+        dataset_name=transformed_dataset.request.dataset,
+        variables=transformed_dataset.request.variables,
+    )
+    _log_dataframe_validation_result(
+        dataframe,
+        dataset_name=transformed_dataset.request.dataset,
+        requested_variables=transformed_dataset.request.variables,
+    )
