@@ -15,16 +15,14 @@ from pipeline.logging import (
 from pipeline.model import DataSource, LoadedWeatherDataset, WeatherRequest
 from pipeline.storage import LocalDataStorage
 from pipeline.transform import DefaultDataTransformer
-from pipeline.utils import build_request, split_request_by_week, validate_request
+from pipeline.utils import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
 
 logger = logging.getLogger(__name__)
 
 
 class WeatherPipeline:
-    """
-    Coordinate pipeline steps using injected dependencies.
-    """
+    """Coordinate pipeline steps using injected dependencies."""
 
     def __init__(
         self,
@@ -81,9 +79,7 @@ class WeatherPipeline:
 
 
 def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
-    """
-    Build the default pipeline for a preselected source dataset.
-    """
+    """Build the default pipeline for a preselected source dataset."""
     if request.source is DataSource.ARCO:
         global_dataset = open_dataset(request)
 
@@ -109,16 +105,24 @@ def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
     )
 
 
-def run_weekly_batch(request: WeatherRequest) -> None:
-    """
-    Execute the pipeline for each weekly request in the requested range.
-    """
-
+def run_monthly_batch(request: WeatherRequest) -> None:
+    """Execute the pipeline for each calendar-month request."""
     validate_request(request)
     normalized_request = build_request(request)
     pipeline = build_default_pipeline(normalized_request)
 
-    for weekly_request in split_request_by_week(normalized_request):
-        pipeline.run(weekly_request)
+    for monthly_request in split_request_by_month(normalized_request):
+        pipeline.run(monthly_request)
 
-    logger.info("Weekly pipeline batch completed.")
+    logger.info("Monthly pipeline batch completed.")
+
+
+def run_weekly_batch(request: WeatherRequest) -> None:
+    """
+    Backward-compatible entry point.
+
+    The default CDS strategy is now calendar-month batching. Existing scripts
+    may continue calling this function while callers are migrated to the more
+    explicit run_monthly_batch name.
+    """
+    run_monthly_batch(request)
