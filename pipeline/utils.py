@@ -34,6 +34,14 @@ CDS_ERA5_SINGLE_LEVELS_VARIABLES = {
     "significant_height_of_combined_wind_waves_and_swell",
 }
 
+CDS_ERA5_LAND_VARIABLES = {
+    "2m_temperature",
+    "2m_dewpoint_temperature",
+    "surface_solar_radiation_downwards",
+    "total_precipitation",
+    "volumetric_soil_water_layer_1",
+}
+
 ARCO_DATASET_PROFILES = {
     "era5-single-levels": {
         "dataset_name": "arco-era5",
@@ -59,7 +67,19 @@ CDS_DATASET_PROFILES = {
         "horizontal_resolution": "0.25 deg",
         "time_steps_utc": "00..23 (hourly)",
         "levels": "single level",
+        "requires_product_type": True,
         "supported_variables": CDS_ERA5_SINGLE_LEVELS_VARIABLES,
+    },
+    "reanalysis-era5-land": {
+        "dataset_name": "copernicus-cds-era5-land",
+        "api_dataset": "reanalysis-era5-land",
+        "data_reference": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land",
+        "grid": "regular lat-lon",
+        "horizontal_resolution": "0.1 deg",
+        "time_steps_utc": "00..23 (hourly)",
+        "levels": "single level / land surface",
+        "requires_product_type": False,
+        "supported_variables": CDS_ERA5_LAND_VARIABLES,
     },
 }
 
@@ -108,6 +128,7 @@ def validate_request(request: WeatherRequest) -> None:
     if bbox.west_lon > bbox.east_lon:
         raise ValueError("West longitude must be less than or equal to east longitude.")
 
+
 def build_request(request: WeatherRequest) -> WeatherRequest:
     """Build a normalized WeatherRequest."""
     dataset = request.dataset.strip().lower()
@@ -143,46 +164,37 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
         bbox=request.bbox,
     )
 
+
 def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
-    """Split a WeatherRequest into monthly WeatherRequests."""
+    """Split a WeatherRequest into calendar-month requests."""
     start_date = datetime.strptime(request.start_date, "%Y-%m-%d").date()
     end_date = datetime.strptime(request.end_date, "%Y-%m-%d").date()
     requests: list[WeatherRequest] = []
 
-    year = start_date.year
-    month = start_date.month
+    current_start = start_date
 
-    while True:
-        month_start = datetime(year, month, 1).date()
-        last_day = monthrange(year, month)[1]
-        month_end = datetime(year, month, last_day).date()
-
-        period_start = max(start_date, month_start)
-        period_end = min(end_date, month_end)
+    while current_start <= end_date:
+        last_day = monthrange(current_start.year, current_start.month)[1]
+        month_end = current_start.replace(day=last_day)
+        period_end = min(month_end, end_date)
 
         requests.append(
             replace(
                 request,
-                start_date=period_start.isoformat(),
+                start_date=current_start.isoformat(),
                 end_date=period_end.isoformat(),
             )
         )
 
-        if period_end >= end_date:
-            break
-
-        if month == 12:
-            year += 1
-            month = 1
-        else:
-            month += 1
+        current_start = period_end + timedelta(days=1)
 
     return requests
+
 
 def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
     """
     Split a WeatherRequest into weekly WeatherRequests.
-    Ensures intervals do not cross month boundaries or exceed request end_date.
+    Retained as a fallback strategy for unusually large or failed requests.
     """
     start_date = datetime.strptime(request.start_date, "%Y-%m-%d").date()
     end_date = datetime.strptime(request.end_date, "%Y-%m-%d").date()
@@ -192,10 +204,8 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 
     while current_start <= end_date:
         week_end = current_start + timedelta(days=6)
-
         last_day_of_month = monthrange(current_start.year, current_start.month)[1]
         month_end = datetime(current_start.year, current_start.month, last_day_of_month).date()
-
         period_end = min(week_end, month_end, end_date)
 
         requests.append(
@@ -217,6 +227,7 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 def build_variable_signature(variables: list[str]) -> str:
     """Build a deterministic variable signature."""
     return "_".join(sorted(variables))
+
 
 def format_request_period(start_date: str, end_date: str) -> str:
     """Format a request period for filenames."""
