@@ -33,6 +33,14 @@ ERA5_LAND_DAILY_MEAN_VARIABLES = {
     "volumetric_soil_water_layer_1",
 }
 
+ERA5_LAND_OUTPUT_UNITS = {
+    "total_precipitation": "mm/day",
+    "2m_temperature": "degC",
+    "2m_dewpoint_temperature": "degC",
+    "volumetric_soil_water_layer_1": "m3/m3",
+    "surface_solar_radiation_downwards": "J/m2/day",
+}
+
 
 # =============================================================================
 # SHARED PREPARATION
@@ -43,12 +51,7 @@ def _select_observation_columns(
     dataframe: pd.DataFrame,
     request: WeatherRequest,
 ) -> pd.DataFrame:
-    """
-    Keep only the canonical observation schema required downstream.
-
-    Source metadata such as number, surface and expver is intentionally
-    excluded rather than maintained through an ever-growing drop list.
-    """
+    """Keep only the canonical observation schema required downstream."""
     required_columns = [
         "valid_time",
         "latitude",
@@ -115,19 +118,15 @@ def _aggregate_accumulated_variable(
     """
     Aggregate an ERA5-Land accumulated variable to a UTC+7 local-day total.
 
-    ERA5-Land accumulations run from 00 UTC to the forecast step. For a
-    positive UTC offset, ECMWF's documented non-UTC daily accumulation uses
-    the UTC-midnight value together with the local-midnight boundary values.
-
-    For UTC+7, local midnight is 17 UTC on the preceding UTC day. Therefore,
-    for local day D:
+    For local day D and UTC+7:
 
         daily(D) = A(D, 17 UTC)
                    + A(D, 00 UTC)
                    - A(D-1, 17 UTC)
 
-    where A is the ERA5-Land accumulated value. This avoids reconstructing
-    hourly increments and does not clip negative differences.
+    where A is the ERA5-Land forecast-step accumulation. This follows the
+    non-UTC daily accumulation boundary method and does not reconstruct
+    hourly increments.
     """
     working = dataframe[
         ["valid_time", "latitude", "longitude", variable]
@@ -225,12 +224,7 @@ def _aggregate_accumulated_variable(
 def _attach_daily_time_columns(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Keep UTC and local daily boundaries as separate columns.
-
-    valid_time is the UTC instant corresponding to the start of the local day.
-    valid_time_local is the same boundary expressed as UTC+7 wall-clock time.
-    """
+    """Keep UTC and UTC+7 local daily boundaries as separate columns."""
     result = dataframe.copy()
     result["valid_time_local"] = pd.to_datetime(result["_local_day"])
     result["valid_time"] = (
@@ -251,6 +245,43 @@ def _filter_target_period(
     return dataframe.loc[
         dataframe["valid_time_local"].between(start, end)
     ].copy()
+
+
+def _convert_era5_land_units(
+    dataframe: pd.DataFrame,
+    request: WeatherRequest,
+) -> pd.DataFrame:
+    """Convert selected ERA5-Land variables to downstream analysis units."""
+    result = dataframe.copy()
+    conversions: dict[str, str] = {}
+
+    if "total_precipitation" in request.variables:
+        result["total_precipitation"] = (
+            result["total_precipitation"] * 1000.0
+        )
+        conversions["total_precipitation"] = "m -> mm"
+
+    for variable in (
+        "2m_temperature",
+        "2m_dewpoint_temperature",
+    ):
+        if variable in request.variables:
+            result[variable] = result[variable] - 273.15
+            conversions[variable] = "K -> degC"
+
+    log_metric(
+        "ERA5-Land unit conversion",
+        {
+            "conversions": conversions,
+            "output_units": {
+                variable: ERA5_LAND_OUTPUT_UNITS[variable]
+                for variable in request.variables
+                if variable in ERA5_LAND_OUTPUT_UNITS
+            },
+        },
+    )
+
+    return result
 
 
 def _aggregate_era5_land_daily(
@@ -330,6 +361,11 @@ def _aggregate_era5_land_daily(
         raise ValueError(
             "ERA5-Land daily aggregation contains no rows inside the target period."
         )
+
+    daily = _convert_era5_land_units(
+        daily,
+        request,
+    )
 
     daily = daily[
         [
