@@ -21,13 +21,22 @@ ARCO_VARIABLES = [
     "total_precipitation",
 ]
 
-CDS_DATASET = "reanalysis-era5-single-levels"
+CDS_DATASET = "reanalysis-era5-land"
 CDS_START_DATE = "2022-01-01"
 CDS_END_DATE = "2022-01-03"
 CDS_VARIABLES = [
-    "surface_solar_radiation_downwards",
     "total_precipitation",
+    "2m_temperature",
+    "volumetric_soil_water_layer_1",
+    "surface_solar_radiation_downwards",
 ]
+
+# Optional enrichment for a later modelling iteration. Keep it outside the
+# default request until the four-variable baseline has been evaluated.
+CDS_OPTIONAL_VARIABLES = [
+    "2m_dewpoint_temperature",
+]
+
 
 def build_arco_request() -> WeatherRequest:
     """Return default local request for ARCO source."""
@@ -42,7 +51,7 @@ def build_arco_request() -> WeatherRequest:
 
 
 def build_cds_request() -> WeatherRequest:
-    """Return default local request for CDS source."""
+    """Return default local request for CDS ERA5-Land source."""
     _require_cds_api_key()
     return WeatherRequest(
         source=DataSource.CDS,
