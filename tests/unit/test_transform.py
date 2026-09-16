@@ -1,233 +1,124 @@
-# tests/unit/test_transform.py
+from datetime import datetime, timezone
 
-from datetime import datetime
+import pandas as pd
+import pytest
 
-import numpy as np
-import xarray as xr
-
-from pipeline.extract import (
+from pipeline.model import (
     BoundingBox,
-    RawWeatherDataset,
+    DataSource,
+    LoadedWeatherDataset,
     WeatherRequest,
 )
-
-from pipeline.transform import (
-    rename_variables,
-    normalize_coordinates,
-    normalize_datatypes,
-    transform_data,
-)
+from pipeline.transform import transform_data
 
 
-def create_request():
-
+def _create_era5_land_request() -> WeatherRequest:
     return WeatherRequest(
-        dataset="era5-single-levels",
-        start_date="2015-01-01",
-        end_date="2015-12-31",
+        source=DataSource.CDS,
+        dataset="reanalysis-era5-land",
+        start_date="2022-01-01",
+        end_date="2022-01-01",
         variables=[
-            "tp",
+            "total_precipitation",
+            "2m_temperature",
+            "volumetric_soil_water_layer_1",
+            "surface_solar_radiation_downwards",
+            "2m_dewpoint_temperature",
         ],
         bbox=BoundingBox(
-            north_lat=6.0,
-            west_lon=95.0,
-            south_lat=1.0,
-            east_lon=98.5,
+            north_lat=5.2,
+            west_lon=96.1,
+            south_lat=3.4,
+            east_lon=97.6,
         ),
     )
 
 
-def create_dataset():
+def _era5_land_cumulative_value(
+    timestamp: pd.Timestamp,
+    hourly_increment: float,
+) -> float:
+    """Build a synthetic ERA5-Land cumulative forecast-step value."""
+    if timestamp.hour == 0:
+        return 24 * hourly_increment
+    return timestamp.hour * hourly_increment
 
-    return xr.Dataset(
+
+def _create_hourly_dataframe() -> pd.DataFrame:
+    valid_time = pd.date_range(
+        "2021-12-31 00:00:00",
+        "2022-01-01 23:00:00",
+        freq="h",
+    )
+
+    dataframe = pd.DataFrame(
         {
-            "tp": (
-                (
-                    "time",
-                    "values",
-                ),
-                np.array(
-                    [[1.5]],
-                    dtype="float64",
-                ),
-            ),
-        },
-        coords={
-            "time": [
-                "2015-01-01",
+            "valid_time": valid_time,
+            "latitude": 4.5,
+            "longitude": 96.8,
+            "total_precipitation": [
+                _era5_land_cumulative_value(timestamp, 0.001)
+                for timestamp in valid_time
             ],
-            "values": np.array(
-                [0],
-                dtype="int64",
-            ),
-            "latitude": (
-                "values",
-                np.array(
-                    [5.0],
-                    dtype="float64",
-                ),
-            ),
-            "longitude": (
-                "values",
-                np.array(
-                    [95.0],
-                    dtype="float64",
-                ),
-            ),
-        },
-    )
-
-
-def create_raw_dataset():
-
-    return RawWeatherDataset(
-        request=create_request(),
-        downloaded_at=datetime.now(),
-        raw_data=create_dataset(),
-    )
-
-
-def test_rename_variables():
-
-    dataset = rename_variables(
-        create_dataset(),
-    )
-
-    assert (
-        "total_precipitation"
-        in dataset.data_vars
-    )
-
-    assert (
-        "tp"
-        not in dataset.data_vars
-    )
-
-
-def test_normalize_coordinates():
-
-    dataset = (
-        normalize_coordinates(
-            create_dataset(),
-        )
-    )
-
-    assert (
-        dataset.latitude.dtype
-        == "float32"
-    )
-
-    assert (
-        dataset.longitude.dtype
-        == "float32"
-    )
-
-    assert (
-        dataset["values"].dtype
-        == "int32"
-    )
-
-
-def test_normalize_datatypes():
-
-    dataset = (
-        normalize_datatypes(
-            create_dataset(),
-        )
-    )
-
-    assert (
-        dataset["tp"].dtype
-        == "float32"
-    )
-
-
-def test_transform_data():
-
-    transformed = (
-        transform_data(
-            create_raw_dataset(),
-        )
-    )
-
-    dataset = (
-        transformed.dataset
-    )
-
-    assert (
-        "total_precipitation"
-        in dataset.data_vars
-    )
-
-    assert (
-        dataset[
-            "total_precipitation"
-        ].dtype
-        == "float32"
-    )
-
-    assert (
-        dataset.latitude.dtype
-        == "float32"
-    )
-
-    assert (
-        dataset.longitude.dtype
-        == "float32"
-    )
-
-    assert (
-        dataset["values"].dtype
-        == "int32"
-    )
-
-def test_multiple_variables():
-
-    dataset = xr.Dataset(
-        {
-            "tp": (
-                (
-                    "time",
-                    "values",
-                ),
-                [[1.0]],
-            ),
-            "ssrd": (
-                (
-                    "time",
-                    "values",
-                ),
-                [[100.0]],
-            ),
-        },
-        coords={
-            "time": [
-                "2015-01-01",
+            "2m_temperature": 300.0,
+            "volumetric_soil_water_layer_1": 0.30,
+            "surface_solar_radiation_downwards": [
+                _era5_land_cumulative_value(timestamp, 3600.0)
+                for timestamp in valid_time
             ],
-            "values": [0],
-            "latitude": (
-                "values",
-                [5.0],
-            ),
-            "longitude": (
-                "values",
-                [95.0],
-            ),
-        },
+            "2m_dewpoint_temperature": 295.0,
+            "number": 0,
+            "surface": 0.0,
+            "expver": "0001",
+        }
     )
 
-    dataset = (
-        rename_variables(
-            dataset,
-        )
+    return dataframe
+
+
+def _create_loaded_dataset() -> LoadedWeatherDataset:
+    return LoadedWeatherDataset(
+        request=_create_era5_land_request(),
+        downloaded_at=datetime.now(timezone.utc),
+        raw_data=_create_hourly_dataframe(),
     )
 
-    assert (
-        "total_precipitation"
-        in dataset.data_vars
+
+def test_era5_land_daily_aggregation_uses_utc_plus_7() -> None:
+    transformed = transform_data(
+        _create_loaded_dataset()
+    ).dataset
+
+    assert len(transformed) == 1
+    assert transformed.loc[0, "valid_time"] == pd.Timestamp("2022-01-01")
+
+
+def test_era5_land_accumulated_variables_are_daily_totals() -> None:
+    transformed = transform_data(
+        _create_loaded_dataset()
+    ).dataset
+
+    assert transformed.loc[0, "total_precipitation"] == pytest.approx(0.024)
+    assert transformed.loc[0, "surface_solar_radiation_downwards"] == pytest.approx(
+        24 * 3600.0
     )
 
-    assert (
-        "surface_solar_radiation_downwards"
-        in dataset.data_vars
-    )
+
+def test_era5_land_instantaneous_variables_are_daily_means() -> None:
+    transformed = transform_data(
+        _create_loaded_dataset()
+    ).dataset
+
+    assert transformed.loc[0, "2m_temperature"] == pytest.approx(300.0)
+    assert transformed.loc[0, "volumetric_soil_water_layer_1"] == pytest.approx(0.30)
+    assert transformed.loc[0, "2m_dewpoint_temperature"] == pytest.approx(295.0)
+
+
+def test_source_metadata_is_not_propagated_to_transformed_dataset() -> None:
+    transformed = transform_data(
+        _create_loaded_dataset()
+    ).dataset
+
+    assert "number" not in transformed.columns
+    assert "surface" not in transformed.columns
+    assert "expver" not in transformed.columns
