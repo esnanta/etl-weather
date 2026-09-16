@@ -7,13 +7,14 @@ import pandas as pd
 import xarray as xr
 
 from pipeline.logging import log_metric
-from pipeline.model import RawWeatherDataset
+from pipeline.model import RawWeatherDataset, WeatherRequest
 from pipeline.transform import (
     ERA5_LAND_DATASET,
     LOCAL_MIDNIGHT_IN_UTC_HOUR,
     LOCAL_UTC_OFFSET_HOURS,
     TransformedWeatherDataset,
 )
+from pipeline.utils import get_source_dataset_profile
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,118 @@ def _validate_raw_temporal_continuity(dataset: xr.Dataset) -> None:
             "expected_time_steps": expected_steps,
             "time_interval": expected_interval,
             "missing_time_steps": missing_steps,
+        },
+    )
+
+
+def _validate_coordinate_axis(
+    values: np.ndarray,
+    *,
+    axis_name: str,
+    resolution: float,
+) -> None:
+    """Validate uniqueness, ordering, and regular spacing of one grid axis."""
+    numeric_values = np.asarray(values, dtype=float)
+
+    if numeric_values.size == 0:
+        raise ValidationError(f"RAW {axis_name} coordinate is empty.")
+
+    if np.unique(numeric_values).size != numeric_values.size:
+        raise ValidationError(f"RAW {axis_name} contains duplicate coordinates.")
+
+    if numeric_values.size == 1:
+        return
+
+    differences = np.diff(numeric_values)
+    is_ascending = bool(np.all(differences > 0))
+    is_descending = bool(np.all(differences < 0))
+    if not (is_ascending or is_descending):
+        raise ValidationError(
+            f"RAW {axis_name} coordinates must be monotonic."
+        )
+
+    if not np.allclose(
+        np.abs(differences),
+        resolution,
+        rtol=0,
+        atol=1e-6,
+    ):
+        raise ValidationError(
+            f"RAW {axis_name} spacing must be {resolution} degrees."
+        )
+
+
+def _expected_axis_count(start: float, end: float, resolution: float) -> int:
+    """Return expected inclusive coordinate count for an aligned regular grid."""
+    return int(round(abs(end - start) / resolution)) + 1
+
+
+def _validate_raw_spatial_grid(
+    dataset: xr.Dataset,
+    request: WeatherRequest,
+) -> None:
+    """Validate RAW spatial extent and regular source-grid resolution."""
+    profile = get_source_dataset_profile(request.source, request.dataset)
+    resolution = float(profile["horizontal_resolution_degrees"])
+
+    latitude = np.asarray(dataset["latitude"].values, dtype=float)
+    longitude = np.asarray(dataset["longitude"].values, dtype=float)
+
+    _validate_coordinate_axis(
+        latitude,
+        axis_name="latitude",
+        resolution=resolution,
+    )
+    _validate_coordinate_axis(
+        longitude,
+        axis_name="longitude",
+        resolution=resolution,
+    )
+
+    bbox = request.bbox
+    tolerance = 1e-6
+    if latitude.min() < bbox.south_lat - tolerance:
+        raise ValidationError("RAW latitude extends south of requested bbox.")
+    if latitude.max() > bbox.north_lat + tolerance:
+        raise ValidationError("RAW latitude extends north of requested bbox.")
+    if longitude.min() < bbox.west_lon - tolerance:
+        raise ValidationError("RAW longitude extends west of requested bbox.")
+    if longitude.max() > bbox.east_lon + tolerance:
+        raise ValidationError("RAW longitude extends east of requested bbox.")
+
+    expected_latitudes = _expected_axis_count(
+        bbox.south_lat,
+        bbox.north_lat,
+        resolution,
+    )
+    expected_longitudes = _expected_axis_count(
+        bbox.west_lon,
+        bbox.east_lon,
+        resolution,
+    )
+
+    if len(latitude) != expected_latitudes:
+        raise ValidationError(
+            "RAW latitude count does not match requested bbox and source resolution."
+        )
+    if len(longitude) != expected_longitudes:
+        raise ValidationError(
+            "RAW longitude count does not match requested bbox and source resolution."
+        )
+
+    log_metric(
+        "RAW Spatial Validation PASSED",
+        {
+            "horizontal_resolution_degrees": resolution,
+            "latitude_min": float(latitude.min()),
+            "latitude_max": float(latitude.max()),
+            "latitude_count": len(latitude),
+            "expected_latitude_count": expected_latitudes,
+            "longitude_min": float(longitude.min()),
+            "longitude_max": float(longitude.max()),
+            "longitude_count": len(longitude),
+            "expected_longitude_count": expected_longitudes,
+            "grid_points": len(latitude) * len(longitude),
         },
     )
 
@@ -206,6 +319,99 @@ def _validate_era5_land_transformed_time(
     )
 
 
+def _coordinates_align_to_resolution(
+    values: pd.Series,
+    *,
+    origin: float,
+    resolution: float,
+) -> bool:
+    """Return whether coordinates lie on the expected regular-grid lattice."""
+    steps = (values.astype(float) - origin) / resolution
+    return bool(np.allclose(steps, np.round(steps), rtol=0, atol=1e-6))
+
+
+def _validate_era5_land_transformed_space(
+    dataframe: pd.DataFrame,
+    request: WeatherRequest,
+) -> None:
+    """Validate spatial bounds and stable land-grid membership for each day."""
+    profile = get_source_dataset_profile(request.source, request.dataset)
+    resolution = float(profile["horizontal_resolution_degrees"])
+    bbox = request.bbox
+    tolerance = 1e-6
+
+    latitude = dataframe["latitude"].astype(float)
+    longitude = dataframe["longitude"].astype(float)
+
+    if latitude.isna().any() or longitude.isna().any():
+        raise ValidationError("Transformed spatial coordinates must not be null.")
+
+    if latitude.min() < bbox.south_lat - tolerance:
+        raise ValidationError("Transformed latitude extends south of requested bbox.")
+    if latitude.max() > bbox.north_lat + tolerance:
+        raise ValidationError("Transformed latitude extends north of requested bbox.")
+    if longitude.min() < bbox.west_lon - tolerance:
+        raise ValidationError("Transformed longitude extends west of requested bbox.")
+    if longitude.max() > bbox.east_lon + tolerance:
+        raise ValidationError("Transformed longitude extends east of requested bbox.")
+
+    if not _coordinates_align_to_resolution(
+        latitude,
+        origin=bbox.south_lat,
+        resolution=resolution,
+    ):
+        raise ValidationError(
+            "Transformed latitude coordinates do not align with source resolution."
+        )
+    if not _coordinates_align_to_resolution(
+        longitude,
+        origin=bbox.west_lon,
+        resolution=resolution,
+    ):
+        raise ValidationError(
+            "Transformed longitude coordinates do not align with source resolution."
+        )
+
+    grid_by_day: dict[pd.Timestamp, set[tuple[float, float]]] = {}
+    for local_day, daily_frame in dataframe.groupby("valid_time_local", sort=True):
+        grid_by_day[pd.Timestamp(local_day)] = set(
+            zip(
+                daily_frame["latitude"].astype(float),
+                daily_frame["longitude"].astype(float),
+                strict=True,
+            )
+        )
+
+    if not grid_by_day:
+        raise ValidationError("Transformed dataset contains no spatial grid records.")
+
+    first_day = next(iter(grid_by_day))
+    reference_grid = grid_by_day[first_day]
+    for local_day, grid in grid_by_day.items():
+        if grid != reference_grid:
+            raise ValidationError(
+                "ERA5-Land transformed spatial grid must be identical for every local day."
+            )
+
+    records_per_day = [len(grid) for grid in grid_by_day.values()]
+
+    log_metric(
+        "ERA5-Land Spatial Validation PASSED",
+        {
+            "horizontal_resolution_degrees": resolution,
+            "latitude_min": float(latitude.min()),
+            "latitude_max": float(latitude.max()),
+            "longitude_min": float(longitude.min()),
+            "longitude_max": float(longitude.max()),
+            "local_days": len(grid_by_day),
+            "valid_land_grid_cells": len(reference_grid),
+            "grid_cells_per_day_min": min(records_per_day),
+            "grid_cells_per_day_max": max(records_per_day),
+            "grid_membership_stable": True,
+        },
+    )
+
+
 def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[str]) -> None:
     """Log raw dataset validation."""
     required_coords = {"valid_time", "latitude", "longitude"}
@@ -275,6 +481,7 @@ def validate_raw_dataset(raw_dataset: RawWeatherDataset) -> None:
     _validate_request_variables(dataset, raw_dataset.request.variables)
     _validate_time_dimension(dataset)
     _validate_raw_temporal_continuity(dataset)
+    _validate_raw_spatial_grid(dataset, raw_dataset.request)
     _log_raw_validation_result(dataset, raw_dataset.request.variables)
 
 
@@ -297,6 +504,10 @@ def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset)
             dataframe,
             start_date=transformed_dataset.request.start_date,
             end_date=transformed_dataset.request.end_date,
+        )
+        _validate_era5_land_transformed_space(
+            dataframe,
+            transformed_dataset.request,
         )
 
     _log_dataframe_validation_result(
