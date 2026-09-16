@@ -25,6 +25,14 @@ CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
 
+CDS_SHORT_TO_CANONICAL_VARIABLES = {
+    "tp": "total_precipitation",
+    "ssrd": "surface_solar_radiation_downwards",
+    "t2m": "2m_temperature",
+    "d2m": "2m_dewpoint_temperature",
+    "swvl1": "volumetric_soil_water_layer_1",
+}
+
 
 # =============================================================================
 # SOURCE NORMALIZATION
@@ -47,6 +55,15 @@ def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """
     if "time" in dataset.coords and "valid_time" not in dataset.coords:
         dataset = dataset.rename({"time": "valid_time"})
+
+    rename_map = {
+        short_name: canonical_name
+        for short_name, canonical_name in CDS_SHORT_TO_CANONICAL_VARIABLES.items()
+        if short_name in dataset.data_vars and canonical_name not in dataset.data_vars
+    }
+    if rename_map:
+        dataset = dataset.rename(rename_map)
+
     return dataset
 
 
@@ -408,7 +425,16 @@ class CdsExtractor(WeatherExtractor):
         ]
 
         if missing_variables:
-            available_variables = ", ".join(sorted(dataset.data_vars))
+            available_variable_names: list[str] = []
+            for variable_name in dataset.data_vars.keys():
+                if not isinstance(variable_name, str):
+                    raise ValueError(
+                        "CDS dataset contains a non-string variable name."
+                    )
+                available_variable_names.append(variable_name)
+
+            available_variable_names.sort()
+            available_variables = ", ".join(available_variable_names)
             raise ValueError(
                 "Requested CDS variables are missing from the downloaded "
                 "dataset. "
