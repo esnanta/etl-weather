@@ -84,20 +84,29 @@ def _create_loaded_dataset() -> LoadedWeatherDataset:
     )
 
 
-def test_era5_land_daily_aggregation_uses_utc_plus_7() -> None:
+def test_era5_land_daily_aggregation_keeps_utc_and_local_time() -> None:
     transformed = transform_data(
         _create_loaded_dataset()
     ).dataset
 
     assert len(transformed) == 1
-    assert transformed.loc[0, "valid_time"] == pd.Timestamp("2022-01-01")
+    assert transformed.loc[0, "valid_time"] == pd.Timestamp(
+        "2021-12-31 17:00:00"
+    )
+    assert transformed.loc[0, "valid_time_local"] == pd.Timestamp(
+        "2022-01-01 00:00:00"
+    )
 
 
-def test_era5_land_accumulated_variables_are_daily_totals() -> None:
+def test_era5_land_accumulated_variables_use_boundary_formula() -> None:
     transformed = transform_data(
         _create_loaded_dataset()
     ).dataset
 
+    # UTC+7 local day 2022-01-01:
+    # A(2022-01-01 17 UTC)
+    # + A(2022-01-01 00 UTC)
+    # - A(2021-12-31 17 UTC)
     assert transformed.loc[0, "total_precipitation"] == pytest.approx(0.024)
     assert transformed.loc[0, "surface_solar_radiation_downwards"] == pytest.approx(
         24 * 3600.0
