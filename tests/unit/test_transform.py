@@ -51,7 +51,7 @@ def _create_hourly_dataframe() -> pd.DataFrame:
         freq="h",
     )
 
-    dataframe = pd.DataFrame(
+    return pd.DataFrame(
         {
             "valid_time": valid_time,
             "latitude": 4.5,
@@ -72,8 +72,6 @@ def _create_hourly_dataframe() -> pd.DataFrame:
             "expver": "0001",
         }
     )
-
-    return dataframe
 
 
 def _create_loaded_dataset() -> LoadedWeatherDataset:
@@ -103,24 +101,30 @@ def test_era5_land_accumulated_variables_use_boundary_formula() -> None:
         _create_loaded_dataset()
     ).dataset
 
-    # UTC+7 local day 2022-01-01:
-    # A(2022-01-01 17 UTC)
-    # + A(2022-01-01 00 UTC)
-    # - A(2021-12-31 17 UTC)
-    assert transformed.loc[0, "total_precipitation"] == pytest.approx(0.024)
+    # 0.024 m of precipitation is converted to 24 mm after aggregation.
+    assert transformed.loc[0, "total_precipitation"] == pytest.approx(24.0)
+
+    # SSRD remains in native accumulated energy units (J/m2/day).
     assert transformed.loc[0, "surface_solar_radiation_downwards"] == pytest.approx(
         24 * 3600.0
     )
 
 
-def test_era5_land_instantaneous_variables_are_daily_means() -> None:
+def test_era5_land_temperature_units_are_celsius() -> None:
     transformed = transform_data(
         _create_loaded_dataset()
     ).dataset
 
-    assert transformed.loc[0, "2m_temperature"] == pytest.approx(300.0)
+    assert transformed.loc[0, "2m_temperature"] == pytest.approx(26.85)
+    assert transformed.loc[0, "2m_dewpoint_temperature"] == pytest.approx(21.85)
+
+
+def test_era5_land_soil_moisture_remains_m3_per_m3() -> None:
+    transformed = transform_data(
+        _create_loaded_dataset()
+    ).dataset
+
     assert transformed.loc[0, "volumetric_soil_water_layer_1"] == pytest.approx(0.30)
-    assert transformed.loc[0, "2m_dewpoint_temperature"] == pytest.approx(295.0)
 
 
 def test_source_metadata_is_not_propagated_to_transformed_dataset() -> None:
