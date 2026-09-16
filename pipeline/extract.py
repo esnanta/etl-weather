@@ -14,6 +14,7 @@ from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
 from pipeline.utils import (
+    CDS_SHORT_TO_CANONICAL_VARIABLES,
     build_request,
     get_source_dataset_profile,
     validate_request,
@@ -27,50 +28,32 @@ DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
 
 
 # =============================================================================
-# CDS NORMALIZATION
+# SOURCE NORMALIZATION
 # =============================================================================
 
-CDS_VARIABLE_RENAME_MAP = {
-    "tp": "total_precipitation",
-    "ssrd": "surface_solar_radiation_downwards",
-    "t2m": "2m_temperature",
-    "u10": "10m_u_component_of_wind",
-    "v10": "10m_v_component_of_wind",
-    "msl": "mean_sea_level_pressure",
-    "sst": "sea_surface_temperature",
-    "swh": "significant_height_of_combined_wind_waves_and_swell",
-}
+
+def _normalize_arco_dataset(dataset: xr.Dataset) -> xr.Dataset:
+    """Normalize ARCO temporal coordinate to the pipeline canonical name."""
+    if "time" in dataset.coords or "time" in dataset.dims:
+        dataset = dataset.rename({"time": "valid_time"})
+    return dataset
 
 
 def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """
-    Normalize CDS NetCDF schema into the canonical schema used internally
-    by the pipeline.
+    Normalize CDS schema to the pipeline canonical representation.
 
-    CDS NetCDF files can expose:
-    - valid_time instead of time
-    - short ECMWF variable names such as tp and ssrd
-
-    The rest of the pipeline should not need to know about these
-    source-specific differences.
+    valid_time is intentionally retained as the canonical temporal coordinate.
+    Source-specific metadata such as expver is handled later by transformation.
     """
+    if "time" in dataset.coords and "valid_time" not in dataset.coords:
+        dataset = dataset.rename({"time": "valid_time"})
 
-    rename_map: dict[str, str] = {}
-
-    # CDS NetCDF currently exposes valid_time as its temporal dimension.
-    # Internally, the pipeline uses "time" consistently.
-    if "valid_time" in dataset.dims or "valid_time" in dataset.coords:
-        rename_map["valid_time"] = "time"
-
-    # Normalize short CDS/ECMWF variable names to the canonical names
-    # used by WeatherRequest.
-    for source_name, canonical_name in CDS_VARIABLE_RENAME_MAP.items():
-        if (
-            source_name in dataset.data_vars
-            and canonical_name not in dataset.data_vars
-        ):
-            rename_map[source_name] = canonical_name
-
+    rename_map = {
+        short_name: canonical_name
+        for short_name, canonical_name in CDS_SHORT_TO_CANONICAL_VARIABLES.items()
+        if short_name in dataset.data_vars and canonical_name not in dataset.data_vars
+    }
     if rename_map:
         dataset = dataset.rename(rename_map)
 
@@ -83,14 +66,8 @@ def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
 
 
 def _download_arco(request: WeatherRequest) -> xr.Dataset:
-    """
-    Open the ARCO ERA5 analysis-ready dataset.
-    """
-
-    logger.info(
-        "Opening %s.",
-        request.dataset,
-    )
+    """Open the ARCO ERA5 analysis-ready dataset."""
+    logger.info("Opening %s.", request.dataset)
 
     profile = get_source_dataset_profile(
         request.source,
@@ -128,25 +105,17 @@ def _download_arco(request: WeatherRequest) -> xr.Dataset:
             "total_size": profile["total_size"],
             "chunking": profile["chunking"],
             "chunk_size_per_variable": profile["chunk_size_per_variable"],
-            "valid_time_start": dataset.attrs.get(
-                "valid_time_start",
-                min_time,
-            ),
-            "valid_time_stop": dataset.attrs.get(
-                "valid_time_stop",
-                max_time,
-            ),
+            "valid_time_start": dataset.attrs.get("valid_time_start", min_time),
+            "valid_time_stop": dataset.attrs.get("valid_time_stop", max_time),
             "server_period_scan": f"{min_time} -> {max_time}",
             "available_variables": len(dataset.data_vars),
         },
     )
 
     if request.start_date > max_time or request.end_date < min_time:
-        logger.warning(
-            "Requested period is outside the available dataset range."
-        )
+        logger.warning("Requested period is outside the available dataset range.")
 
-    return dataset
+    return _normalize_arco_dataset(dataset)
 
 
 # =============================================================================
@@ -155,10 +124,7 @@ def _download_arco(request: WeatherRequest) -> xr.Dataset:
 
 
 def _resolve_cds_credentials() -> tuple[str, str]:
-    """
-    Resolve CDS API URL and key from environment.
-    """
-
+    """Resolve CDS API URL and key from environment."""
     load_dotenv()
 
     cdsapi_url = os.getenv(
@@ -174,8 +140,7 @@ def _resolve_cds_credentials() -> tuple[str, str]:
     if not cdsapi_key:
         raise ValueError(
             f"{CDSAPI_KEY_ENV_KEY} is missing. "
-            "Set it in .env as "
-            "CDSAPI_KEY=YOUR_UID:YOUR_API_KEY"
+            "Set it in .env as CDSAPI_KEY=YOUR_UID:YOUR_API_KEY"
         )
 
     return cdsapi_url, cdsapi_key
@@ -185,63 +150,51 @@ def _build_cds_request_payload(
     request: WeatherRequest,
 ) -> dict[str, object]:
     """
-    Build CDS API payload for one request interval.
+    Build a CDS API payload for one request interval.
 
-    A single CDS request interval must stay within one calendar month.
+    One request must remain within a calendar month. ERA5-Land does not
+    require product_type, whereas ERA5 single-level reanalysis does.
     """
-
-    start = datetime.strptime(
-        request.start_date,
-        "%Y-%m-%d",
-    ).date()
-
-    end = datetime.strptime(
-        request.end_date,
-        "%Y-%m-%d",
-    ).date()
+    start = datetime.strptime(request.start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(request.end_date, "%Y-%m-%d").date()
 
     if start.month != end.month or start.year != end.year:
         raise ValueError(
             "CDS request interval must stay in one month. "
-            "Use split_request_by_week before extraction."
+            "Use split_request_by_month before extraction."
         )
 
     request_days: list[str] = []
-
     current_day = start
-
     while current_day <= end:
-        request_days.append(
-            f"{current_day.day:02d}"
-        )
+        request_days.append(f"{current_day.day:02d}")
+        current_day = current_day + timedelta(days=1)
 
-        current_day = current_day + timedelta(
-            days=1
-        )
+    profile = get_source_dataset_profile(
+        request.source,
+        request.dataset,
+    )
 
-    request_month = f"{start.month:02d}"
-    request_year = f"{start.year}"
-
-    request_times = [
-        f"{hour:02d}:00"
-        for hour in range(24)
-    ]
-
-    return {
-        "product_type": "reanalysis",
+    payload: dict[str, object] = {
         "variable": request.variables,
-        "year": request_year,
-        "month": request_month,
+        "year": f"{start.year}",
+        "month": f"{start.month:02d}",
         "day": request_days,
-        "time": request_times,
+        "time": [f"{hour:02d}:00" for hour in range(24)],
         "area": [
             request.bbox.north_lat,
             request.bbox.west_lon,
             request.bbox.south_lat,
             request.bbox.east_lon,
         ],
-        "format": "netcdf",
+        "data_format": "netcdf",
+        "download_format": "unarchived",
     }
+
+    if profile.get("requires_product_type", False):
+        payload["product_type"] = "reanalysis"
+
+    return payload
 
 
 # =============================================================================
@@ -252,32 +205,20 @@ def _build_cds_request_payload(
 def _download_cds(
     request: WeatherRequest,
 ) -> xr.Dataset:
-    """
-    Download CDS ERA5 dataset from Copernicus API as NetCDF.
-
-    The downloaded NetCDF is loaded into memory before the temporary
-    file is removed. Its schema is then normalized to the canonical
-    representation used internally by the pipeline.
-    """
-
+    """Download a CDS dataset from Copernicus as NetCDF."""
     try:
         import cdsapi
     except ModuleNotFoundError as error:
         raise RuntimeError(
-            "Missing dependency 'cdsapi'. "
-            "Install it to use source='cds'."
+            "Missing dependency 'cdsapi'. Install it to use source='cds'."
         ) from error
 
     cdsapi_url, cdsapi_key = _resolve_cds_credentials()
-
     profile = get_source_dataset_profile(
         request.source,
         request.dataset,
     )
-
-    payload = _build_cds_request_payload(
-        request,
-    )
+    payload = _build_cds_request_payload(request)
 
     client = cdsapi.Client(
         url=cdsapi_url,
@@ -296,9 +237,7 @@ def _download_cds(
     if temp_path.exists():
         temp_path.unlink()
 
-    logger.info(
-        "Downloading CDS dataset from Copernicus API."
-    )
+    logger.info("Downloading CDS dataset from Copernicus API.")
 
     try:
         client.retrieve(
@@ -309,14 +248,11 @@ def _download_cds(
 
         with xr.open_dataset(temp_path) as opened_dataset:
             dataset = opened_dataset.load()
-
     finally:
         if temp_path.exists():
             temp_path.unlink()
 
-    dataset = _normalize_cds_dataset(
-        dataset,
-    )
+    dataset = _normalize_cds_dataset(dataset)
 
     log_metric(
         "CDS source profile",
@@ -324,21 +260,12 @@ def _download_cds(
             "dataset_name": profile["dataset_name"],
             "data_reference": profile["data_reference"],
             "grid": profile["grid"],
-            "horizontal_resolution": profile[
-                "horizontal_resolution"
-            ],
+            "horizontal_resolution": profile["horizontal_resolution"],
             "time_steps_utc": profile["time_steps_utc"],
             "levels": profile["levels"],
-            "requested_period": (
-                f"{request.start_date} -> "
-                f"{request.end_date}"
-            ),
-            "requested_variables": ", ".join(
-                request.variables
-            ),
-            "available_variables": len(
-                dataset.data_vars
-            ),
+            "requested_period": f"{request.start_date} -> {request.end_date}",
+            "requested_variables": ", ".join(request.variables),
+            "available_variables": len(dataset.data_vars),
         },
     )
 
@@ -356,26 +283,12 @@ DOWNLOAD_STRATEGIES = {
 }
 
 
-def _download_data(
-    request: WeatherRequest,
-) -> xr.Dataset:
-    """
-    Download a weather dataset from the configured source using
-    the strategy pattern.
-    """
-
-    strategy = DOWNLOAD_STRATEGIES.get(
-        request.source
-    )
-
+def _download_data(request: WeatherRequest) -> xr.Dataset:
+    """Download a weather dataset using the configured source strategy."""
+    strategy = DOWNLOAD_STRATEGIES.get(request.source)
     if strategy is None:
-        raise ValueError(
-            f"Unsupported data source: {request.source}"
-        )
-
-    return strategy(
-        request
-    )
+        raise ValueError(f"Unsupported data source: {request.source}")
+    return strategy(request)
 
 
 # =============================================================================
@@ -387,21 +300,14 @@ def _select_time(
     dataset: xr.Dataset,
     request: WeatherRequest,
 ) -> xr.Dataset:
-    """
-    Select the requested time range.
-
-    All datasets entering this function are expected to use the
-    canonical "time" coordinate.
-    """
-
-    if "time" not in dataset.coords and "time" not in dataset.dims:
+    """Select the requested range using canonical valid_time."""
+    if "valid_time" not in dataset.coords and "valid_time" not in dataset.dims:
         raise ValueError(
-            "Dataset does not contain the canonical "
-            "'time' coordinate."
+            "Dataset does not contain the canonical 'valid_time' coordinate."
         )
 
     return dataset.sel(
-        time=slice(
+        valid_time=slice(
             request.start_date,
             request.end_date,
         ),
@@ -412,27 +318,14 @@ def _select_bbox(
     dataset: xr.Dataset,
     request: WeatherRequest,
 ) -> xr.Dataset:
-    """
-    Select the requested geographic bounding box.
-
-    ARCO analysis-ready dataset stores latitude and longitude
-    as independent dimensions, therefore spatial subsetting is
-    performed using xarray.sel().
-    """
-
+    """Select the requested geographic bounding box."""
     bbox = request.bbox
 
     log_metric(
         "Bounding box",
         {
-            "lat": (
-                f"{bbox.south_lat:.2f}.."
-                f"{bbox.north_lat:.2f}"
-            ),
-            "lon": (
-                f"{bbox.west_lon:.2f}.."
-                f"{bbox.east_lon:.2f}"
-            ),
+            "lat": f"{bbox.south_lat:.2f}..{bbox.north_lat:.2f}",
+            "lon": f"{bbox.west_lon:.2f}..{bbox.east_lon:.2f}",
         },
     )
 
@@ -467,15 +360,9 @@ def extract_data(
     request: WeatherRequest,
     dataset: xr.Dataset | None = None,
 ) -> RawWeatherDataset:
-    """
-    Extract weather data from an already opened and
-    spatially-sliced dataset.
-    """
-
+    """Extract weather data from an already opened dataset."""
     if dataset is None:
-        raise ValueError(
-            "Dataset must be provided."
-        )
+        raise ValueError("Dataset must be provided.")
 
     filtered_time = _select_time(
         dataset,
@@ -484,9 +371,7 @@ def extract_data(
 
     return RawWeatherDataset(
         request=request,
-        downloaded_at=datetime.now(
-            timezone.utc
-        ),
+        downloaded_at=datetime.now(timezone.utc),
         raw_data=filtered_time,
     )
 
@@ -494,25 +379,11 @@ def extract_data(
 def open_dataset(
     request: WeatherRequest,
 ) -> xr.Dataset:
-    """
-    Open the source dataset once.
-    """
-
-    validate_request(
-        request,
-    )
-
-    normalized_request = build_request(
-        request,
-    )
-
-    logger.info(
-        "Downloading dataset."
-    )
-
-    return _download_data(
-        normalized_request,
-    )
+    """Open the source dataset once."""
+    validate_request(request)
+    normalized_request = build_request(request)
+    logger.info("Downloading dataset.")
+    return _download_data(normalized_request)
 
 
 # =============================================================================
@@ -521,56 +392,24 @@ def open_dataset(
 
 
 class ArcoExtractor(WeatherExtractor):
-    """
-    Extraction implementation for ARCO ERA5 datasets.
+    """Extraction implementation for ARCO ERA5 datasets."""
 
-    SOLID:
-    - Single Responsibility
-    - Open/Closed
-    """
-
-    def __init__(
-        self,
-        dataset: xr.Dataset,
-    ):
+    def __init__(self, dataset: xr.Dataset):
         self.dataset = dataset
 
-    def extract(
-        self,
-        request: WeatherRequest,
-    ) -> RawWeatherDataset:
-        return extract_data(
-            request,
-            self.dataset,
-        )
+    def extract(self, request: WeatherRequest) -> RawWeatherDataset:
+        return extract_data(request, self.dataset)
 
 
 class CdsExtractor(WeatherExtractor):
-    """
-    Extraction implementation for CDS ERA5 datasets.
-    """
+    """Extraction implementation for CDS datasets."""
 
-    def extract(
-        self,
-        request: WeatherRequest,
-    ) -> RawWeatherDataset:
+    def extract(self, request: WeatherRequest) -> RawWeatherDataset:
+        validate_request(request)
+        normalized_request = build_request(request)
 
-        validate_request(
-            request,
-        )
-
-        normalized_request = build_request(
-            request,
-        )
-
-        dataset = _download_cds(
-            normalized_request,
-        )
-
-        dataset = _select_time(
-            dataset,
-            normalized_request,
-        )
+        dataset = _download_cds(normalized_request)
+        dataset = _select_time(dataset, normalized_request)
 
         missing_variables = [
             variable
@@ -579,25 +418,27 @@ class CdsExtractor(WeatherExtractor):
         ]
 
         if missing_variables:
-            available_variables = ", ".join(
-                sorted(dataset.data_vars)
-            )
+            available_variable_names: list[str] = []
+            for variable_name in dataset.data_vars.keys():
+                if not isinstance(variable_name, str):
+                    raise ValueError(
+                        "CDS dataset contains a non-string variable name."
+                    )
+                available_variable_names.append(variable_name)
 
+            available_variable_names.sort()
+            available_variables = ", ".join(available_variable_names)
             raise ValueError(
-                "Requested CDS variables are missing from "
-                "the downloaded dataset after normalization. "
+                "Requested CDS variables are missing from the downloaded "
+                "dataset. "
                 f"Missing: {', '.join(missing_variables)}. "
                 f"Available: {available_variables}"
             )
 
-        dataset = dataset[
-            normalized_request.variables
-        ]
+        dataset = dataset[normalized_request.variables]
 
         return RawWeatherDataset(
             request=normalized_request,
-            downloaded_at=datetime.now(
-                timezone.utc
-            ),
+            downloaded_at=datetime.now(timezone.utc),
             raw_data=dataset,
         )
