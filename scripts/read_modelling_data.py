@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
 from datetime import date
+from pathlib import Path
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from pipeline.model import DataSource
 from pipeline.modelling_data import (
