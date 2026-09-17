@@ -33,6 +33,19 @@ CANONICAL_WEATHER_COLUMNS = (
     "significant_height_of_combined_wind_waves_and_swell",
 )
 
+LEGACY_SHORT_TO_CANONICAL_COLUMNS = {
+    "tp": "total_precipitation",
+    "ssrd": "surface_solar_radiation_downwards",
+    "t2m": "2m_temperature",
+    "d2m": "2m_dewpoint_temperature",
+    "swvl1": "volumetric_soil_water_layer_1",
+    "u10": "10m_u_component_of_wind",
+    "v10": "10m_v_component_of_wind",
+    "msl": "mean_sea_level_pressure",
+    "sst": "sea_surface_temperature",
+    "swh": "significant_height_of_combined_wind_waves_and_swell",
+}
+
 
 @dataclass(frozen=True)
 class DatabaseConfig:
@@ -200,11 +213,42 @@ def create_dataset_table(
     )
 
 
+def _migrate_legacy_short_weather_columns(connection, table: str) -> None:
+    """Move legacy short-name values into canonical columns and remove aliases."""
+    for short_name, canonical_name in LEGACY_SHORT_TO_CANONICAL_COLUMNS.items():
+        quoted_canonical = f'"{canonical_name}"'
+        connection.execute(
+            text(
+                f"ALTER TABLE {table} "
+                f"ADD COLUMN IF NOT EXISTS {quoted_canonical} DOUBLE PRECISION"
+            )
+        )
+
+        connection.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = split_part('{table}', '.', 1)
+                          AND table_name = split_part('{table}', '.', 2)
+                          AND column_name = '{short_name}'
+                    ) THEN
+                        EXECUTE 'UPDATE {table} SET {quoted_canonical} = COALESCE({quoted_canonical}, {short_name})';
+                        EXECUTE 'ALTER TABLE {table} DROP COLUMN {short_name}';
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
+
 def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create or minimally migrate the weather detail table."""
+    """Create or migrate the weather detail table to canonical column names."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
 
@@ -242,8 +286,6 @@ def create_dataset_table_detail(
             )
         )
 
-        # Backward-compatible migration for databases created by the earlier
-        # pipeline version that used the generic column name `time`.
         connection.execute(
             text(
                 f"""
@@ -276,10 +318,6 @@ def create_dataset_table_detail(
             )
         )
 
-        # P9 migration: add pipeline canonical weather columns. Historical
-        # short-name columns (tp/t2m/etc.) are intentionally not dropped here;
-        # they remain readable as legacy schema while all new writes use the
-        # canonical columns below.
         for column_name in CANONICAL_WEATHER_COLUMNS:
             quoted_name = f'"{column_name}"'
             connection.execute(
@@ -289,11 +327,13 @@ def create_dataset_table_detail(
                 )
             )
 
+        _migrate_legacy_short_weather_columns(connection, table)
+
     log_metric(
         "Table status",
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
-            "weather_column_contract": "canonical",
+            "weather_column_contract": "canonical-only",
         },
     )
