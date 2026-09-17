@@ -4,16 +4,16 @@
 
 This repository contains a weather ETL pipeline designed to process ERA5-family climate data independently from Apache Airflow while remaining ready to be orchestrated by Airflow later.
 
-The current active development path is **Copernicus CDS ERA5-Land hourly data**, transformed into validated daily data for Aceh/Indonesia use cases. ARCO ERA5 support remains in the repository as a separate source path and must not be merged with CDS artifacts.
+The current active development path is **Copernicus CDS ERA5-Land hourly data**, transformed into validated daily climate observations for Aceh/Indonesia use cases.
 
-The pipeline is designed to be:
+Core design goals:
 
-- **Scientifically explicit** — units, time semantics, aggregation rules, and source assumptions are visible in code and tests.
-- **Deterministic** — the same logical request produces the same artifact identity and database partition identity.
-- **Resumable** — completed RAW and transformed checkpoints can be reused safely.
-- **Idempotent** — retrying a database load does not create duplicate observations.
-- **Testable without Airflow** — core ETL behavior is ordinary Python code covered by pytest.
-- **Airflow-ready** — orchestration concerns can be added later without moving ETL business logic into DAG files.
+- scientific correctness;
+- deterministic artifacts and logical partitions;
+- resumable RAW/transformed checkpoints;
+- idempotent PostgreSQL persistence;
+- testability without Airflow;
+- thin future Airflow orchestration.
 
 ---
 
@@ -25,12 +25,12 @@ The pipeline is designed to be:
 source  : CDS
 product : reanalysis-era5-land
 input   : hourly ERA5-Land
-output  : daily local-time dataset
+output  : validated daily climate observations
 ```
 
-### Active provider variables
+### Provider variables
 
-Provider variable codes are the primary variable contract throughout the pipeline:
+Provider codes are the primary variable contract:
 
 ```text
 tp     total precipitation
@@ -40,213 +40,69 @@ swvl1  volumetric soil water layer 1
 ssrd   surface solar radiation downwards
 ```
 
-Long CDS API names such as `total_precipitation` or `2m_temperature` are external API details and human-readable descriptions. They are not the primary internal variable names.
+Long CDS API names are external API-boundary details only.
 
-RAW and transformed artifacts therefore retain:
+### Daily aggregation
 
-```text
-tp, t2m, d2m, swvl1, ssrd
-```
-
-### Daily aggregation contract
-
-The current local daily timezone is:
+Current local timezone:
 
 ```text
 Asia/Jakarta = UTC+7
 ```
 
-The daily aggregation rules are variable-specific:
+Daily rules:
 
 ```text
-tp     accumulated → local-day total → m to mm
+tp     accumulated → local-day total → mm/day
 ssrd   accumulated → local-day total → J/m²/day
-t2m    instantaneous hourly values → local-day mean → K to °C
-d2m    instantaneous hourly values → local-day mean → K to °C
-swvl1  instantaneous hourly values → local-day mean → m³/m³
+t2m    hourly instantaneous → local-day mean → °C
+d2m    hourly instantaneous → local-day mean → °C
+swvl1  hourly instantaneous → local-day mean → m³/m³
 ```
 
-ERA5-Land accumulated variables are not aggregated by simply summing hourly stored accumulation values. For local day `D` in UTC+7, the current boundary method is:
+For accumulated ERA5-Land variables:
 
 ```text
 Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
 ```
 
-where `A` is the ERA5-Land forecast-step accumulation.
-
-The extractor retrieves one preceding UTC day as context when required by this local-day boundary calculation.
-
----
-
-## Pipeline Architecture
-
-The current logical flow is:
-
-```text
-WeatherRequest
-    |
-    v
-EXTRACT OR RESUME
-    |
-    +--> CDS / ARCO source adapter
-    |
-    v
-RAW NetCDF checkpoint
-    |
-    v
-RAW VALIDATION
-    |
-    v
-NetCDF -> DataFrame
-    |
-    v
-TRANSFORM OR RESUME
-    |
-    v
-Daily transformed Parquet checkpoint
-    |
-    v
-TRANSFORMED VALIDATION
-    |
-    v
-IDEMPOTENT PostgreSQL LOAD
-```
-
-The main runtime boundary is intentionally compatible with future Airflow tasks:
-
-```text
-extract_or_resume()
-        ↓
-transform_or_resume()
-        ↓
-load()
-```
-
-`WeatherPipeline.run()` remains a local wrapper that composes these same stage boundaries.
-
----
-
-## Core Components
-
-### `pipeline/model.py`
-
-Defines typed domain objects such as:
-
-- `BoundingBox`
-- `WeatherRequest`
-- `RawWeatherDataset`
-- `LoadedWeatherDataset`
-- `TransformedWeatherDataset`
-- `DatasetArtifact`
-- `DataLayer`
-- `DataSource`
-
-### `pipeline/extract.py`
-
-Responsible for source retrieval and source-boundary normalization.
-
-Current CDS behavior includes:
-
-- translating provider codes to CDS API variable names only at the API request boundary;
-- converting API-returned long variable names back to provider codes immediately;
-- retaining `valid_time` as the pipeline temporal coordinate;
-- retrieving one preceding day for ERA5-Land UTC+7 accumulated-variable aggregation;
-- supporting cross-month retrieval safely.
-
-### `pipeline/validation.py`
-
-Validates scientific and structural contracts before data continues downstream.
-
-Current ERA5-Land validation includes:
-
-- RAW hourly temporal continuity;
-- unique and monotonic `valid_time`;
-- expected 1-hour spacing;
-- RAW source-grid resolution and bounding-box extent;
-- local/UTC daily timestamp relationship;
-- exact requested local-day coverage;
-- duplicate daily grid-record detection;
-- transformed source-grid alignment;
-- stable land-grid membership between days;
-- required DataFrame columns.
-
-### `pipeline/transform.py`
-
-Transforms hourly ERA5-Land data into the canonical daily representation.
-
-Current behavior includes:
-
-- UTC+7 local-day grouping;
-- distinct rules for accumulated and instantaneous variables;
-- scientific unit conversion;
-- removal of source metadata fields that are not observations;
-- preservation of both `valid_time` and `valid_time_local`.
-
-Current transformed schema:
+Daily outputs retain both:
 
 ```text
 valid_time
 valid_time_local
-latitude
-longitude
-tp
-t2m
-swvl1
-ssrd
-d2m
 ```
 
-### `pipeline/storage.py`
+Neither timestamp is replaced by a generic `date` field.
 
-Manages deterministic filesystem artifacts.
+---
 
-Current contracts:
-
-- RAW = NetCDF;
-- transformed = Parquet;
-- artifacts are stored under `data/`;
-- artifact names are deterministic by logical request partition;
-- RAW artifacts are immutable;
-- RAW writes are atomic;
-- existing RAW/Parquet checkpoints are used for resume;
-- resumed artifacts are validated before use.
-
-### `pipeline/database.py`
-
-Creates and migrates PostgreSQL schema objects required by the pipeline.
-
-Current idempotency contracts:
-
-- `weather_dataset.request_key` identifies a logical request partition;
-- one transformed observation is uniquely identified by:
+## Pipeline Flow
 
 ```text
-dataset_id + valid_time + latitude + longitude
+WeatherRequest
+    ↓
+EXTRACT OR RESUME
+    ↓
+RAW NetCDF checkpoint
+    ↓
+RAW validation
+    ↓
+NetCDF → DataFrame
+    ↓
+TRANSFORM OR RESUME
+    ↓
+Daily transformed Parquet checkpoint
+    ↓
+Transformed validation
+    ↓
+IDEMPOTENT POSTGRESQL LOAD
+    ↓
+climate_data.daily_climate
+climate_data.daily_climate_detail
 ```
 
-### `pipeline/load.py`
-
-Loads transformed daily data into PostgreSQL using idempotent UPSERT behavior.
-
-Provider variables are mapped to explicit daily-statistic database columns:
-
-```text
-tp     -> tp_daily_total_mm
-t2m    -> t2m_daily_mean_c
-d2m    -> d2m_daily_mean_c
-swvl1  -> swvl1_daily_mean_m3_m3
-ssrd   -> ssrd_daily_total_j_m2
-```
-
-A retry of the same logical partition reuses the same `dataset_id` and updates the same observation keys instead of appending duplicates.
-
-### `pipeline/runtime.py`
-
-Composes the ETL stages for local execution.
-
-It owns pipeline composition, not Airflow orchestration.
-
-Important stage methods:
+Runtime stage boundaries:
 
 ```text
 extract_or_resume()
@@ -254,80 +110,55 @@ transform_or_resume()
 load()
 ```
 
-### `scripts/config.py`
-
-Contains the default local execution requests.
-
-For current CDS ERA5-Land development, the configured request is intentionally small enough for fast sanity checking before large historical extraction.
-
-### `scripts/run_pipeline_arco.py` and `scripts/run_pipeline_cds.py`
-
-Thin local entrypoints. They do not contain transformation business logic.
+These boundaries are intentionally suitable for future Airflow tasks.
 
 ---
 
-## Data Storage
-
-Artifact paths are source-specific and period-specific.
-
-Example current CDS ERA5-Land layout:
+## Storage Contract
 
 ```text
-data/
-└── reanalysis-era5-land/
-    ├── raw/
-    │   └── cds/
-    │       └── 2022/
-    │           └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
-    └── transformed/
-        └── cds/
-            └── 2022/
-                └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
+RAW         = NetCDF
+TRANSFORMED = Parquet
 ```
 
-The filename represents a logical data partition, not a program execution. Therefore a retry or future Airflow rerun for the same request resolves to the same artifact identity.
+Artifacts live under `data/` and remain source-separated.
 
-ARCO and CDS outputs remain in separate source directories even when their date ranges overlap.
+Example:
+
+```text
+data/reanalysis-era5-land/raw/cds/2022/2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
+
+data/reanalysis-era5-land/transformed/cds/2022/2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
+```
+
+RAW is immutable. Existing deterministic checkpoints are resumed and validated rather than silently overwritten.
 
 ---
 
-## Checkpoint and Resume Contract
+## PostgreSQL Daily Climate Contract
 
-A repeated request behaves as follows:
+The database is still in development, so only the current canonical schema is supported. Old table names, old foreign keys, and compatibility migrations are intentionally not retained.
 
-```text
-RAW missing
-→ extract
-→ validate
-→ atomically create RAW checkpoint
+### `climate_data.daily_climate`
 
-RAW exists
-→ resume RAW
-→ validate again
-```
-
-Then:
+Stores metadata for one logical daily-climate partition:
 
 ```text
-Parquet missing
-→ transform RAW
-→ validate
-→ create transformed checkpoint
-
-Parquet exists
-→ resume Parquet
-→ validate again
+id
+request_key
+dataset_name
+source
+start_date
+end_date
+variable_signature
+north_lat
+south_lat
+east_lon
+west_lon
+transformed_at
 ```
 
-RAW must never be silently overwritten.
-
-This behavior is required for safe Airflow retries and partial-failure recovery.
-
----
-
-## Database Idempotency Contract
-
-A deterministic `request_key` is built from the logical request identity, including:
+`request_key` is required and deterministic from:
 
 ```text
 source
@@ -335,25 +166,80 @@ dataset
 start_date
 end_date
 variable set
-bounding box
+bbox
 ```
 
-Variable order does not change the request identity.
+The same logical request reuses the same metadata row through UPSERT.
 
-For the same logical request:
+### `climate_data.daily_climate_detail`
+
+Stores daily grid-cell observations:
 
 ```text
-same request_key
-→ same dataset_id
+id
+daily_climate_id
+valid_time
+valid_time_local
+latitude
+longitude
+tp_daily_total_mm
+t2m_daily_mean_c
+d2m_daily_mean_c
+swvl1_daily_mean_m3_m3
+ssrd_daily_total_j_m2
 ```
 
-Daily detail rows use UPSERT behavior on:
+Observation identity is:
 
 ```text
-dataset_id + valid_time + latitude + longitude
+daily_climate_id + valid_time + latitude + longitude
 ```
 
-The loader reports `rows_processed`, not `rows_inserted`, because a rerun may update existing rows rather than insert new ones.
+Writes use UPSERT semantics, so retrying the same logical partition does not create duplicate observations.
+
+`daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
+
+Because this database has not entered production use, schema changes during development may require dropping/recreating the development database or schema instead of maintaining compatibility code.
+
+---
+
+## P15 — Modelling Data Access
+
+P15 is defined as:
+
+> **Provide controlled and validated access from daily climate observations in PostgreSQL to an in-memory dataset ready for modelling, without creating a new physical copy and without changing meteorological semantics.**
+
+P15 does **not** create a separate `daily_feature_dataset` table/file merely to duplicate the same columns.
+
+The canonical modelling source is PostgreSQL daily climate data:
+
+```text
+climate_data.daily_climate
+        +
+climate_data.daily_climate_detail
+        ↓
+controlled query / repository access
+        ↓
+in-memory Pandas DataFrame
+        ↓
+P16 wet-day identification
+        ↓
+P17 feature contribution evaluation
+```
+
+The modelling selection must explicitly constrain the relevant:
+
+```text
+source
+dataset
+period
+spatial scope
+variable set / partition identity
+```
+
+All five current meteorological variables remain **candidate parameters**. P15 does not declare that all five must be clustering features.
+
+Missing meteorological values remain missing; they must not be silently converted to zero.
 
 ---
 
@@ -361,53 +247,35 @@ The loader reports `rows_processed`, not `rows_inserted`, because a rerun may up
 
 Airflow is planned but is intentionally not required by the pipeline implementation.
 
-The future DAG layer should own:
+Future Airflow owns:
 
-- schedule;
-- data interval selection;
+- schedules;
+- data intervals;
 - task dependencies;
-- retry count and retry delay;
-- pools and concurrency;
+- retries and retry delays;
+- pools/concurrency;
 - sensors;
-- XCom handoff metadata;
-- Airflow Connections / secret management;
-- alerting and operational controls.
+- XCom control metadata;
+- Connections/secrets;
+- operational alerting.
 
-The pipeline layer should continue to own:
+Pipeline code continues to own:
 
 - extraction;
 - validation;
 - transformation;
-- scientific rules;
-- artifact persistence;
-- checkpoint/resume behavior;
-- database idempotency.
+- scientific formulas;
+- checkpoint/resume;
+- PostgreSQL persistence;
+- P15 modelling-data access.
 
-Future XCom values should contain small control metadata such as artifact paths, request keys, dataset IDs, partition dates, or row counts — never full NetCDF files or Pandas DataFrames.
-
----
-
-## Running Locally
-
-Run the current CDS ERA5-Land pipeline:
-
-```bash
-python scripts/run_pipeline_cds.py
-```
-
-Run ARCO separately:
-
-```bash
-python scripts/run_pipeline_arco.py
-```
-
-Default local request configuration belongs in `scripts/config.py` and should not be duplicated in the runner scripts.
+Airflow should pass small identifiers/artifact references, not full DataFrames or NetCDF payloads through XCom.
 
 ---
 
 ## Current Verification State
 
-The following contracts have been completed and verified:
+Completed and verified before the current schema cleanup:
 
 ```text
 [x] P4  retain hourly RAW data
@@ -424,49 +292,13 @@ The following contracts have been completed and verified:
 [x] P20 hourly ERA5-Land as primary RAW input
 ```
 
-Latest focused unit-test verification after P10/P11:
+The cleaned `daily_climate` schema must be reverified with pytest and a fresh development database before P15 implementation continues.
 
-```text
-31 passed
-```
-
-Runtime verification confirmed:
-
-- first run creates RAW and transformed checkpoints;
-- second identical run resumes both checkpoints;
-- the same `dataset_id` is reused;
-- observation duplicate query returns zero rows.
+P15 is the active design/implementation stage.
 
 ---
 
-## Next Modelling Stage
-
-The next planned stage is:
-
-```text
-P15 — Daily Feature Dataset
-```
-
-Important: P15 must not assume that all five available ERA5-Land variables will become clustering inputs.
-
-The five current variables are **candidate meteorological parameters**. The final feature subset for wet-day modelling will be determined empirically in later modelling work.
-
-The conceptual downstream sequence is:
-
-```text
-daily climate data
-→ P15 modelling-ready daily feature dataset
-→ P16 wet-day definition / identification
-→ P17 feature contribution and feature-set evaluation
-→ wet-day clustering
-→ cluster interpretation
-→ comparison with Keuneunong
-→ recommendations / warnings / scenarios
-```
-
----
-
-## Authoritative Project Guidance
+## Authoritative Guidance
 
 Before changing pipeline behavior, read:
 

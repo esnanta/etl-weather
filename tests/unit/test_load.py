@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
-from pipeline.load import _prepare_observation_dataframe, insert_dataset
+from pipeline.load import _prepare_observation_dataframe, upsert_daily_climate_metadata
 from pipeline.model import (
     BoundingBox,
     DataSource,
@@ -58,8 +58,17 @@ def _config() -> DatabaseConfig:
     )
 
 
+def test_database_config_uses_daily_climate_table_names() -> None:
+    config = _config()
+
+    assert config.daily_climate_table == "daily_climate"
+    assert config.daily_climate_detail_table == "daily_climate_detail"
+
+
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
-    dataframe, rename_map = _prepare_observation_dataframe(_dataset(), dataset_id=7)
+    dataframe, rename_map = _prepare_observation_dataframe(
+        _dataset(), daily_climate_id=7
+    )
 
     assert rename_map == {
         "tp": "tp_daily_total_mm",
@@ -68,7 +77,7 @@ def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
         "swvl1": "swvl1_daily_mean_m3_m3",
         "ssrd": "ssrd_daily_total_j_m2",
     }
-    assert dataframe.loc[0, "dataset_id"] == 7
+    assert dataframe.loc[0, "daily_climate_id"] == 7
     assert dataframe.loc[0, "tp_daily_total_mm"] == 10.0
     assert dataframe.loc[0, "t2m_daily_mean_c"] == 26.0
     assert "tp" not in dataframe.columns
@@ -83,24 +92,30 @@ class _ScalarResult:
         return self.value
 
 
-class _ExistingDatasetConnection:
-    def __init__(self, dataset_id: int):
-        self.dataset_id = dataset_id
+class _UpsertConnection:
+    def __init__(self, daily_climate_id: int):
+        self.daily_climate_id = daily_climate_id
         self.statements: list[str] = []
+        self.params: list[dict | None] = []
 
     def execute(self, statement, params=None):
         sql = str(statement)
         self.statements.append(sql)
-        if "WHERE request_key =" in sql:
-            return _ScalarResult(self.dataset_id)
-        raise AssertionError(f"Unexpected SQL after existing request key was found: {sql}")
+        self.params.append(params)
+        if "INSERT INTO" in sql and "ON CONFLICT (request_key)" in sql:
+            return _ScalarResult(self.daily_climate_id)
+        raise AssertionError(f"Unexpected SQL: {sql}")
 
 
-def test_insert_dataset_reuses_existing_request_key_dataset_id() -> None:
-    connection = _ExistingDatasetConnection(dataset_id=42)
+def test_upsert_daily_climate_metadata_uses_request_key_upsert() -> None:
+    connection = _UpsertConnection(daily_climate_id=42)
 
-    dataset_id = insert_dataset(_dataset(), connection, _config())
+    daily_climate_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
 
-    assert dataset_id == 42
+    assert daily_climate_id == 42
     assert len(connection.statements) == 1
-    assert connection.statements[0].lstrip().startswith("SELECT id")
+    sql = connection.statements[0]
+    assert "INSERT INTO climate_data.daily_climate" in sql
+    assert "ON CONFLICT (request_key)" in sql
+    assert "RETURNING id" in sql
+    assert connection.params[0]["request_key"]

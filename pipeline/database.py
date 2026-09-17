@@ -15,29 +15,16 @@ from pipeline.logging import log_metric
 logger = logging.getLogger(__name__)
 
 SCHEMA_NAME = "climate_data"
-DATASET_TABLE = "weather_dataset"
-DATASET_TABLE_DETAIL = "weather_dataset_detail"
+DAILY_CLIMATE_TABLE = "daily_climate"
+DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
 
-DAILY_WEATHER_COLUMNS = (
+DAILY_CLIMATE_COLUMNS = (
     "tp_daily_total_mm",
     "t2m_daily_mean_c",
     "d2m_daily_mean_c",
     "swvl1_daily_mean_m3_m3",
     "ssrd_daily_total_j_m2",
 )
-
-LEGACY_TO_DAILY_COLUMNS = {
-    "tp": "tp_daily_total_mm",
-    "total_precipitation": "tp_daily_total_mm",
-    "t2m": "t2m_daily_mean_c",
-    "2m_temperature": "t2m_daily_mean_c",
-    "d2m": "d2m_daily_mean_c",
-    "2m_dewpoint_temperature": "d2m_daily_mean_c",
-    "swvl1": "swvl1_daily_mean_m3_m3",
-    "volumetric_soil_water_layer_1": "swvl1_daily_mean_m3_m3",
-    "ssrd": "ssrd_daily_total_j_m2",
-    "surface_solar_radiation_downwards": "ssrd_daily_total_j_m2",
-}
 
 
 @dataclass(frozen=True)
@@ -48,8 +35,8 @@ class DatabaseConfig:
     user: str
     password: str
     schema: str = SCHEMA_NAME
-    dataset_table: str = DATASET_TABLE
-    dataset_table_detail: str = DATASET_TABLE_DETAIL
+    daily_climate_table: str = DAILY_CLIMATE_TABLE
+    daily_climate_detail_table: str = DAILY_CLIMATE_DETAIL_TABLE
 
     @classmethod
     def from_env(
@@ -144,14 +131,14 @@ def create_schema(
     log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
-def create_dataset_table(
+def create_daily_climate_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create dataset metadata with a stable logical request identity."""
+    """Create metadata for one logical daily-climate partition."""
     resolved_config = resolve_database_config(config)
-    table = f"{resolved_config.schema}.{resolved_config.dataset_table}"
-    index_name = f"uq_{resolved_config.dataset_table}_request_key"
+    table = f"{resolved_config.schema}.{resolved_config.daily_climate_table}"
+    index_name = f"uq_{resolved_config.daily_climate_table}_request_key"
 
     with engine.begin() as connection:
         connection.execute(
@@ -171,90 +158,46 @@ def create_dataset_table(
                 CREATE TABLE IF NOT EXISTS {table}
                 (
                     id BIGSERIAL PRIMARY KEY,
-                    request_key TEXT,
+                    request_key TEXT NOT NULL,
                     dataset_name TEXT NOT NULL,
                     source {resolved_config.schema}.data_source_enum NOT NULL,
                     start_date DATE NOT NULL,
                     end_date DATE NOT NULL,
-                    variable_signature TEXT,
-                    north_lat DOUBLE PRECISION,
-                    south_lat DOUBLE PRECISION,
-                    east_lon DOUBLE PRECISION,
-                    west_lon DOUBLE PRECISION,
+                    variable_signature TEXT NOT NULL,
+                    north_lat DOUBLE PRECISION NOT NULL,
+                    south_lat DOUBLE PRECISION NOT NULL,
+                    east_lon DOUBLE PRECISION NOT NULL,
+                    west_lon DOUBLE PRECISION NOT NULL,
                     transformed_at TIMESTAMPTZ NOT NULL
                 )
                 """
             )
         )
-
-        for column_definition in (
-            "request_key TEXT",
-            "variable_signature TEXT",
-            "north_lat DOUBLE PRECISION",
-            "south_lat DOUBLE PRECISION",
-            "east_lon DOUBLE PRECISION",
-            "west_lon DOUBLE PRECISION",
-        ):
-            connection.execute(
-                text(
-                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
-                    f"{column_definition}"
-                )
-            )
-
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON {table} (request_key) WHERE request_key IS NOT NULL"
+                f"ON {table} (request_key)"
             )
         )
 
     log_metric(
         "Table status",
         {
-            "table": resolved_config.dataset_table,
+            "table": resolved_config.daily_climate_table,
             "status": "ready",
             "idempotency_key": "request_key",
         },
     )
 
 
-def _migrate_legacy_weather_columns(
-    connection,
-    *,
-    schema: str,
-    table_name: str,
-    table: str,
-) -> None:
-    for legacy_name, daily_name in LEGACY_TO_DAILY_COLUMNS.items():
-        connection.execute(
-            text(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_schema = '{schema}'
-                          AND table_name = '{table_name}'
-                          AND column_name = '{legacy_name}'
-                    ) THEN
-                        EXECUTE 'UPDATE {table} SET {daily_name} = COALESCE({daily_name}, "{legacy_name}")';
-                        EXECUTE 'ALTER TABLE {table} DROP COLUMN "{legacy_name}"';
-                    END IF;
-                END $$;
-                """
-            )
-        )
-
-
-def create_dataset_table_detail(
+def create_daily_climate_detail_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create observations with a retry-safe natural uniqueness constraint."""
+    """Create canonical daily climate observations."""
     resolved_config = resolve_database_config(config)
-    table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
-    index_name = f"uq_{resolved_config.dataset_table_detail}_grid_time"
+    table = f"{resolved_config.schema}.{resolved_config.daily_climate_detail_table}"
+    index_name = f"uq_{resolved_config.daily_climate_detail_table}_grid_time"
 
     with engine.begin() as connection:
         connection.execute(
@@ -263,9 +206,9 @@ def create_dataset_table_detail(
                 CREATE TABLE IF NOT EXISTS {table}
                 (
                     id BIGSERIAL PRIMARY KEY,
-                    dataset_id BIGINT NOT NULL,
+                    daily_climate_id BIGINT NOT NULL,
                     valid_time TIMESTAMP NOT NULL,
-                    valid_time_local TIMESTAMP,
+                    valid_time_local TIMESTAMP NOT NULL,
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
                     tp_daily_total_mm DOUBLE PRECISION,
@@ -273,64 +216,29 @@ def create_dataset_table_detail(
                     d2m_daily_mean_c DOUBLE PRECISION,
                     swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
                     ssrd_daily_total_j_m2 DOUBLE PRECISION,
-                    CONSTRAINT fk_detail_dataset
-                    FOREIGN KEY (dataset_id)
-                    REFERENCES {resolved_config.schema}.{resolved_config.dataset_table}(id)
+                    CONSTRAINT fk_daily_climate_detail_daily_climate
+                    FOREIGN KEY (daily_climate_id)
+                    REFERENCES {resolved_config.schema}.{resolved_config.daily_climate_table}(id)
                     ON DELETE CASCADE
                 )
-                """
-            )
-        )
-
-        connection.execute(
-            text(
-                f"ALTER TABLE {table} "
-                "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
-            )
-        )
-        for column_name in DAILY_WEATHER_COLUMNS:
-            connection.execute(
-                text(
-                    f"ALTER TABLE {table} "
-                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
-                )
-            )
-
-        _migrate_legacy_weather_columns(
-            connection,
-            schema=resolved_config.schema,
-            table_name=resolved_config.dataset_table_detail,
-            table=table,
-        )
-
-        # Older versions could append duplicate detail rows. Keep one row per
-        # dataset/time/grid before enforcing the retry-safe uniqueness index.
-        connection.execute(
-            text(
-                f"""
-                DELETE FROM {table} duplicate
-                USING {table} keeper
-                WHERE duplicate.id > keeper.id
-                  AND duplicate.dataset_id = keeper.dataset_id
-                  AND duplicate.valid_time = keeper.valid_time
-                  AND duplicate.latitude = keeper.latitude
-                  AND duplicate.longitude = keeper.longitude
                 """
             )
         )
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON {table} (dataset_id, valid_time, latitude, longitude)"
+                f"ON {table} (daily_climate_id, valid_time, latitude, longitude)"
             )
         )
 
     log_metric(
         "Table status",
         {
-            "table": resolved_config.dataset_table_detail,
+            "table": resolved_config.daily_climate_detail_table,
             "status": "ready",
             "weather_column_contract": "provider-based daily statistics",
-            "idempotency_key": "dataset_id + valid_time + latitude + longitude",
+            "idempotency_key": (
+                "daily_climate_id + valid_time + latitude + longitude"
+            ),
         },
     )
