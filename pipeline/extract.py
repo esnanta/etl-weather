@@ -15,7 +15,6 @@ from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
 from pipeline.utils import (
-    CDS_SHORT_TO_CANONICAL_VARIABLES,
     build_request,
     get_source_dataset_profile,
     split_request_by_month,
@@ -30,6 +29,17 @@ DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
 ERA5_LAND_DATASET = "reanalysis-era5-land"
 ERA5_LAND_START_DATE = "1950-01-01"
 LOCAL_DAY_CONTEXT_DAYS = 1
+
+# CDS NetCDF files may expose provider-native short variable names. This map is
+# private to the extraction boundary so short names never become part of the
+# pipeline's public request, artifact, validation, or database schema.
+_CDS_PROVIDER_VARIABLE_NAMES = {
+    "tp": "total_precipitation",
+    "ssrd": "surface_solar_radiation_downwards",
+    "t2m": "2m_temperature",
+    "d2m": "2m_dewpoint_temperature",
+    "swvl1": "volumetric_soil_water_layer_1",
+}
 
 
 # =============================================================================
@@ -46,18 +56,19 @@ def _normalize_arco_dataset(dataset: xr.Dataset) -> xr.Dataset:
 
 def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """
-    Normalize CDS schema to the pipeline canonical representation.
+    Normalize CDS provider schema to the pipeline canonical representation.
 
     valid_time is intentionally retained as the canonical temporal coordinate.
-    Source-specific metadata such as expver is handled later by transformation.
+    Provider-native short names are converted immediately and do not leave the
+    extraction boundary.
     """
     if "time" in dataset.coords and "valid_time" not in dataset.coords:
         dataset = dataset.rename({"time": "valid_time"})
 
     rename_map = {
-        short_name: canonical_name
-        for short_name, canonical_name in CDS_SHORT_TO_CANONICAL_VARIABLES.items()
-        if short_name in dataset.data_vars and canonical_name not in dataset.data_vars
+        provider_name: canonical_name
+        for provider_name, canonical_name in _CDS_PROVIDER_VARIABLE_NAMES.items()
+        if provider_name in dataset.data_vars and canonical_name not in dataset.data_vars
     }
     if rename_map:
         dataset = dataset.rename(rename_map)
@@ -305,12 +316,7 @@ def _download_cds(
 
 
 def _download_cds_period(request: WeatherRequest) -> xr.Dataset:
-    """
-    Download a possibly cross-month CDS retrieval period and concatenate it.
-
-    This is primarily used by ERA5-Land because local-day aggregation requires
-    one context day before the target month.
-    """
+    """Download a possibly cross-month CDS retrieval period and concatenate it."""
     chunks = split_request_by_month(request)
     datasets = [_download_cds(chunk) for chunk in chunks]
 
@@ -478,9 +484,6 @@ class CdsExtractor(WeatherExtractor):
 
         dataset = _download_cds_period(retrieval_request)
 
-        # ERA5-Land retains the preceding context day in RAW because it is
-        # required to calculate complete UTC+7 local days. Other CDS datasets
-        # keep the historical exact-range behaviour.
         if normalized_request.dataset != ERA5_LAND_DATASET:
             dataset = _select_time(dataset, normalized_request)
 
@@ -502,8 +505,7 @@ class CdsExtractor(WeatherExtractor):
             available_variable_names.sort()
             available_variables = ", ".join(available_variable_names)
             raise ValueError(
-                "Requested CDS variables are missing from the downloaded "
-                "dataset. "
+                "Requested CDS variables are missing from the downloaded dataset. "
                 f"Missing: {', '.join(missing_variables)}. "
                 f"Available: {available_variables}"
             )
