@@ -39,10 +39,7 @@ def _create_artifact(
     data_directory: Path,
 ) -> DatasetArtifact:
     """Create deterministic artifact metadata for one logical request."""
-    period_signature = format_request_period(
-        request.start_date,
-        request.end_date,
-    )
+    period_signature = format_request_period(request.start_date, request.end_date)
     variable_signature = build_variable_signature(request.variables)
     filename = f"{period_signature}_{variable_signature}{extension}"
     path = (
@@ -53,17 +50,13 @@ def _create_artifact(
         / request.start_date[:4]
         / filename
     )
-    return DatasetArtifact(
-        layer=layer,
-        created_at=created_at,
-        path=path,
-    )
+    return DatasetArtifact(layer=layer, created_at=created_at, path=path)
 
 
 def raw_artifact_for_request(
     request: WeatherRequest,
     *,
-    data_directory: Path = DATA_DIRECTORY,
+    data_directory: Path | None = None,
 ) -> DatasetArtifact:
     """Return the deterministic RAW NetCDF artifact for a request."""
     return _create_artifact(
@@ -71,14 +64,14 @@ def raw_artifact_for_request(
         layer=DataLayer.RAW,
         created_at=datetime.now(UTC),
         extension=".nc",
-        data_directory=data_directory,
+        data_directory=data_directory or DATA_DIRECTORY,
     )
 
 
 def transformed_artifact_for_request(
     request: WeatherRequest,
     *,
-    data_directory: Path = DATA_DIRECTORY,
+    data_directory: Path | None = None,
 ) -> DatasetArtifact:
     """Return the deterministic transformed Parquet artifact for a request."""
     return _create_artifact(
@@ -86,7 +79,7 @@ def transformed_artifact_for_request(
         layer=DataLayer.TRANSFORMED,
         created_at=datetime.now(UTC),
         extension=".parquet",
-        data_directory=data_directory,
+        data_directory=data_directory or DATA_DIRECTORY,
     )
 
 
@@ -102,7 +95,6 @@ def save_raw_netcdf(dataset: RawWeatherDataset) -> DatasetArtifact:
         raise FileExistsError(
             f"RAW artifact already exists and is immutable: {nc_artifact.path}"
         )
-
     nc_artifact.path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Writing RAW NetCDF checkpoint:\n%s", nc_artifact.path)
     dataset.raw_data.to_netcdf(nc_artifact.path)
@@ -116,11 +108,9 @@ def load_raw_netcdf(
     """Load an existing RAW NetCDF checkpoint for deterministic resume."""
     if not artifact_exists(artifact):
         raise FileNotFoundError(f"RAW artifact not found: {artifact.path}")
-
     logger.info("Resuming from RAW NetCDF checkpoint:\n%s", artifact.path)
     with xr.open_dataset(artifact.path) as opened:
         dataset = opened.load()
-
     return RawWeatherDataset(
         request=request,
         downloaded_at=_artifact_timestamp(artifact.path),
@@ -136,7 +126,6 @@ def convert_netcdf_to_dataframe(artifact: DatasetArtifact) -> pd.DataFrame:
     )
     with xr.open_dataset(artifact.path) as local_ds:
         dataframe = local_ds.to_dataframe().reset_index()
-
     _log_dataframe_preview(dataframe, rows=10)
     return dataframe
 
@@ -153,17 +142,13 @@ def save_transformed_parquet(
             "Transformed artifact already exists; resume it explicitly instead of "
             f"overwriting: {parquet_artifact.path}"
         )
-
     parquet_artifact = DatasetArtifact(
         layer=parquet_artifact.layer,
         created_at=downloaded_at,
         path=parquet_artifact.path,
     )
     parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(
-        "Writing transformed Parquet checkpoint:\n%s",
-        parquet_artifact.path,
-    )
+    logger.info("Writing transformed Parquet checkpoint:\n%s", parquet_artifact.path)
     df.to_parquet(parquet_artifact.path, index=False)
     return parquet_artifact
 
@@ -174,10 +159,7 @@ def load_transformed_parquet(
 ) -> TransformedWeatherDataset:
     """Load an existing transformed Parquet checkpoint for resume."""
     if not artifact_exists(artifact):
-        raise FileNotFoundError(
-            f"Transformed artifact not found: {artifact.path}"
-        )
-
+        raise FileNotFoundError(f"Transformed artifact not found: {artifact.path}")
     logger.info("Resuming from transformed Parquet checkpoint:\n%s", artifact.path)
     dataframe = pd.read_parquet(artifact.path)
     return TransformedWeatherDataset(
