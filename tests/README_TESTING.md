@@ -37,7 +37,7 @@ Tests must protect:
 - checkpoint/resume;
 - deterministic request identity;
 - idempotent PostgreSQL loading;
-- canonical daily-climate table names;
+- canonical daily-climate table and foreign-key names;
 - P15 controlled database-to-memory access.
 
 Scientific correctness is part of software correctness.
@@ -93,11 +93,18 @@ climate_data.daily_climate
 climate_data.daily_climate_detail
 ```
 
+Canonical detail foreign key:
+
+```text
+daily_climate_id
+```
+
 Legacy names:
 
 ```text
 weather_dataset
 weather_dataset_detail
+dataset_id
 ```
 
 are migration inputs only and must not be treated as the active schema contract.
@@ -107,7 +114,7 @@ are migration inputs only and must not be treated as the active schema contract.
 Observation uniqueness:
 
 ```text
-dataset_id + valid_time + latitude + longitude
+daily_climate_id + valid_time + latitude + longitude
 ```
 
 Retry behavior must use UPSERT semantics rather than duplicate append.
@@ -142,6 +149,7 @@ test_validation.py
 `test_load.py` should protect:
 
 - canonical `daily_climate` / `daily_climate_detail` configuration;
+- `daily_climate_id` foreign-key naming;
 - provider-to-database column mapping;
 - request-key reuse;
 - idempotent metadata behavior;
@@ -174,7 +182,7 @@ When an isolated database integration test is used, loading the same partition t
 
 ## P15 Testing Contract
 
-P15 is now defined as:
+P15 is defined as:
 
 > controlled and validated access from canonical PostgreSQL daily climate observations to an in-memory modelling dataset, without creating a duplicate physical dataset and without changing meteorological semantics.
 
@@ -247,7 +255,7 @@ pytest \
   tests/unit/test_load.py -v
 ```
 
-Baseline before the current table-renaming/P15 work:
+Baseline before the current daily-climate schema refinement:
 
 ```text
 31 passed
