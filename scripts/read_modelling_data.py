@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import date
 from pathlib import Path
@@ -17,6 +18,12 @@ from scripts.config import (
     CDS_DATASET,
     CDS_END_DATE,
     CDS_START_DATE,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
 )
 
 
