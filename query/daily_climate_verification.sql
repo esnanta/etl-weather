@@ -7,7 +7,7 @@
  * PostgreSQL, especially after an identical rerun, to verify that the
  * canonical daily-climate persistence contract is still correct.
  *
- * These checks provide runtime evidence for P11 — idempotent database load:
+ * These checks provide runtime evidence for idempotent database load:
  *
  * 1. `daily_climate` contains one metadata row for the current logical
  *    request partition. Re-running the same request must reuse that partition
