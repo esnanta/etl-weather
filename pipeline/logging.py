@@ -32,42 +32,16 @@ def log_metric(title: str, metrics: Mapping[str, Any]) -> None:
 def _build_ascii_table(metrics: Mapping[str, Any]) -> str:
     """Build an ASCII key-value table."""
     headers = ("field", "value")
-    rows = [
-        (
-            str(key),
-            str(value),
-        )
-        for key, value in metrics.items()
-    ]
-
-    field_width = max(
-        len(headers[0]),
-        *(len(field) for field, _ in rows),
-    )
-    value_width = max(
-        len(headers[1]),
-        *(len(value) for _, value in rows),
-    )
-
-    border = (
-        f"+-{'-' * field_width}-+-{'-' * value_width}-+"
-    )
-    header_row = (
-        f"| {headers[0].ljust(field_width)} | {headers[1].ljust(value_width)} |"
-    )
+    rows = [(str(key), str(value)) for key, value in metrics.items()]
+    field_width = max(len(headers[0]), *(len(field) for field, _ in rows))
+    value_width = max(len(headers[1]), *(len(value) for _, value in rows))
+    border = f"+-{'-' * field_width}-+-{'-' * value_width}-+"
+    header_row = f"| {headers[0].ljust(field_width)} | {headers[1].ljust(value_width)} |"
     body_rows = "\n".join(
         f"| {field.ljust(field_width)} | {value.ljust(value_width)} |"
         for field, value in rows
     )
-
-    table = (
-        f"{border}\n"
-        f"{header_row}\n"
-        f"{border}\n"
-        f"{body_rows}\n"
-        f"{border}"
-    )
-    return table
+    return f"{border}\n{header_row}\n{border}\n{body_rows}\n{border}"
 
 
 def log_pipeline_header(request) -> None:
@@ -80,26 +54,17 @@ def log_pipeline_header(request) -> None:
             "variables": ", ".join(request.variables),
         },
     )
-    logger.info(
-        "[PIPELINE] start\n%s\n",
-        table,
-    )
+    logger.info("[PIPELINE] start\n%s\n", table)
 
 
 def _log_dataframe_preview(
     dataframe: pd.DataFrame,
     rows: int = 10,
 ) -> None:
-    """
-    Log the first rows of a DataFrame.
-    """
-
+    """Log the first rows of a DataFrame."""
     preview = dataframe.head(rows).copy()
     if "time" in dataframe.columns:
-        time_values = pd.to_datetime(
-            dataframe["time"]
-        )
-
+        time_values = pd.to_datetime(dataframe["time"])
         log_metric(
             "Time coverage",
             {
@@ -116,37 +81,21 @@ def _log_dataframe_preview(
                 ),
             },
         )
-
-    logger.info(
-        "[PREVIEW]\n%s",
-        preview.to_string(
-            index=False,
-        ),
-    )
+    logger.info("[PREVIEW]\n%s", preview.to_string(index=False))
 
 
 def log_pipeline_summary(
     *,
     request,
     dataset_id: int,
-    rows_inserted: int,
+    rows_processed: int,
     parquet_path: Path,
     started_at: datetime,
     finished_at: datetime,
 ) -> None:
-    """
-    Log the final summary of one pipeline execution.
-    """
-
-    duration = (
-        finished_at
-        - started_at
-    ).total_seconds()
-
-    file_size_mb = (
-        parquet_path.stat().st_size
-        / (1024 * 1024)
-    )
+    """Log the final summary of one pipeline execution."""
+    duration = (finished_at - started_at).total_seconds()
+    file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
 
     completion_table = _build_ascii_table(
         {
@@ -160,7 +109,7 @@ def log_pipeline_summary(
     log_metric(
         "Pipeline summary",
         {
-            "rows_inserted": f"{rows_inserted:,}",
+            "rows_processed": f"{rows_processed:,}",
             "dataset_id": dataset_id,
             "parquet_file": parquet_path.name,
             "parquet_size_mb": f"{file_size_mb:.2f}",
@@ -169,16 +118,12 @@ def log_pipeline_summary(
     )
 
 
-
 def log_dataframe_info(
     dataframe: pd.DataFrame,
     *,
     title: str,
 ) -> None:
-    """
-    Log basic DataFrame information.
-    """
-
+    """Log basic DataFrame information."""
     log_metric(
         title,
         {
@@ -195,21 +140,11 @@ def log_dataframe_changes(
     after: pd.DataFrame,
     step: str,
 ) -> None:
-    """
-    Log structural changes between two DataFrames.
-    """
-
+    """Log structural changes between two DataFrames."""
     before_columns = set(before.columns)
     after_columns = set(after.columns)
-
-    removed = sorted(
-        before_columns - after_columns
-    )
-
-    added = sorted(
-        after_columns - before_columns
-    )
-
+    removed = sorted(before_columns - after_columns)
+    added = sorted(after_columns - before_columns)
     log_metric(
         step,
         {
