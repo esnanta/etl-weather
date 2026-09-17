@@ -6,9 +6,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from dotenv import load_dotenv
-
-from sqlalchemy import create_engine
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
@@ -20,31 +18,13 @@ SCHEMA_NAME = "climate_data"
 DATASET_TABLE = "weather_dataset"
 DATASET_TABLE_DETAIL = "weather_dataset_detail"
 
-CANONICAL_WEATHER_COLUMNS = (
-    "total_precipitation",
-    "surface_solar_radiation_downwards",
-    "2m_temperature",
-    "2m_dewpoint_temperature",
-    "volumetric_soil_water_layer_1",
-    "10m_u_component_of_wind",
-    "10m_v_component_of_wind",
-    "mean_sea_level_pressure",
-    "sea_surface_temperature",
-    "significant_height_of_combined_wind_waves_and_swell",
+DAILY_WEATHER_COLUMNS = (
+    "tp_daily_total_mm",
+    "t2m_daily_mean_c",
+    "d2m_daily_mean_c",
+    "swvl1_daily_mean_m3_m3",
+    "ssrd_daily_total_j_m2",
 )
-
-LEGACY_SHORT_TO_CANONICAL_COLUMNS = {
-    "tp": "total_precipitation",
-    "ssrd": "surface_solar_radiation_downwards",
-    "t2m": "2m_temperature",
-    "d2m": "2m_dewpoint_temperature",
-    "swvl1": "volumetric_soil_water_layer_1",
-    "u10": "10m_u_component_of_wind",
-    "v10": "10m_v_component_of_wind",
-    "msl": "mean_sea_level_pressure",
-    "sst": "sea_surface_temperature",
-    "swh": "significant_height_of_combined_wind_waves_and_swell",
-}
 
 
 @dataclass(frozen=True)
@@ -65,7 +45,6 @@ class DatabaseConfig:
     ) -> "DatabaseConfig":
         load_dotenv()
         env_vars = env or os.environ
-
         required_keys = (
             "POSTGRES_HOST",
             "POSTGRES_PORT",
@@ -75,11 +54,10 @@ class DatabaseConfig:
         )
         missing_keys = [key for key in required_keys if not env_vars.get(key)]
         if missing_keys:
-            missing = ", ".join(missing_keys)
             raise ValueError(
-                f"Missing required database environment variables: {missing}"
+                "Missing required database environment variables: "
+                + ", ".join(missing_keys)
             )
-
         return cls(
             host=env_vars["POSTGRES_HOST"],
             port=int(env_vars["POSTGRES_PORT"]),
@@ -111,7 +89,6 @@ def resolve_database_config(
 
 def ensure_database_exists(config: DatabaseConfig | None = None) -> None:
     resolved_config = resolve_database_config(config)
-
     try:
         engine = create_engine(resolved_config.url)
         conn = engine.connect()
@@ -129,7 +106,6 @@ def ensure_database_exists(config: DatabaseConfig | None = None) -> None:
     maintenance_engine = create_engine(resolved_config.url_maintenance)
     with maintenance_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(text(f'CREATE DATABASE "{resolved_config.database}"'))
-
     logger.info("Database '%s' created.", resolved_config.database)
 
 
@@ -150,21 +126,11 @@ def create_schema(
     config: DatabaseConfig | None = None,
 ) -> None:
     resolved_config = resolve_database_config(config)
-
     with engine.begin() as connection:
         connection.execute(
-            text(
-                f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}"
-            )
+            text(f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}")
         )
-
-    log_metric(
-        "Schema status",
-        {
-            "schema": resolved_config.schema,
-            "status": "ready",
-        },
-    )
+    log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
 def create_dataset_table(
@@ -172,7 +138,6 @@ def create_dataset_table(
     config: DatabaseConfig | None = None,
 ) -> None:
     resolved_config = resolve_database_config(config)
-
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -180,13 +145,11 @@ def create_dataset_table(
                 DO $$ BEGIN
                     CREATE TYPE {resolved_config.schema}.data_source_enum
                     AS ENUM ('arco', 'cds', 'other');
-                EXCEPTION
-                    WHEN duplicate_object THEN null;
+                EXCEPTION WHEN duplicate_object THEN null;
                 END $$;
                 """
             )
         )
-
         connection.execute(
             text(
                 f"""
@@ -203,52 +166,17 @@ def create_dataset_table(
                 """
             )
         )
-
     log_metric(
         "Table status",
-        {
-            "table": resolved_config.dataset_table,
-            "status": "ready",
-        },
+        {"table": resolved_config.dataset_table, "status": "ready"},
     )
-
-
-def _migrate_legacy_short_weather_columns(connection, table: str) -> None:
-    """Move legacy short-name values into canonical columns and remove aliases."""
-    for short_name, canonical_name in LEGACY_SHORT_TO_CANONICAL_COLUMNS.items():
-        quoted_canonical = f'"{canonical_name}"'
-        connection.execute(
-            text(
-                f"ALTER TABLE {table} "
-                f"ADD COLUMN IF NOT EXISTS {quoted_canonical} DOUBLE PRECISION"
-            )
-        )
-
-        connection.execute(
-            text(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_schema = split_part('{table}', '.', 1)
-                          AND table_name = split_part('{table}', '.', 2)
-                          AND column_name = '{short_name}'
-                    ) THEN
-                        EXECUTE 'UPDATE {table} SET {quoted_canonical} = COALESCE({quoted_canonical}, {short_name})';
-                        EXECUTE 'ALTER TABLE {table} DROP COLUMN {short_name}';
-                    END IF;
-                END $$;
-                """
-            )
-        )
 
 
 def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create or migrate the weather detail table to canonical column names."""
+    """Create detail table using descriptive daily columns derived from provider names."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
 
@@ -260,23 +188,15 @@ def create_dataset_table_detail(
                 (
                     id BIGSERIAL PRIMARY KEY,
                     dataset_id BIGINT NOT NULL,
-
                     valid_time TIMESTAMP NOT NULL,
                     valid_time_local TIMESTAMP,
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
-
-                    total_precipitation DOUBLE PRECISION,
-                    surface_solar_radiation_downwards DOUBLE PRECISION,
-                    "2m_temperature" DOUBLE PRECISION,
-                    "2m_dewpoint_temperature" DOUBLE PRECISION,
-                    volumetric_soil_water_layer_1 DOUBLE PRECISION,
-                    "10m_u_component_of_wind" DOUBLE PRECISION,
-                    "10m_v_component_of_wind" DOUBLE PRECISION,
-                    mean_sea_level_pressure DOUBLE PRECISION,
-                    sea_surface_temperature DOUBLE PRECISION,
-                    significant_height_of_combined_wind_waves_and_swell DOUBLE PRECISION,
-
+                    tp_daily_total_mm DOUBLE PRECISION,
+                    t2m_daily_mean_c DOUBLE PRECISION,
+                    d2m_daily_mean_c DOUBLE PRECISION,
+                    swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
+                    ssrd_daily_total_j_m2 DOUBLE PRECISION,
                     CONSTRAINT fk_detail_dataset
                     FOREIGN KEY (dataset_id)
                     REFERENCES {resolved_config.schema}.{resolved_config.dataset_table}(id)
@@ -288,52 +208,24 @@ def create_dataset_table_detail(
 
         connection.execute(
             text(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = '{resolved_config.schema}'
-                          AND table_name = '{resolved_config.dataset_table_detail}'
-                          AND column_name = 'time'
-                    ) AND NOT EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = '{resolved_config.schema}'
-                          AND table_name = '{resolved_config.dataset_table_detail}'
-                          AND column_name = 'valid_time'
-                    ) THEN
-                        ALTER TABLE {table} RENAME COLUMN time TO valid_time;
-                    END IF;
-                END $$;
-                """
-            )
-        )
-
-        connection.execute(
-            text(
                 f"ALTER TABLE {table} "
                 "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
             )
         )
 
-        for column_name in CANONICAL_WEATHER_COLUMNS:
-            quoted_name = f'"{column_name}"'
+        for column_name in DAILY_WEATHER_COLUMNS:
             connection.execute(
                 text(
                     f"ALTER TABLE {table} "
-                    f"ADD COLUMN IF NOT EXISTS {quoted_name} DOUBLE PRECISION"
+                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
                 )
             )
-
-        _migrate_legacy_short_weather_columns(connection, table)
 
     log_metric(
         "Table status",
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
-            "weather_column_contract": "canonical-only",
+            "weather_column_contract": "provider-based daily statistics",
         },
     )
