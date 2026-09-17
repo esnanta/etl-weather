@@ -7,7 +7,6 @@ from pipeline.utils import (
     CANONICAL_VARIABLE_NAMES,
     build_request,
     build_variable_signature,
-    canonicalize_variable_name,
 )
 
 
@@ -23,11 +22,14 @@ def _bbox() -> BoundingBox:
 def test_build_request_keeps_explicit_canonical_cds_variables() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
-        dataset="reanalysis-era5-single-levels",
+        dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
         variables=[
             "total_precipitation",
+            "2m_temperature",
+            "2m_dewpoint_temperature",
+            "volumetric_soil_water_layer_1",
             "surface_solar_radiation_downwards",
         ],
         bbox=_bbox(),
@@ -35,39 +37,28 @@ def test_build_request_keeps_explicit_canonical_cds_variables() -> None:
 
     normalized_request = build_request(request)
 
-    assert normalized_request.dataset == "reanalysis-era5-single-levels"
-    assert normalized_request.variables == [
-        "total_precipitation",
-        "surface_solar_radiation_downwards",
-    ]
+    assert normalized_request.variables == request.variables
+    assert set(normalized_request.variables).issubset(CANONICAL_VARIABLE_NAMES)
 
 
-def test_build_request_normalizes_provider_aliases_to_canonical_names() -> None:
+def test_build_request_rejects_short_provider_variable_name() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
         dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
-        variables=["tp", "t2m", "d2m", "swvl1", "ssrd"],
+        variables=["tp"],
         bbox=_bbox(),
     )
 
-    normalized_request = build_request(request)
-
-    assert normalized_request.variables == [
-        "total_precipitation",
-        "2m_temperature",
-        "2m_dewpoint_temperature",
-        "volumetric_soil_water_layer_1",
-        "surface_solar_radiation_downwards",
-    ]
-    assert set(normalized_request.variables).issubset(CANONICAL_VARIABLE_NAMES)
+    with pytest.raises(ValueError, match="canonical variable name"):
+        build_request(request)
 
 
 def test_build_request_rejects_unknown_cds_variable() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
-        dataset="reanalysis-era5-single-levels",
+        dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
         variables=["unknown_weather_variable"],
@@ -78,26 +69,21 @@ def test_build_request_rejects_unknown_cds_variable() -> None:
         build_request(request)
 
 
-def test_build_request_rejects_duplicate_canonical_variables_after_normalization() -> None:
+def test_build_request_rejects_duplicate_variables() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
         dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
-        variables=["tp", "total_precipitation"],
+        variables=["total_precipitation", "total_precipitation"],
         bbox=_bbox(),
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Duplicate variables"):
         build_request(request)
 
 
-def test_canonicalize_variable_name_is_stable_for_canonical_name() -> None:
-    assert canonicalize_variable_name("total_precipitation") == "total_precipitation"
-    assert canonicalize_variable_name("TP") == "total_precipitation"
-
-
-def test_build_variable_signature_uses_short_names_only_for_artifacts() -> None:
+def test_build_variable_signature_uses_canonical_names() -> None:
     signature = build_variable_signature(
         [
             "total_precipitation",
@@ -107,4 +93,7 @@ def test_build_variable_signature_uses_short_names_only_for_artifacts() -> None:
         ]
     )
 
-    assert signature == "t2m_ssrd_tp_swvl1"
+    assert signature == (
+        "2m_temperature_surface_solar_radiation_downwards_"
+        "total_precipitation_volumetric_soil_water_layer_1"
+    )
