@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 # DOMAIN CONFIGURATIONS
 # =============================================================================
 
-# Canonical meteorological names used by the active CDS pipeline. Provider
-# aliases are normalized to these names at extraction boundaries and must not
-# leak into RAW, transformed Parquet, validation contracts, or new DB writes.
+# Canonical meteorological names used by the active CDS pipeline. These are
+# the only variable names accepted in requests and persisted by the pipeline.
 CANONICAL_VARIABLE_NAMES = frozenset(
     {
         "total_precipitation",
@@ -30,32 +29,6 @@ CANONICAL_VARIABLE_NAMES = frozenset(
         "significant_height_of_combined_wind_waves_and_swell",
     }
 )
-
-SOURCE_VARIABLE_ALIASES = {
-    "tp": "total_precipitation",
-    "ssrd": "surface_solar_radiation_downwards",
-    "t2m": "2m_temperature",
-    "d2m": "2m_dewpoint_temperature",
-    "swvl1": "volumetric_soil_water_layer_1",
-    "u10": "10m_u_component_of_wind",
-    "v10": "10m_v_component_of_wind",
-    "msl": "mean_sea_level_pressure",
-    "sst": "sea_surface_temperature",
-    "swh": "significant_height_of_combined_wind_waves_and_swell",
-}
-
-# Focused compatibility name used by CDS NetCDF normalization.
-CDS_SHORT_TO_CANONICAL_VARIABLES = {
-    alias: canonical
-    for alias, canonical in SOURCE_VARIABLE_ALIASES.items()
-    if alias in {"tp", "ssrd", "t2m", "d2m", "swvl1"}
-}
-
-# Short names are allowed only for compact artifact signatures.
-CANONICAL_TO_SHORT_VARIABLE_NAMES = {
-    canonical: alias
-    for alias, canonical in SOURCE_VARIABLE_ALIASES.items()
-}
 
 # ARCO remains source-native until its normalization path is harmonized in a
 # separate change; P9 here closes the active CDS ERA5-Land naming contract.
@@ -139,17 +112,6 @@ DATASET_PROFILES_BY_SOURCE = {
 
 
 # =============================================================================
-# VARIABLE NAMING
-# =============================================================================
-
-
-def canonicalize_variable_name(variable: str) -> str:
-    """Return the CDS pipeline canonical name for a provider alias/name."""
-    normalized = variable.strip().lower()
-    return SOURCE_VARIABLE_ALIASES.get(normalized, normalized)
-
-
-# =============================================================================
 # REQUEST UTILITIES
 # =============================================================================
 
@@ -192,7 +154,7 @@ def validate_request(request: WeatherRequest) -> None:
 
 
 def build_request(request: WeatherRequest) -> WeatherRequest:
-    """Build a normalized WeatherRequest with source-aware variable naming."""
+    """Build a normalized WeatherRequest using one public variable vocabulary."""
     dataset = request.dataset.strip().lower()
 
     source_profiles = DATASET_PROFILES_BY_SOURCE.get(request.source)
@@ -204,33 +166,24 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
             f"Unsupported dataset '{dataset}' for source '{request.source.value}'."
         )
 
-    if request.source == DataSource.CDS:
-        variables = [
-            canonicalize_variable_name(variable)
-            for variable in request.variables
-            if variable.strip()
-        ]
-    else:
-        variables = [
-            variable.strip().lower()
-            for variable in request.variables
-            if variable.strip()
-        ]
+    variables = [
+        variable.strip().lower()
+        for variable in request.variables
+        if variable.strip()
+    ]
 
     if not variables:
         raise ValueError("At least one variable must be provided.")
 
     if len(set(variables)) != len(variables):
-        raise ValueError(
-            "Variables resolve to duplicate names after normalization."
-        )
+        raise ValueError("Duplicate variables are not allowed.")
 
     supported_variables = source_profiles[dataset]["supported_variables"]
     for variable in variables:
         if variable not in supported_variables:
             raise ValueError(
                 f"Variable '{variable}' is not supported by dataset '{dataset}' "
-                f"for source '{request.source.value}'."
+                f"for source '{request.source.value}'. Use the canonical variable name."
             )
 
     return WeatherRequest(
@@ -305,13 +258,8 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 
 
 def build_variable_signature(variables: list[str]) -> str:
-    """Build a deterministic compact variable signature for artifact names."""
-    canonical_sorted = sorted(canonicalize_variable_name(v) for v in variables)
-    short_names = [
-        CANONICAL_TO_SHORT_VARIABLE_NAMES.get(variable, variable)
-        for variable in canonical_sorted
-    ]
-    return "_".join(short_names)
+    """Build a deterministic signature using canonical variable names."""
+    return "_".join(sorted(variable.strip().lower() for variable in variables))
 
 
 def format_request_period(start_date: str, end_date: str) -> str:
