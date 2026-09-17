@@ -19,7 +19,6 @@ from pipeline.database import (
 from pipeline.logging import log_metric
 from pipeline.model import TransformedWeatherDataset
 from pipeline.interfaces import DataLoader
-from pipeline.utils import CANONICAL_TO_SHORT_VARIABLE_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,7 @@ def insert_observations(
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """Insert weather observations."""
+    """Insert weather observations using pipeline canonical column names."""
     dataframe = dataset.dataset.copy()
 
     for time_column in ("valid_time", "valid_time_local"):
@@ -85,14 +84,9 @@ def insert_observations(
 
     dataframe["dataset_id"] = dataset_id
 
-    exist_map = {
-        source_name: target_name
-        for source_name, target_name in CANONICAL_TO_SHORT_VARIABLE_NAMES.items()
-        if source_name in dataframe.columns
-    }
-    if exist_map:
-        dataframe = dataframe.rename(columns=exist_map)
-
+    # Canonical variable names are intentionally preserved in PostgreSQL.
+    # Provider aliases such as tp/t2m/d2m/swvl1/ssrd belong only at source
+    # normalization boundaries and compact artifact signatures.
     dataframe.to_sql(
         name=config.dataset_table_detail,
         con=connection,
@@ -107,6 +101,7 @@ def insert_observations(
         "Details weather inserted",
         {
             "rows": len(dataframe),
+            "columns": list(dataframe.columns),
         },
     )
 
