@@ -2,24 +2,25 @@
 
 ## Overview
 
-This repository contains a weather ETL pipeline designed to process ERA5-family climate data independently from Apache Airflow while remaining ready to be orchestrated by Airflow later.
+This repository contains a weather ETL pipeline for ERA5-family climate data. The pipeline runs independently from Apache Airflow and is intended to be orchestrated by Airflow later.
 
-The current active development path is **Copernicus CDS ERA5-Land hourly data**, transformed into validated daily climate observations for Aceh/Indonesia use cases.
+The current active path is **Copernicus CDS ERA5-Land hourly data**, transformed into validated UTC+7 daily climate observations for Aceh/Indonesia use cases.
 
-Core design goals:
+Core goals:
 
 - scientific correctness;
 - deterministic artifacts and logical partitions;
 - resumable RAW/transformed checkpoints;
 - idempotent PostgreSQL persistence;
+- controlled modelling-data access;
 - testability without Airflow;
 - thin future Airflow orchestration.
 
 ---
 
-## Current Scientific Scope
+## Scientific Contract
 
-### Active dataset
+Active dataset:
 
 ```text
 source  : CDS
@@ -28,9 +29,7 @@ input   : hourly ERA5-Land
 output  : validated daily climate observations
 ```
 
-### Provider variables
-
-Provider codes are the primary variable contract:
+Provider codes remain the primary variable names:
 
 ```text
 tp     total precipitation
@@ -39,10 +38,6 @@ d2m    2 metre dewpoint temperature
 swvl1  volumetric soil water layer 1
 ssrd   surface solar radiation downwards
 ```
-
-Long CDS API names are external API-boundary details only.
-
-### Daily aggregation
 
 Current local timezone:
 
@@ -60,7 +55,7 @@ d2m    hourly instantaneous → local-day mean → °C
 swvl1  hourly instantaneous → local-day mean → m³/m³
 ```
 
-For accumulated ERA5-Land variables:
+For ERA5-Land accumulated fields:
 
 ```text
 Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
@@ -100,17 +95,19 @@ IDEMPOTENT POSTGRESQL LOAD
     ↓
 climate_data.daily_climate
 climate_data.daily_climate_detail
+    ↓
+P15 CONTROLLED MODELLING READ
+    ↓
+in-memory Pandas DataFrame
 ```
 
-Runtime stage boundaries:
+Runtime ETL boundaries remain:
 
 ```text
 extract_or_resume()
 transform_or_resume()
 load()
 ```
-
-These boundaries are intentionally suitable for future Airflow tasks.
 
 ---
 
@@ -121,25 +118,24 @@ RAW         = NetCDF
 TRANSFORMED = Parquet
 ```
 
-Artifacts live under `data/` and remain source-separated.
+Artifacts live under `data/`, remain source-separated, and are deterministic by logical request partition.
 
-Example:
-
-```text
-data/reanalysis-era5-land/raw/cds/2022/2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
-
-data/reanalysis-era5-land/transformed/cds/2022/2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
-```
-
-RAW is immutable. Existing deterministic checkpoints are resumed and validated rather than silently overwritten.
+RAW checkpoints are immutable. Existing RAW/transformed checkpoints are resumed and validated rather than silently overwritten.
 
 ---
 
 ## PostgreSQL Daily Climate Contract
 
-The database is still in development, so only the current canonical schema is supported. Old table names, old foreign keys, and compatibility migrations are intentionally not retained.
+The development database supports only the current canonical schema. Discarded development schemas are not carried through compatibility code.
 
-### `climate_data.daily_climate`
+Canonical tables:
+
+```text
+climate_data.daily_climate
+climate_data.daily_climate_detail
+```
+
+### `daily_climate`
 
 Stores metadata for one logical daily-climate partition:
 
@@ -158,20 +154,9 @@ west_lon
 transformed_at
 ```
 
-`request_key` is required and deterministic from:
+`request_key` is required and deterministic from source, dataset, date range, variable set, and bbox.
 
-```text
-source
-dataset
-start_date
-end_date
-variable set
-bbox
-```
-
-The same logical request reuses the same metadata row through UPSERT.
-
-### `climate_data.daily_climate_detail`
+### `daily_climate_detail`
 
 Stores daily grid-cell observations:
 
@@ -189,93 +174,118 @@ swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
 ```
 
-Observation identity is:
+Observation identity for database UPSERT is:
 
 ```text
 daily_climate_id + valid_time + latitude + longitude
 ```
 
-Writes use UPSERT semantics, so retrying the same logical partition does not create duplicate observations.
-
-`daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
-
-Because this database has not entered production use, schema changes during development may require dropping/recreating the development database or schema instead of maintaining compatibility code.
+`daily_climate_id` is the canonical foreign key to `daily_climate.id`.
 
 ---
 
-## P15 — Modelling Data Access
+## P15 — Controlled Modelling Data Access
 
-P15 is defined as:
+P15 provides read-only access from canonical PostgreSQL daily climate observations into an in-memory modelling DataFrame.
 
-> **Provide controlled and validated access from daily climate observations in PostgreSQL to an in-memory dataset ready for modelling, without creating a new physical copy and without changing meteorological semantics.**
+It does **not**:
 
-P15 does **not** create a separate `daily_feature_dataset` table/file merely to duplicate the same columns.
+- create a `daily_feature_dataset` table/file;
+- change database schema;
+- copy observations into a second physical dataset;
+- replace missing values with zero;
+- add wet-day labels;
+- scale or normalize meteorological values;
+- choose final clustering features.
 
-The canonical modelling source is PostgreSQL daily climate data:
+Implementation:
 
 ```text
-climate_data.daily_climate
-        +
-climate_data.daily_climate_detail
-        ↓
-controlled query / repository access
-        ↓
-in-memory Pandas DataFrame
-        ↓
-P16 wet-day identification
-        ↓
-P17 feature contribution evaluation
+pipeline/modelling_data.py
 ```
 
-The modelling selection must explicitly constrain the relevant:
+Primary API:
+
+```python
+DailyClimateSelection(...)
+load_daily_climate_for_modelling(selection)
+```
+
+A selection explicitly defines:
 
 ```text
 source
-dataset
-period
-spatial scope
-variable set / partition identity
+dataset_name
+start_date
+end_date
+bbox
 ```
 
-All five current meteorological variables remain **candidate parameters**. P15 does not declare that all five must be clustering features.
+The returned DataFrame contract is:
 
-Missing meteorological values remain missing; they must not be silently converted to zero.
+```text
+daily_climate_id
+valid_time
+valid_time_local
+latitude
+longitude
+tp_daily_total_mm
+t2m_daily_mean_c
+d2m_daily_mean_c
+swvl1_daily_mean_m3_m3
+ssrd_daily_total_j_m2
+```
+
+P15 validates that:
+
+- selection dates and bbox are valid;
+- required modelling columns exist;
+- the query returns observations;
+- no duplicate `(valid_time_local, latitude, longitude)` modelling observations exist across selected partitions;
+- `valid_time_local` remains local midnight;
+- observations stay inside the requested local-date period;
+- missing meteorological values remain missing.
+
+The read path deliberately opens the configured PostgreSQL database without creating database/schema objects. P15 is read-only.
+
+A thin local verification entrypoint is available:
+
+```bash
+python scripts/read_modelling_data.py
+```
+
+For the current sanity configuration it should read the same three local days already loaded by `scripts/run_pipeline_cds.py`.
+
+---
+
+## P16 / P17 Timing
+
+P16 and P17 are intentionally deferred until approximately ten years of historical daily climate data have been collected.
+
+```text
+P16 Wet-Day Definition
+P17 Feature Contribution
+```
+
+The five current meteorological variables remain **candidate parameters**. P15 does not assume all five become clustering inputs.
 
 ---
 
 ## Airflow Boundary
 
-Airflow is planned but is intentionally not required by the pipeline implementation.
+Airflow is not required by core pipeline code.
 
-Future Airflow owns:
+Future Airflow owns schedules, data intervals, task dependencies, retries, concurrency, sensors, XCom wiring, Connections/secrets, and operational alerting.
 
-- schedules;
-- data intervals;
-- task dependencies;
-- retries and retry delays;
-- pools/concurrency;
-- sensors;
-- XCom control metadata;
-- Connections/secrets;
-- operational alerting.
+Pipeline modules own extraction, validation, scientific transformation, checkpoint/resume, PostgreSQL persistence, and modelling-data access.
 
-Pipeline code continues to own:
-
-- extraction;
-- validation;
-- transformation;
-- scientific formulas;
-- checkpoint/resume;
-- PostgreSQL persistence;
-- P15 modelling-data access.
-
-Airflow should pass small identifiers/artifact references, not full DataFrames or NetCDF payloads through XCom.
+Future XCom handoff should contain small identifiers/artifact references, not full DataFrames or NetCDF payloads.
 
 ---
 
-## Current Verification State
+## Verification State
 
-Completed and verified before the current schema cleanup:
+Verified before P15 implementation:
 
 ```text
 [x] P4  retain hourly RAW data
@@ -292,9 +302,22 @@ Completed and verified before the current schema cleanup:
 [x] P20 hourly ERA5-Land as primary RAW input
 ```
 
-The cleaned `daily_climate` schema must be reverified with pytest and a fresh development database before P15 implementation continues.
+Latest verified focused baseline before the new P15 tests:
 
-P15 is the active design/implementation stage.
+```text
+32 passed
+```
+
+Current implementation status:
+
+```text
+[~] P15 controlled daily-climate modelling access — implemented, verification pending
+[ ] P18 complete ERA5-Land test coverage
+[ ] P19 provenance
+[ ] Airflow DAG / historical backfill orchestration
+[ ] P16 wet-day definition — deferred until 10-year data exists
+[ ] P17 feature contribution — deferred until 10-year data exists
+```
 
 ---
 
