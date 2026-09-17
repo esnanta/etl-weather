@@ -9,10 +9,11 @@ from sqlalchemy.engine import Connection
 
 from pipeline.database import (
     DatabaseConfig,
+    create_daily_climate_detail_table,
+    create_daily_climate_table,
     create_database_engine,
-    create_dataset_table,
-    create_dataset_table_detail,
     create_schema,
+    migrate_legacy_table_names,
     resolve_database_config,
 )
 from pipeline.interfaces import DataLoader
@@ -31,19 +32,18 @@ ERA5_LAND_DATABASE_COLUMNS = {
 }
 
 
-def _adopt_single_legacy_dataset(
+def _adopt_single_legacy_daily_climate(
     dataset: TransformedWeatherDataset,
     connection: Connection,
     config: DatabaseConfig,
     request_key: str,
 ) -> int | None:
-    """Attach the new request identity to one unambiguous legacy metadata row."""
     request = dataset.request
     legacy_rows = connection.execute(
         text(
             f"""
             SELECT id
-            FROM {config.schema}.{config.dataset_table}
+            FROM {config.schema}.{config.daily_climate_table}
             WHERE request_key IS NULL
               AND dataset_name = :dataset_name
               AND source = :source
@@ -67,7 +67,7 @@ def _adopt_single_legacy_dataset(
     connection.execute(
         text(
             f"""
-            UPDATE {config.schema}.{config.dataset_table}
+            UPDATE {config.schema}.{config.daily_climate_table}
             SET request_key = :request_key,
                 variable_signature = :variable_signature,
                 north_lat = :north_lat,
@@ -88,18 +88,18 @@ def _adopt_single_legacy_dataset(
         },
     )
     log_metric(
-        "Legacy dataset metadata adopted",
+        "Legacy daily climate metadata adopted",
         {"dataset_id": dataset_id, "request_key": request_key},
     )
     return dataset_id
 
 
-def insert_dataset(
+def upsert_daily_climate_metadata(
     dataset: TransformedWeatherDataset,
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """Create or reuse one metadata row for the same logical request."""
+    """Create or reuse metadata for one logical daily-climate partition."""
     request = dataset.request
     request_key = build_request_key(request)
 
@@ -107,7 +107,7 @@ def insert_dataset(
         text(
             f"""
             SELECT id
-            FROM {config.schema}.{config.dataset_table}
+            FROM {config.schema}.{config.daily_climate_table}
             WHERE request_key = :request_key
             """
         ),
@@ -115,11 +115,8 @@ def insert_dataset(
     ).scalar()
 
     if existing_id is None:
-        existing_id = _adopt_single_legacy_dataset(
-            dataset,
-            connection,
-            config,
-            request_key,
+        existing_id = _adopt_single_legacy_daily_climate(
+            dataset, connection, config, request_key
         )
 
     if existing_id is not None:
@@ -128,32 +125,16 @@ def insert_dataset(
         result = connection.execute(
             text(
                 f"""
-                INSERT INTO {config.schema}.{config.dataset_table}
+                INSERT INTO {config.schema}.{config.daily_climate_table}
                 (
-                    request_key,
-                    dataset_name,
-                    source,
-                    start_date,
-                    end_date,
-                    variable_signature,
-                    north_lat,
-                    south_lat,
-                    east_lon,
-                    west_lon,
+                    request_key, dataset_name, source, start_date, end_date,
+                    variable_signature, north_lat, south_lat, east_lon, west_lon,
                     transformed_at
                 )
                 VALUES
                 (
-                    :request_key,
-                    :dataset_name,
-                    :source,
-                    :start_date,
-                    :end_date,
-                    :variable_signature,
-                    :north_lat,
-                    :south_lat,
-                    :east_lon,
-                    :west_lon,
+                    :request_key, :dataset_name, :source, :start_date, :end_date,
+                    :variable_signature, :north_lat, :south_lat, :east_lon, :west_lon,
                     :transformed_at
                 )
                 ON CONFLICT (request_key) WHERE request_key IS NOT NULL
@@ -177,11 +158,11 @@ def insert_dataset(
         )
         dataset_id = result.scalar()
         if dataset_id is None:
-            raise RuntimeError("Failed to retrieve dataset id after metadata upsert.")
+            raise RuntimeError("Failed to retrieve daily climate id after metadata upsert.")
         dataset_id = int(dataset_id)
 
     log_metric(
-        "Dataset metadata upsert",
+        "Daily climate metadata upsert",
         {
             "dataset_id": dataset_id,
             "request_key": request_key,
@@ -196,7 +177,6 @@ def _prepare_observation_dataframe(
     dataset_id: int,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     dataframe = dataset.dataset.copy()
-
     for time_column in ("valid_time", "valid_time_local"):
         if time_column in dataframe.columns:
             dataframe[time_column] = pd.to_datetime(dataframe[time_column]).map(
@@ -216,13 +196,13 @@ def _prepare_observation_dataframe(
     return dataframe, rename_map
 
 
-def insert_observations(
+def upsert_daily_climate_observations(
     dataset: TransformedWeatherDataset,
     dataset_id: int,
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """UPSERT transformed observations using dataset/time/grid identity."""
+    """UPSERT daily observations using partition/time/grid identity."""
     dataframe, rename_map = _prepare_observation_dataframe(dataset, dataset_id)
     if dataframe.empty:
         return 0
@@ -230,20 +210,18 @@ def insert_observations(
     columns = list(dataframe.columns)
     insert_columns = ", ".join(columns)
     bind_columns = ", ".join(f":{column}" for column in columns)
-
     key_columns = {"dataset_id", "valid_time", "latitude", "longitude"}
     update_columns = [column for column in columns if column not in key_columns]
-    if update_columns:
-        update_clause = ", ".join(
-            f"{column} = EXCLUDED.{column}" for column in update_columns
-        )
-        conflict_action = f"DO UPDATE SET {update_clause}"
-    else:
-        conflict_action = "DO NOTHING"
+    conflict_action = (
+        "DO UPDATE SET "
+        + ", ".join(f"{column} = EXCLUDED.{column}" for column in update_columns)
+        if update_columns
+        else "DO NOTHING"
+    )
 
     statement = text(
         f"""
-        INSERT INTO {config.schema}.{config.dataset_table_detail}
+        INSERT INTO {config.schema}.{config.daily_climate_detail_table}
         ({insert_columns})
         VALUES ({bind_columns})
         ON CONFLICT (dataset_id, valid_time, latitude, longitude)
@@ -257,7 +235,7 @@ def insert_observations(
         connection.execute(statement, records[start : start + chunk_size])
 
     log_metric(
-        "Details weather upserted",
+        "Daily climate observations upserted",
         {
             "rows_processed": len(dataframe),
             "columns": columns,
@@ -272,20 +250,21 @@ def load_to_postgresql(
     dataset: TransformedWeatherDataset,
     config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
-    """Load one partition safely; rerunning the same request does not duplicate rows."""
+    """Load one daily-climate partition safely and idempotently."""
     resolved_config = resolve_database_config(config)
     engine = create_database_engine(resolved_config)
     create_schema(engine, resolved_config)
-    create_dataset_table(engine, resolved_config)
-    create_dataset_table_detail(engine, resolved_config)
+    migrate_legacy_table_names(engine, resolved_config)
+    create_daily_climate_table(engine, resolved_config)
+    create_daily_climate_detail_table(engine, resolved_config)
 
     with engine.begin() as connection:
-        dataset_id = insert_dataset(
+        dataset_id = upsert_daily_climate_metadata(
             dataset=dataset,
             connection=connection,
             config=resolved_config,
         )
-        rows_processed = insert_observations(
+        rows_processed = upsert_daily_climate_observations(
             dataset=dataset,
             dataset_id=dataset_id,
             connection=connection,
