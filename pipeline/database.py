@@ -26,6 +26,19 @@ DAILY_WEATHER_COLUMNS = (
     "ssrd_daily_total_j_m2",
 )
 
+LEGACY_TO_DAILY_COLUMNS = {
+    "tp": "tp_daily_total_mm",
+    "total_precipitation": "tp_daily_total_mm",
+    "t2m": "t2m_daily_mean_c",
+    "2m_temperature": "t2m_daily_mean_c",
+    "d2m": "d2m_daily_mean_c",
+    "2m_dewpoint_temperature": "d2m_daily_mean_c",
+    "swvl1": "swvl1_daily_mean_m3_m3",
+    "volumetric_soil_water_layer_1": "swvl1_daily_mean_m3_m3",
+    "ssrd": "ssrd_daily_total_j_m2",
+    "surface_solar_radiation_downwards": "ssrd_daily_total_j_m2",
+}
+
 
 @dataclass(frozen=True)
 class DatabaseConfig:
@@ -127,9 +140,7 @@ def create_schema(
 ) -> None:
     resolved_config = resolve_database_config(config)
     with engine.begin() as connection:
-        connection.execute(
-            text(f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}")
-        )
+        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}"))
     log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
@@ -172,11 +183,38 @@ def create_dataset_table(
     )
 
 
+def _migrate_legacy_weather_columns(
+    connection,
+    *,
+    schema: str,
+    table_name: str,
+    table: str,
+) -> None:
+    for legacy_name, daily_name in LEGACY_TO_DAILY_COLUMNS.items():
+        connection.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = '{schema}'
+                          AND table_name = '{table_name}'
+                          AND column_name = '{legacy_name}'
+                    ) THEN
+                        EXECUTE 'UPDATE {table} SET {daily_name} = COALESCE({daily_name}, "{legacy_name}")';
+                        EXECUTE 'ALTER TABLE {table} DROP COLUMN "{legacy_name}"';
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
+
 def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create detail table using descriptive daily columns derived from provider names."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
 
@@ -212,7 +250,6 @@ def create_dataset_table_detail(
                 "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
             )
         )
-
         for column_name in DAILY_WEATHER_COLUMNS:
             connection.execute(
                 text(
@@ -220,6 +257,13 @@ def create_dataset_table_detail(
                     f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
                 )
             )
+
+        _migrate_legacy_weather_columns(
+            connection,
+            schema=resolved_config.schema,
+            table_name=resolved_config.dataset_table_detail,
+            table=table,
+        )
 
     log_metric(
         "Table status",
