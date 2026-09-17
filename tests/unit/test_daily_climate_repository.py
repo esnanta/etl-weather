@@ -88,10 +88,62 @@ def test_validate_daily_climate_selection_rejects_reversed_period() -> None:
         validate_daily_climate_selection(selection)
 
 
+def test_validate_daily_climate_selection_rejects_empty_dataset_name() -> None:
+    selection = DailyClimateSelection(
+        source=DataSource.CDS,
+        dataset_name="   ",
+        start_date=date(2022, 1, 1),
+        end_date=date(2022, 1, 2),
+        bbox=_selection().bbox,
+    )
+
+    with pytest.raises(ValueError, match="dataset_name"):
+        validate_daily_climate_selection(selection)
+
+
+def test_validate_daily_climate_selection_rejects_invalid_bbox() -> None:
+    invalid_latitude = DailyClimateSelection(
+        source=DataSource.CDS,
+        dataset_name="reanalysis-era5-land",
+        start_date=date(2022, 1, 1),
+        end_date=date(2022, 1, 2),
+        bbox=BoundingBox(
+            north_lat=3.4,
+            west_lon=96.1,
+            south_lat=5.2,
+            east_lon=97.6,
+        ),
+    )
+    invalid_longitude = DailyClimateSelection(
+        source=DataSource.CDS,
+        dataset_name="reanalysis-era5-land",
+        start_date=date(2022, 1, 1),
+        end_date=date(2022, 1, 2),
+        bbox=BoundingBox(
+            north_lat=5.2,
+            west_lon=97.6,
+            south_lat=3.4,
+            east_lon=96.1,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="north_lat"):
+        validate_daily_climate_selection(invalid_latitude)
+    with pytest.raises(ValueError, match="east_lon"):
+        validate_daily_climate_selection(invalid_longitude)
+
+
 def test_validate_modelling_dataframe_rejects_missing_required_column() -> None:
     dataframe = _dataframe().drop(columns=["valid_time"])
 
     with pytest.raises(ValueError, match="valid_time"):
+        validate_modelling_dataframe(dataframe, _selection())
+
+
+def test_validate_modelling_dataframe_rejects_empty_result() -> None:
+    dataframe = _dataframe().iloc[0:0].copy()
+
+    with pytest.raises(ValueError, match="No daily climate observations"):
         validate_modelling_dataframe(dataframe, _selection())
 
 
@@ -102,6 +154,22 @@ def test_validate_modelling_dataframe_rejects_duplicate_local_grid_observation()
     dataframe = pd.concat([dataframe, duplicate], ignore_index=True)
 
     with pytest.raises(ValueError, match="duplicate local-day grid observations"):
+        validate_modelling_dataframe(dataframe, _selection())
+
+
+def test_validate_modelling_dataframe_requires_local_midnight() -> None:
+    dataframe = _dataframe()
+    dataframe.loc[0, "valid_time_local"] = pd.Timestamp("2022-01-01 01:00:00")
+
+    with pytest.raises(ValueError, match="local midnight"):
+        validate_modelling_dataframe(dataframe, _selection())
+
+
+def test_validate_modelling_dataframe_rejects_rows_outside_requested_period() -> None:
+    dataframe = _dataframe()
+    dataframe.loc[1, "valid_time_local"] = pd.Timestamp("2022-01-03 00:00:00")
+
+    with pytest.raises(ValueError, match="outside the requested period"):
         validate_modelling_dataframe(dataframe, _selection())
 
 
