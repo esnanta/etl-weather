@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 # DOMAIN CONFIGURATIONS
 # =============================================================================
 
-# Pipeline-wide canonical meteorological names. Source/provider aliases are
-# normalized to these names at extraction boundaries and must not leak into
-# RAW, transformed Parquet, validation contracts, or new database writes.
+# Canonical meteorological names used by the active CDS pipeline. Provider
+# aliases are normalized to these names at extraction boundaries and must not
+# leak into RAW, transformed Parquet, validation contracts, or new DB writes.
 CANONICAL_VARIABLE_NAMES = frozenset(
     {
         "total_precipitation",
@@ -31,7 +31,6 @@ CANONICAL_VARIABLE_NAMES = frozenset(
     }
 )
 
-# Provider/source aliases accepted at normalization boundaries.
 SOURCE_VARIABLE_ALIASES = {
     "tp": "total_precipitation",
     "ssrd": "surface_solar_radiation_downwards",
@@ -45,27 +44,29 @@ SOURCE_VARIABLE_ALIASES = {
     "swh": "significant_height_of_combined_wind_waves_and_swell",
 }
 
-# Kept as a focused compatibility name for the CDS NetCDF normalization code.
+# Focused compatibility name used by CDS NetCDF normalization.
 CDS_SHORT_TO_CANONICAL_VARIABLES = {
     alias: canonical
     for alias, canonical in SOURCE_VARIABLE_ALIASES.items()
     if alias in {"tp", "ssrd", "t2m", "d2m", "swvl1"}
 }
 
-# Short names are only for compact artifact signatures, never persisted schema.
+# Short names are allowed only for compact artifact signatures.
 CANONICAL_TO_SHORT_VARIABLE_NAMES = {
     canonical: alias
     for alias, canonical in SOURCE_VARIABLE_ALIASES.items()
 }
 
+# ARCO remains source-native until its normalization path is harmonized in a
+# separate change; P9 here closes the active CDS ERA5-Land naming contract.
 ARCO_ERA5_SINGLE_LEVELS_VARIABLES = {
     "total_precipitation",
     "surface_solar_radiation_downwards",
-    "2m_temperature",
-    "10m_u_component_of_wind",
-    "10m_v_component_of_wind",
-    "significant_height_of_combined_wind_waves_and_swell",
-    "mean_sea_level_pressure",
+    "t2m",
+    "u10",
+    "v10",
+    "swh",
+    "msl",
 }
 
 CDS_ERA5_SINGLE_LEVELS_VARIABLES = {
@@ -143,7 +144,7 @@ DATASET_PROFILES_BY_SOURCE = {
 
 
 def canonicalize_variable_name(variable: str) -> str:
-    """Return the pipeline canonical name for a provider/source variable name."""
+    """Return the CDS pipeline canonical name for a provider alias/name."""
     normalized = variable.strip().lower()
     return SOURCE_VARIABLE_ALIASES.get(normalized, normalized)
 
@@ -191,7 +192,7 @@ def validate_request(request: WeatherRequest) -> None:
 
 
 def build_request(request: WeatherRequest) -> WeatherRequest:
-    """Build a normalized WeatherRequest using canonical variable names."""
+    """Build a normalized WeatherRequest with source-aware variable naming."""
     dataset = request.dataset.strip().lower()
 
     source_profiles = DATASET_PROFILES_BY_SOURCE.get(request.source)
@@ -203,18 +204,25 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
             f"Unsupported dataset '{dataset}' for source '{request.source.value}'."
         )
 
-    variables = [
-        canonicalize_variable_name(variable)
-        for variable in request.variables
-        if variable.strip()
-    ]
+    if request.source == DataSource.CDS:
+        variables = [
+            canonicalize_variable_name(variable)
+            for variable in request.variables
+            if variable.strip()
+        ]
+    else:
+        variables = [
+            variable.strip().lower()
+            for variable in request.variables
+            if variable.strip()
+        ]
 
     if not variables:
         raise ValueError("At least one variable must be provided.")
 
     if len(set(variables)) != len(variables):
         raise ValueError(
-            "Variables resolve to duplicate canonical names after normalization."
+            "Variables resolve to duplicate names after normalization."
         )
 
     supported_variables = source_profiles[dataset]["supported_variables"]
