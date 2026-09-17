@@ -129,14 +129,14 @@ class WeatherPipeline:
         log_section_completed("TRANSFORM", transform_timer)
 
         load_timer = log_section_start("LOAD DATABASE")
-        dataset_id, rows_inserted = self.load(transformed_dataset)
+        dataset_id, rows_processed = self.load(transformed_dataset)
         log_section_completed("LOAD DATABASE", load_timer)
 
         finished_at = datetime.now()
         log_pipeline_summary(
             request=normalized_request,
             dataset_id=dataset_id,
-            rows_inserted=rows_inserted,
+            rows_processed=rows_processed,
             parquet_path=parquet_artifact.path,
             started_at=started_at,
             finished_at=finished_at,
