@@ -173,7 +173,13 @@ climate_data.daily_climate
 climate_data.daily_climate_detail
 ```
 
-Do not reintroduce `weather_dataset` / `weather_dataset_detail` as active table names. Those names are legacy migration inputs only.
+Canonical detail foreign key:
+
+```text
+daily_climate_id
+```
+
+The development database is not yet production data. Therefore the code supports only the current schema and must not carry compatibility logic for discarded development schemas.
 
 ### `daily_climate`
 
@@ -214,15 +220,7 @@ ssrd   -> ssrd_daily_total_j_m2
 
 `daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
 
-Development databases with legacy schema may be migrated by renaming:
-
-```text
-weather_dataset        -> daily_climate
-weather_dataset_detail -> daily_climate_detail
-dataset_id             -> daily_climate_id
-```
-
-when the canonical replacement does not already exist.
+When the development schema changes, prefer recreating the development database/schema over adding legacy migration code.
 
 ---
 
@@ -303,7 +301,7 @@ For P15, tests must verify controlled selection and returned schema/semantics ra
 
 ## Current Status
 
-Completed and verified:
+Completed and verified before the current schema cleanup:
 
 ```text
 [x] P4  RAW hourly retained
@@ -326,7 +324,7 @@ Active:
 [ ] P15 controlled daily-climate modelling access
 ```
 
-Do not mark a roadmap item complete without test/runtime evidence.
+The cleaned PostgreSQL schema must be reverified before P15 is marked complete.
 
 ---
 
@@ -338,8 +336,8 @@ Do not mark a roadmap item complete without test/runtime evidence.
 - Do not change unit/time semantics silently.
 - Do not bypass validation on resumed artifacts.
 - Do not return database loading to blind append behavior.
-- Do not use `weather_dataset` names as the active schema contract.
-- Do not reintroduce `dataset_id` as the canonical daily-climate detail foreign key.
+- Do not add compatibility code for discarded development database schemas.
+- Do not use any foreign key other than `daily_climate_id` for canonical daily-climate details.
 - Do not create a duplicate P15 physical dataset without a demonstrated need.
 - Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
 - Do not treat missing values as zero.
