@@ -73,15 +73,7 @@ Canonical detail foreign key:
 daily_climate_id
 ```
 
-Legacy names:
-
-```text
-weather_dataset
-weather_dataset_detail
-dataset_id
-```
-
-may appear only in migration tests. Do not use them as the active schema contract.
+The development database supports only the current schema. Do not add tests for compatibility with discarded development schemas.
 
 Logical partition identity uses deterministic `request_key`.
 
@@ -177,7 +169,7 @@ Negative tests are required where meaningful, including missing hourly steps, wr
 - `test_transform.py`: daily aggregation, timestamps, units, source metadata removal.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
 - `test_storage.py`: deterministic artifacts, RAW immutability, checkpoint resume.
-- `test_load.py`: canonical daily-climate table names, `daily_climate_id`, column mapping, metadata reuse, UPSERT preparation.
+- `test_load.py`: canonical daily-climate table names, `daily_climate_id`, column mapping, metadata UPSERT, observation UPSERT preparation.
 
 P15 access tests should be placed in a dedicated test module when the modelling data-access component is introduced rather than overloading transform tests.
 
