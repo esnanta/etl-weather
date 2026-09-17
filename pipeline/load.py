@@ -18,6 +18,7 @@ from pipeline.database import (
 from pipeline.interfaces import DataLoader
 from pipeline.logging import log_metric
 from pipeline.model import TransformedWeatherDataset
+from pipeline.utils import build_request_key, build_variable_signature
 
 logger = logging.getLogger(__name__)
 
@@ -30,49 +31,179 @@ ERA5_LAND_DATABASE_COLUMNS = {
 }
 
 
+def _adopt_single_legacy_dataset(
+    dataset: TransformedWeatherDataset,
+    connection: Connection,
+    config: DatabaseConfig,
+    request_key: str,
+) -> int | None:
+    """Attach the new request identity to one unambiguous legacy metadata row."""
+    request = dataset.request
+    legacy_rows = connection.execute(
+        text(
+            f"""
+            SELECT id
+            FROM {config.schema}.{config.dataset_table}
+            WHERE request_key IS NULL
+              AND dataset_name = :dataset_name
+              AND source = :source
+              AND start_date = :start_date
+              AND end_date = :end_date
+            ORDER BY id
+            """
+        ),
+        {
+            "dataset_name": request.dataset,
+            "source": request.source.value,
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+        },
+    ).scalars().all()
+
+    if len(legacy_rows) != 1:
+        return None
+
+    dataset_id = int(legacy_rows[0])
+    connection.execute(
+        text(
+            f"""
+            UPDATE {config.schema}.{config.dataset_table}
+            SET request_key = :request_key,
+                variable_signature = :variable_signature,
+                north_lat = :north_lat,
+                south_lat = :south_lat,
+                east_lon = :east_lon,
+                west_lon = :west_lon
+            WHERE id = :dataset_id
+            """
+        ),
+        {
+            "request_key": request_key,
+            "variable_signature": build_variable_signature(request.variables),
+            "north_lat": request.bbox.north_lat,
+            "south_lat": request.bbox.south_lat,
+            "east_lon": request.bbox.east_lon,
+            "west_lon": request.bbox.west_lon,
+            "dataset_id": dataset_id,
+        },
+    )
+    log_metric(
+        "Legacy dataset metadata adopted",
+        {"dataset_id": dataset_id, "request_key": request_key},
+    )
+    return dataset_id
+
+
 def insert_dataset(
     dataset: TransformedWeatherDataset,
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    result = connection.execute(
+    """Create or reuse one metadata row for the same logical request."""
+    request = dataset.request
+    request_key = build_request_key(request)
+
+    existing_id = connection.execute(
         text(
             f"""
-            INSERT INTO {config.schema}.{config.dataset_table}
-            (dataset_name, source, start_date, end_date, transformed_at)
-            VALUES (:dataset_name, :source, :start_date, :end_date, :transformed_at)
-            RETURNING id
+            SELECT id
+            FROM {config.schema}.{config.dataset_table}
+            WHERE request_key = :request_key
             """
         ),
+        {"request_key": request_key},
+    ).scalar()
+
+    if existing_id is None:
+        existing_id = _adopt_single_legacy_dataset(
+            dataset,
+            connection,
+            config,
+            request_key,
+        )
+
+    if existing_id is not None:
+        dataset_id = int(existing_id)
+    else:
+        result = connection.execute(
+            text(
+                f"""
+                INSERT INTO {config.schema}.{config.dataset_table}
+                (
+                    request_key,
+                    dataset_name,
+                    source,
+                    start_date,
+                    end_date,
+                    variable_signature,
+                    north_lat,
+                    south_lat,
+                    east_lon,
+                    west_lon,
+                    transformed_at
+                )
+                VALUES
+                (
+                    :request_key,
+                    :dataset_name,
+                    :source,
+                    :start_date,
+                    :end_date,
+                    :variable_signature,
+                    :north_lat,
+                    :south_lat,
+                    :east_lon,
+                    :west_lon,
+                    :transformed_at
+                )
+                ON CONFLICT (request_key) WHERE request_key IS NOT NULL
+                DO UPDATE SET request_key = EXCLUDED.request_key
+                RETURNING id
+                """
+            ),
+            {
+                "request_key": request_key,
+                "dataset_name": request.dataset,
+                "source": request.source.value,
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "variable_signature": build_variable_signature(request.variables),
+                "north_lat": request.bbox.north_lat,
+                "south_lat": request.bbox.south_lat,
+                "east_lon": request.bbox.east_lon,
+                "west_lon": request.bbox.west_lon,
+                "transformed_at": datetime.now(timezone.utc),
+            },
+        )
+        dataset_id = result.scalar()
+        if dataset_id is None:
+            raise RuntimeError("Failed to retrieve dataset id after metadata upsert.")
+        dataset_id = int(dataset_id)
+
+    log_metric(
+        "Dataset metadata upsert",
         {
-            "dataset_name": dataset.request.dataset,
-            "source": dataset.request.source.value,
-            "start_date": dataset.request.start_date,
-            "end_date": dataset.request.end_date,
-            "transformed_at": datetime.now(timezone.utc),
+            "dataset_id": dataset_id,
+            "request_key": request_key,
+            "variable_signature": build_variable_signature(request.variables),
         },
     )
-    dataset_id = result.scalar()
-    if dataset_id is None:
-        raise RuntimeError("Failed to retrieve the dataset id after inserting metadata.")
-    return int(dataset_id)
+    return dataset_id
 
 
-def insert_observations(
+def _prepare_observation_dataframe(
     dataset: TransformedWeatherDataset,
     dataset_id: int,
-    connection: Connection,
-    config: DatabaseConfig,
-) -> int:
-    """Insert transformed observations using descriptive daily DB columns."""
+) -> tuple[pd.DataFrame, dict[str, str]]:
     dataframe = dataset.dataset.copy()
 
     for time_column in ("valid_time", "valid_time_local"):
         if time_column in dataframe.columns:
-            dataframe[time_column] = pd.to_datetime(dataframe[time_column])
+            dataframe[time_column] = pd.to_datetime(dataframe[time_column]).map(
+                lambda value: value.to_pydatetime()
+            )
 
     dataframe["dataset_id"] = dataset_id
-
     rename_map = {
         provider_name: database_name
         for provider_name, database_name in ERA5_LAND_DATABASE_COLUMNS.items()
@@ -81,22 +212,57 @@ def insert_observations(
     if rename_map:
         dataframe = dataframe.rename(columns=rename_map)
 
-    dataframe.to_sql(
-        name=config.dataset_table_detail,
-        con=connection,
-        schema=config.schema,
-        if_exists="append",
-        index=False,
-        method="multi",
-        chunksize=1000,
+    dataframe = dataframe.astype(object).where(pd.notna(dataframe), None)
+    return dataframe, rename_map
+
+
+def insert_observations(
+    dataset: TransformedWeatherDataset,
+    dataset_id: int,
+    connection: Connection,
+    config: DatabaseConfig,
+) -> int:
+    """UPSERT transformed observations using dataset/time/grid identity."""
+    dataframe, rename_map = _prepare_observation_dataframe(dataset, dataset_id)
+    if dataframe.empty:
+        return 0
+
+    columns = list(dataframe.columns)
+    insert_columns = ", ".join(columns)
+    bind_columns = ", ".join(f":{column}" for column in columns)
+
+    key_columns = {"dataset_id", "valid_time", "latitude", "longitude"}
+    update_columns = [column for column in columns if column not in key_columns]
+    if update_columns:
+        update_clause = ", ".join(
+            f"{column} = EXCLUDED.{column}" for column in update_columns
+        )
+        conflict_action = f"DO UPDATE SET {update_clause}"
+    else:
+        conflict_action = "DO NOTHING"
+
+    statement = text(
+        f"""
+        INSERT INTO {config.schema}.{config.dataset_table_detail}
+        ({insert_columns})
+        VALUES ({bind_columns})
+        ON CONFLICT (dataset_id, valid_time, latitude, longitude)
+        {conflict_action}
+        """
     )
 
+    records = dataframe.to_dict(orient="records")
+    chunk_size = 1000
+    for start in range(0, len(records), chunk_size):
+        connection.execute(statement, records[start : start + chunk_size])
+
     log_metric(
-        "Details weather inserted",
+        "Details weather upserted",
         {
-            "rows": len(dataframe),
-            "columns": list(dataframe.columns),
+            "rows_processed": len(dataframe),
+            "columns": columns,
             "provider_to_database_columns": rename_map,
+            "conflict_key": "dataset_id + valid_time + latitude + longitude",
         },
     )
     return len(dataframe)
@@ -106,6 +272,7 @@ def load_to_postgresql(
     dataset: TransformedWeatherDataset,
     config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
+    """Load one partition safely; rerunning the same request does not duplicate rows."""
     resolved_config = resolve_database_config(config)
     engine = create_database_engine(resolved_config)
     create_schema(engine, resolved_config)
@@ -118,7 +285,7 @@ def load_to_postgresql(
             connection=connection,
             config=resolved_config,
         )
-        rows_inserted = insert_observations(
+        rows_processed = insert_observations(
             dataset=dataset,
             dataset_id=dataset_id,
             connection=connection,
@@ -127,9 +294,13 @@ def load_to_postgresql(
 
     log_metric(
         "PostgreSQL load completed",
-        {"dataset_id": dataset_id, "rows": rows_inserted},
+        {
+            "dataset_id": dataset_id,
+            "rows_processed": rows_processed,
+            "mode": "idempotent upsert",
+        },
     )
-    return dataset_id, rows_inserted
+    return dataset_id, rows_processed
 
 
 class PostgresDataLoader(DataLoader):

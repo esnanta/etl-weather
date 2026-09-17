@@ -148,7 +148,11 @@ def create_dataset_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
+    """Create dataset metadata with a stable logical request identity."""
     resolved_config = resolve_database_config(config)
+    table = f"{resolved_config.schema}.{resolved_config.dataset_table}"
+    index_name = f"uq_{resolved_config.dataset_table}_request_key"
+
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -164,22 +168,54 @@ def create_dataset_table(
         connection.execute(
             text(
                 f"""
-                CREATE TABLE IF NOT EXISTS
-                {resolved_config.schema}.{resolved_config.dataset_table}
+                CREATE TABLE IF NOT EXISTS {table}
                 (
                     id BIGSERIAL PRIMARY KEY,
+                    request_key TEXT,
                     dataset_name TEXT NOT NULL,
                     source {resolved_config.schema}.data_source_enum NOT NULL,
                     start_date DATE NOT NULL,
                     end_date DATE NOT NULL,
+                    variable_signature TEXT,
+                    north_lat DOUBLE PRECISION,
+                    south_lat DOUBLE PRECISION,
+                    east_lon DOUBLE PRECISION,
+                    west_lon DOUBLE PRECISION,
                     transformed_at TIMESTAMPTZ NOT NULL
                 )
                 """
             )
         )
+
+        for column_definition in (
+            "request_key TEXT",
+            "variable_signature TEXT",
+            "north_lat DOUBLE PRECISION",
+            "south_lat DOUBLE PRECISION",
+            "east_lon DOUBLE PRECISION",
+            "west_lon DOUBLE PRECISION",
+        ):
+            connection.execute(
+                text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                    f"{column_definition}"
+                )
+            )
+
+        connection.execute(
+            text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                f"ON {table} (request_key) WHERE request_key IS NOT NULL"
+            )
+        )
+
     log_metric(
         "Table status",
-        {"table": resolved_config.dataset_table, "status": "ready"},
+        {
+            "table": resolved_config.dataset_table,
+            "status": "ready",
+            "idempotency_key": "request_key",
+        },
     )
 
 
@@ -215,8 +251,10 @@ def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
+    """Create observations with a retry-safe natural uniqueness constraint."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
+    index_name = f"uq_{resolved_config.dataset_table_detail}_grid_time"
 
     with engine.begin() as connection:
         connection.execute(
@@ -265,11 +303,34 @@ def create_dataset_table_detail(
             table=table,
         )
 
+        # Older versions could append duplicate detail rows. Keep one row per
+        # dataset/time/grid before enforcing the retry-safe uniqueness index.
+        connection.execute(
+            text(
+                f"""
+                DELETE FROM {table} duplicate
+                USING {table} keeper
+                WHERE duplicate.id > keeper.id
+                  AND duplicate.dataset_id = keeper.dataset_id
+                  AND duplicate.valid_time = keeper.valid_time
+                  AND duplicate.latitude = keeper.latitude
+                  AND duplicate.longitude = keeper.longitude
+                """
+            )
+        )
+        connection.execute(
+            text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                f"ON {table} (dataset_id, valid_time, latitude, longitude)"
+            )
+        )
+
     log_metric(
         "Table status",
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
             "weather_column_contract": "provider-based daily statistics",
+            "idempotency_key": "dataset_id + valid_time + latitude + longitude",
         },
     )

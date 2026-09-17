@@ -1,168 +1,33 @@
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
-
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 import xarray as xr
 
-from pipeline.model import (
-    RawWeatherDataset,
-    WeatherRequest,
-    LoadedWeatherDataset,
-    DatasetArtifact,
-    DataLayer,
-)
 from pipeline.interfaces import DataStorage
-
-from pipeline.logging import (
-    _log_dataframe_preview,
+from pipeline.logging import _log_dataframe_preview
+from pipeline.model import (
+    DataLayer,
+    DatasetArtifact,
+    LoadedWeatherDataset,
+    RawWeatherDataset,
+    TransformedWeatherDataset,
+    WeatherRequest,
 )
-
-from pipeline.utils import (
-    build_variable_signature,
-    format_request_period,
-)
+from pipeline.utils import build_variable_signature, format_request_period
 
 logger = logging.getLogger(__name__)
 
-
-PROJECT_DIRECTORY = (
-    Path(__file__)
-    .resolve()
-    .parent
-    .parent
-)
-
-DATA_DIRECTORY = (
-    PROJECT_DIRECTORY
-    / "data"
-)
-
-def save_raw_netcdf(
-    dataset: RawWeatherDataset,
-) -> DatasetArtifact:
-    """
-    Persist the raw lazy xarray.Dataset as a NetCDF checkpoint.
-
-    This operation materializes the selected subset from the
-    ARCO Zarr store and writes it to a local NetCDF file.
-    The resulting NetCDF file is retained as the RAW layer
-    artifact and serves as the source for subsequent
-    DataFrame conversion and downstream processing.
-
-    Returns
-    -------
-    DatasetArtifact
-        Metadata describing the saved NetCDF artifact.
-    """
-
-    nc_artifact = _create_artifact(
-        request=dataset.request,
-        layer=DataLayer.RAW,
-        created_at=dataset.downloaded_at,
-        extension=".nc",
-        data_directory=DATA_DIRECTORY,
-    )
-
-    nc_artifact.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    logger.info(
-        "Writing RAW NetCDF checkpoint:\n%s",
-        nc_artifact.path,
-    )
-
-    dataset.raw_data.to_netcdf(
-        nc_artifact.path,
-    )
-
-    return nc_artifact
+PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
+DATA_DIRECTORY = PROJECT_DIRECTORY / "data"
 
 
-def convert_netcdf_to_dataframe(
-    artifact: DatasetArtifact,
-) -> pd.DataFrame:
-    """
-    Load a local NetCDF checkpoint into a Pandas DataFrame.
-    """
-    logger.info(
-        "Loading local NetCDF checkpoint into a Pandas DataFrame:\n%s",
-        artifact.path,
-    )
-    local_ds = xr.open_dataset(artifact.path)
-    df = local_ds.to_dataframe().reset_index()
-    local_ds.close()
-
-    _log_dataframe_preview(df, rows=10)
-
-    return df
-
-
-def save_transformed_parquet(
-    df: pd.DataFrame,
-    request: WeatherRequest,
-    downloaded_at: datetime,
-) -> DatasetArtifact:
-    """
-    Persist the transformed DataFrame as a Parquet checkpoint.
-    """
-    parquet_artifact = _create_artifact(
-        request=request,
-        layer=DataLayer.TRANSFORMED,
-        created_at=downloaded_at,
-        extension=".parquet",
-        data_directory=DATA_DIRECTORY,
-    )
-    parquet_artifact.path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    logger.info(
-        "Writing transformed Parquet checkpoint:\n%s",
-        parquet_artifact.path,
-    )
-    df.to_parquet(parquet_artifact.path, index=False)
-
-    return parquet_artifact
-
-
-def load_raw_dataset(
-    artifact: DatasetArtifact,
-    metadata: RawWeatherDataset,
-) -> LoadedWeatherDataset:
-    """
-    Load a persisted artifact into a Pandas DataFrame.
-    """
-    logger.info("Loading Parquet artifact:\n%s", artifact.path)
-    df = pd.read_parquet(artifact.path)
-
-    return LoadedWeatherDataset(
-        request=metadata.request,
-        downloaded_at=metadata.downloaded_at,
-        raw_data=df,
-    )
-
-
-def artifact_exists(
-    artifact: DatasetArtifact,
-) -> bool:
-    """Return True if artifact exists."""
-
-    return artifact.path.exists()
-
-
-def delete_artifact(
-    artifact: DatasetArtifact,
-) -> None:
-    """Delete artifact if it exists."""
-
-    if artifact.path.exists():
-        artifact.path.unlink()
+def _artifact_timestamp(path: Path) -> datetime:
+    """Return artifact modification time as UTC metadata."""
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
 
 def _create_artifact(
@@ -173,27 +38,10 @@ def _create_artifact(
     extension: str,
     data_directory: Path,
 ) -> DatasetArtifact:
-    """
-    Create artifact metadata.
-    """
-
-    period_signature = format_request_period(
-        request.start_date,
-        request.end_date,
-    )
-
-    variable_signature = (
-        build_variable_signature(
-            request.variables,
-        )
-    )
-
-    filename = (
-        f"{period_signature}"
-        f"_{variable_signature}"
-        f"{extension}"
-    )
-
+    """Create deterministic artifact metadata for one logical request."""
+    period_signature = format_request_period(request.start_date, request.end_date)
+    variable_signature = build_variable_signature(request.variables)
+    filename = f"{period_signature}_{variable_signature}{extension}"
     path = (
         data_directory
         / request.dataset
@@ -202,21 +50,188 @@ def _create_artifact(
         / request.start_date[:4]
         / filename
     )
+    return DatasetArtifact(layer=layer, created_at=created_at, path=path)
 
-    return DatasetArtifact(
-        layer=layer,
-        created_at=created_at,
-        path=path,
+
+def raw_artifact_for_request(
+    request: WeatherRequest,
+    *,
+    data_directory: Path | None = None,
+) -> DatasetArtifact:
+    """Return the deterministic RAW NetCDF artifact for a request."""
+    return _create_artifact(
+        request=request,
+        layer=DataLayer.RAW,
+        created_at=datetime.now(UTC),
+        extension=".nc",
+        data_directory=data_directory or DATA_DIRECTORY,
     )
 
 
+def transformed_artifact_for_request(
+    request: WeatherRequest,
+    *,
+    data_directory: Path | None = None,
+) -> DatasetArtifact:
+    """Return the deterministic transformed Parquet artifact for a request."""
+    return _create_artifact(
+        request=request,
+        layer=DataLayer.TRANSFORMED,
+        created_at=datetime.now(UTC),
+        extension=".parquet",
+        data_directory=data_directory or DATA_DIRECTORY,
+    )
+
+
+def artifact_exists(artifact: DatasetArtifact) -> bool:
+    """Return True if artifact exists."""
+    return artifact.path.exists()
+
+
+def _temporary_path(target: Path) -> Path:
+    """Return a same-directory temporary path for atomic replacement."""
+    return target.with_name(f".{target.name}.tmp")
+
+
+def save_raw_netcdf(dataset: RawWeatherDataset) -> DatasetArtifact:
+    """Persist RAW source truth once using an atomic same-filesystem write."""
+    nc_artifact = raw_artifact_for_request(dataset.request)
+    if artifact_exists(nc_artifact):
+        raise FileExistsError(
+            f"RAW artifact already exists and is immutable: {nc_artifact.path}"
+        )
+
+    nc_artifact.path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = _temporary_path(nc_artifact.path)
+    if temporary_path.exists():
+        temporary_path.unlink()
+
+    logger.info("Writing RAW NetCDF checkpoint:\n%s", nc_artifact.path)
+    try:
+        dataset.raw_data.to_netcdf(temporary_path)
+        temporary_path.replace(nc_artifact.path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+    return nc_artifact
+
+
+def load_raw_netcdf(
+    artifact: DatasetArtifact,
+    request: WeatherRequest,
+) -> RawWeatherDataset:
+    """Load an existing RAW NetCDF checkpoint for deterministic resume."""
+    if not artifact_exists(artifact):
+        raise FileNotFoundError(f"RAW artifact not found: {artifact.path}")
+    logger.info("Resuming from RAW NetCDF checkpoint:\n%s", artifact.path)
+    with xr.open_dataset(artifact.path) as opened:
+        dataset = opened.load()
+    return RawWeatherDataset(
+        request=request,
+        downloaded_at=_artifact_timestamp(artifact.path),
+        raw_data=dataset,
+    )
+
+
+def convert_netcdf_to_dataframe(artifact: DatasetArtifact) -> pd.DataFrame:
+    """Load a local NetCDF checkpoint into a Pandas DataFrame."""
+    logger.info(
+        "Loading local NetCDF checkpoint into a Pandas DataFrame:\n%s",
+        artifact.path,
+    )
+    with xr.open_dataset(artifact.path) as local_ds:
+        dataframe = local_ds.to_dataframe().reset_index()
+    _log_dataframe_preview(dataframe, rows=10)
+    return dataframe
+
+
+def save_transformed_parquet(
+    df: pd.DataFrame,
+    request: WeatherRequest,
+    downloaded_at: datetime,
+) -> DatasetArtifact:
+    """Persist a transformed checkpoint once using an atomic write."""
+    parquet_artifact = transformed_artifact_for_request(request)
+    if artifact_exists(parquet_artifact):
+        raise FileExistsError(
+            "Transformed artifact already exists; resume it explicitly instead of "
+            f"overwriting: {parquet_artifact.path}"
+        )
+
+    parquet_artifact = DatasetArtifact(
+        layer=parquet_artifact.layer,
+        created_at=downloaded_at,
+        path=parquet_artifact.path,
+    )
+    parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = _temporary_path(parquet_artifact.path)
+    if temporary_path.exists():
+        temporary_path.unlink()
+
+    logger.info("Writing transformed Parquet checkpoint:\n%s", parquet_artifact.path)
+    try:
+        df.to_parquet(temporary_path, index=False)
+        temporary_path.replace(parquet_artifact.path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+    return parquet_artifact
+
+
+def load_transformed_parquet(
+    artifact: DatasetArtifact,
+    request: WeatherRequest,
+) -> TransformedWeatherDataset:
+    """Load an existing transformed Parquet checkpoint for resume."""
+    if not artifact_exists(artifact):
+        raise FileNotFoundError(f"Transformed artifact not found: {artifact.path}")
+    logger.info("Resuming from transformed Parquet checkpoint:\n%s", artifact.path)
+    dataframe = pd.read_parquet(artifact.path)
+    return TransformedWeatherDataset(
+        request=request,
+        transformed_at=_artifact_timestamp(artifact.path),
+        dataset=dataframe,
+    )
+
+
+def load_raw_dataset(
+    artifact: DatasetArtifact,
+    metadata: RawWeatherDataset,
+) -> LoadedWeatherDataset:
+    """Backward-compatible helper for legacy Parquet-based RAW callers."""
+    logger.info("Loading Parquet artifact:\n%s", artifact.path)
+    dataframe = pd.read_parquet(artifact.path)
+    return LoadedWeatherDataset(
+        request=metadata.request,
+        downloaded_at=metadata.downloaded_at,
+        raw_data=dataframe,
+    )
+
+
+def delete_artifact(artifact: DatasetArtifact) -> None:
+    """Delete artifact if it exists."""
+    if artifact.path.exists():
+        artifact.path.unlink()
+
+
 class LocalDataStorage(DataStorage):
-    """
-    SOLID: Single Responsibility & Dependency Inversion.
-    Handles artifact storage and retrieval on local filesystem.
-    """
+    """Local filesystem artifact storage, independent from Airflow."""
+
+    def raw_artifact(self, request: WeatherRequest) -> DatasetArtifact:
+        return raw_artifact_for_request(request)
+
+    def transformed_artifact(self, request: WeatherRequest) -> DatasetArtifact:
+        return transformed_artifact_for_request(request)
+
     def save_raw(self, dataset: RawWeatherDataset) -> DatasetArtifact:
         return save_raw_netcdf(dataset)
+
+    def load_raw(
+        self,
+        artifact: DatasetArtifact,
+        request: WeatherRequest,
+    ) -> RawWeatherDataset:
+        return load_raw_netcdf(artifact, request)
 
     def save_transformed(
         self,
@@ -225,6 +240,13 @@ class LocalDataStorage(DataStorage):
         downloaded_at: datetime,
     ) -> DatasetArtifact:
         return save_transformed_parquet(df, request, downloaded_at)
+
+    def load_transformed(
+        self,
+        artifact: DatasetArtifact,
+        request: WeatherRequest,
+    ) -> TransformedWeatherDataset:
+        return load_transformed_parquet(artifact, request)
 
     def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
         return convert_netcdf_to_dataframe(artifact)

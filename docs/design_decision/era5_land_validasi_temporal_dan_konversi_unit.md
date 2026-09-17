@@ -1,4 +1,4 @@
-# Dokumentasi P12 — Validasi Temporal dan P14 — Konversi Unit ERA5-Land
+# Validasi Temporal dan Konversi Unit ERA5-Land
 
 ## Tujuan
 

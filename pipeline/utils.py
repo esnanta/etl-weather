@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from calendar import monthrange
 from dataclasses import replace
@@ -210,6 +212,25 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
 def build_variable_signature(variables: list[str]) -> str:
     """Build a deterministic signature using provider variable names."""
     return "_".join(sorted(v.strip().lower() for v in variables))
+
+
+def build_request_key(request: WeatherRequest) -> str:
+    """Build a stable logical partition key for retries and database upserts."""
+    payload = {
+        "source": request.source.value,
+        "dataset": request.dataset.strip().lower(),
+        "start_date": request.start_date,
+        "end_date": request.end_date,
+        "variables": sorted(v.strip().lower() for v in request.variables),
+        "bbox": {
+            "north_lat": request.bbox.north_lat,
+            "south_lat": request.bbox.south_lat,
+            "east_lon": request.bbox.east_lon,
+            "west_lon": request.bbox.west_lon,
+        },
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def format_request_period(start_date: str, end_date: str) -> str:
