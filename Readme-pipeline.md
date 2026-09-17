@@ -201,7 +201,7 @@ It does **not**:
 Implementation:
 
 ```text
-pipeline/modelling_data.py
+pipeline/daily_climate_repository.py
 ```
 
 Primary API:
@@ -251,7 +251,7 @@ The read path deliberately opens the configured PostgreSQL database without crea
 A thin local verification entrypoint is available:
 
 ```bash
-python scripts/read_modelling_data.py
+python scripts/read_daily_climate.py
 ```
 
 For the current sanity configuration it should read the same three local days already loaded by `scripts/run_pipeline_cds.py`.
