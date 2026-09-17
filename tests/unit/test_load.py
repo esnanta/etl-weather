@@ -66,7 +66,9 @@ def test_database_config_uses_daily_climate_table_names() -> None:
 
 
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
-    dataframe, rename_map = _prepare_observation_dataframe(_dataset(), dataset_id=7)
+    dataframe, rename_map = _prepare_observation_dataframe(
+        _dataset(), daily_climate_id=7
+    )
 
     assert rename_map == {
         "tp": "tp_daily_total_mm",
@@ -75,7 +77,8 @@ def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
         "swvl1": "swvl1_daily_mean_m3_m3",
         "ssrd": "ssrd_daily_total_j_m2",
     }
-    assert dataframe.loc[0, "dataset_id"] == 7
+    assert dataframe.loc[0, "daily_climate_id"] == 7
+    assert "dataset_id" not in dataframe.columns
     assert dataframe.loc[0, "tp_daily_total_mm"] == 10.0
     assert dataframe.loc[0, "t2m_daily_mean_c"] == 26.0
     assert "tp" not in dataframe.columns
@@ -91,24 +94,24 @@ class _ScalarResult:
 
 
 class _ExistingDailyClimateConnection:
-    def __init__(self, dataset_id: int):
-        self.dataset_id = dataset_id
+    def __init__(self, daily_climate_id: int):
+        self.daily_climate_id = daily_climate_id
         self.statements: list[str] = []
 
     def execute(self, statement, params=None):
         sql = str(statement)
         self.statements.append(sql)
         if "WHERE request_key =" in sql:
-            return _ScalarResult(self.dataset_id)
+            return _ScalarResult(self.daily_climate_id)
         raise AssertionError(f"Unexpected SQL after existing request key was found: {sql}")
 
 
 def test_upsert_daily_climate_metadata_reuses_existing_request_key_id() -> None:
-    connection = _ExistingDailyClimateConnection(dataset_id=42)
+    connection = _ExistingDailyClimateConnection(daily_climate_id=42)
 
-    dataset_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
+    daily_climate_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
 
-    assert dataset_id == 42
+    assert daily_climate_id == 42
     assert len(connection.statements) == 1
     assert connection.statements[0].lstrip().startswith("SELECT id")
     assert "daily_climate" in connection.statements[0]
