@@ -3,18 +3,13 @@ from pathlib import Path
 
 import xarray as xr
 
-from pipeline.storage import (
-    DataLayer,
-    artifact_exists,
-    load_dataset,
-    save_dataset,
-)
+from pipeline.storage import DataLayer, artifact_exists, load_dataset, save_dataset
 
 
 def test_save_and_load_dataset() -> None:
     dataset = xr.Dataset(
         {
-            "total_precipitation": (
+            "tp": (
                 ("valid_time", "latitude", "longitude"),
                 [[[1.0]]],
             ),
@@ -29,16 +24,13 @@ def test_save_and_load_dataset() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         artifact = save_dataset(
             dataset=dataset,
-            dataset_name="total_precipitation",
+            dataset_name="tp",
             layer=DataLayer.RAW,
             data_directory=Path(tmp),
         )
-
         assert artifact_exists(artifact)
-
         loaded = load_dataset(artifact)
-
-        assert "total_precipitation" in loaded.data_vars
+        assert "tp" in loaded.data_vars
         assert loaded.sizes["valid_time"] == 1
         assert loaded.sizes["latitude"] == 1
         assert loaded.sizes["longitude"] == 1
