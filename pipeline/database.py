@@ -20,6 +20,19 @@ SCHEMA_NAME = "climate_data"
 DATASET_TABLE = "weather_dataset"
 DATASET_TABLE_DETAIL = "weather_dataset_detail"
 
+CANONICAL_WEATHER_COLUMNS = (
+    "total_precipitation",
+    "surface_solar_radiation_downwards",
+    "2m_temperature",
+    "2m_dewpoint_temperature",
+    "volumetric_soil_water_layer_1",
+    "10m_u_component_of_wind",
+    "10m_v_component_of_wind",
+    "mean_sea_level_pressure",
+    "sea_surface_temperature",
+    "significant_height_of_combined_wind_waves_and_swell",
+)
+
 
 @dataclass(frozen=True)
 class DatabaseConfig:
@@ -209,15 +222,16 @@ def create_dataset_table_detail(
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
 
-                    tp DOUBLE PRECISION,
-                    ssrd DOUBLE PRECISION,
-                    t2m DOUBLE PRECISION,
-                    d2m DOUBLE PRECISION,
-                    swvl1 DOUBLE PRECISION,
-                    u10 DOUBLE PRECISION,
-                    v10 DOUBLE PRECISION,
-                    swh DOUBLE PRECISION,
-                    msl DOUBLE PRECISION,
+                    total_precipitation DOUBLE PRECISION,
+                    surface_solar_radiation_downwards DOUBLE PRECISION,
+                    "2m_temperature" DOUBLE PRECISION,
+                    "2m_dewpoint_temperature" DOUBLE PRECISION,
+                    volumetric_soil_water_layer_1 DOUBLE PRECISION,
+                    "10m_u_component_of_wind" DOUBLE PRECISION,
+                    "10m_v_component_of_wind" DOUBLE PRECISION,
+                    mean_sea_level_pressure DOUBLE PRECISION,
+                    sea_surface_temperature DOUBLE PRECISION,
+                    significant_height_of_combined_wind_waves_and_swell DOUBLE PRECISION,
 
                     CONSTRAINT fk_detail_dataset
                     FOREIGN KEY (dataset_id)
@@ -255,8 +269,6 @@ def create_dataset_table_detail(
             )
         )
 
-        # Existing historical rows predate explicit local-time tracking, so
-        # the migration intentionally leaves valid_time_local NULL for them.
         connection.execute(
             text(
                 f"ALTER TABLE {table} "
@@ -264,11 +276,16 @@ def create_dataset_table_detail(
             )
         )
 
-        for column_name in ("d2m", "swvl1"):
+        # P9 migration: add pipeline canonical weather columns. Historical
+        # short-name columns (tp/t2m/etc.) are intentionally not dropped here;
+        # they remain readable as legacy schema while all new writes use the
+        # canonical columns below.
+        for column_name in CANONICAL_WEATHER_COLUMNS:
+            quoted_name = f'"{column_name}"'
             connection.execute(
                 text(
                     f"ALTER TABLE {table} "
-                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
+                    f"ADD COLUMN IF NOT EXISTS {quoted_name} DOUBLE PRECISION"
                 )
             )
 
@@ -277,5 +294,6 @@ def create_dataset_table_detail(
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
+            "weather_column_contract": "canonical",
         },
     )
