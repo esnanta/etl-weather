@@ -14,8 +14,11 @@ from pipeline.storage import (
     artifact_exists,
     convert_netcdf_to_dataframe,
     load_raw_netcdf,
+    load_transformed_parquet,
     raw_artifact_for_request,
     save_raw_netcdf,
+    save_transformed_parquet,
+    transformed_artifact_for_request,
 )
 
 
@@ -53,6 +56,18 @@ def _raw_dataset(request: WeatherRequest) -> RawWeatherDataset:
         request=request,
         downloaded_at=datetime.now(timezone.utc),
         raw_data=dataset,
+    )
+
+
+def _transformed_dataframe() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "valid_time": [pd.Timestamp("2014-12-31 17:00:00")],
+            "valid_time_local": [pd.Timestamp("2015-01-01 00:00:00")],
+            "latitude": [5.0],
+            "longitude": [95.0],
+            "tp": [10.0],
+        }
     )
 
 
@@ -95,6 +110,16 @@ def test_raw_artifact_path_is_deterministic(tmp_path) -> None:
     assert first.path == second.path
 
 
+def test_transformed_artifact_path_is_deterministic(tmp_path) -> None:
+    request = _request()
+
+    first = transformed_artifact_for_request(request, data_directory=tmp_path)
+    second = transformed_artifact_for_request(request, data_directory=tmp_path)
+
+    assert first.path == second.path
+    assert first.path.name == "2015_0101_0101_tp.parquet"
+
+
 def test_save_raw_netcdf_refuses_to_overwrite_existing_checkpoint(
     tmp_path,
     monkeypatch,
@@ -119,3 +144,48 @@ def test_load_raw_netcdf_resumes_existing_checkpoint(tmp_path, monkeypatch) -> N
     assert resumed.request == request
     assert "tp" in resumed.raw_data.data_vars
     assert resumed.raw_data["tp"].item() == 1.0
+
+
+def test_save_and_load_transformed_parquet_checkpoint(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    dataframe = _transformed_dataframe()
+    downloaded_at = datetime(2015, 1, 2, tzinfo=timezone.utc)
+
+    artifact = save_transformed_parquet(dataframe, request, downloaded_at)
+    resumed = load_transformed_parquet(artifact, request)
+
+    assert artifact_exists(artifact)
+    assert artifact.path.suffix == ".parquet"
+    assert artifact.created_at == downloaded_at
+    assert resumed.request == request
+    pd.testing.assert_frame_equal(resumed.dataset, dataframe)
+
+
+def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    dataframe = _transformed_dataframe()
+    downloaded_at = datetime(2015, 1, 2, tzinfo=timezone.utc)
+
+    save_transformed_parquet(dataframe, request, downloaded_at)
+
+    with pytest.raises(FileExistsError, match="resume it explicitly"):
+        save_transformed_parquet(dataframe, request, downloaded_at)
+
+
+def test_load_checkpoint_raises_when_artifact_is_missing(tmp_path) -> None:
+    request = _request()
+    raw_artifact = raw_artifact_for_request(request, data_directory=tmp_path)
+    transformed_artifact = transformed_artifact_for_request(
+        request, data_directory=tmp_path
+    )
+
+    with pytest.raises(FileNotFoundError, match="RAW artifact not found"):
+        load_raw_netcdf(raw_artifact, request)
+
+    with pytest.raises(FileNotFoundError, match="Transformed artifact not found"):
+        load_transformed_parquet(transformed_artifact, request)
