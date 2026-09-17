@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from typing import TypeAlias
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from pipeline.database import DatabaseConfig, resolve_database_config
@@ -30,6 +31,8 @@ MODELLING_OBSERVATION_KEY = (
     "latitude",
     "longitude",
 )
+
+SqlParamValue: TypeAlias = str | bytes | date | datetime | timedelta | bool | int | float
 
 
 @dataclass(frozen=True)
@@ -58,8 +61,7 @@ def validate_daily_climate_selection(selection: DailyClimateSelection) -> None:
 def _build_modelling_statement(config: DatabaseConfig):
     daily_climate = f"{config.schema}.{config.daily_climate_table}"
     detail = f"{config.schema}.{config.daily_climate_detail_table}"
-    return text(
-        f"""
+    return f"""
         SELECT
             dc.id AS daily_climate_id,
             dcd.valid_time,
@@ -88,10 +90,9 @@ def _build_modelling_statement(config: DatabaseConfig):
             dcd.longitude,
             dc.id
         """
-    )
 
 
-def _build_query_params(selection: DailyClimateSelection) -> dict[str, object]:
+def _build_query_params(selection: DailyClimateSelection) -> dict[str, SqlParamValue]:
     return {
         "source": selection.source.value,
         "dataset_name": selection.dataset_name,
