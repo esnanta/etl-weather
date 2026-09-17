@@ -20,7 +20,8 @@ Scientific data contracts documented in code and tests must not be changed impli
 - RAW hourly data is the scientific source of truth.
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
-- P15 controlled PostgreSQL-to-DataFrame modelling access is implemented and awaiting verification.
+- P15 controlled PostgreSQL-to-DataFrame access is implemented and verified.
+- P18 test coverage hardening is implemented and awaits local verification.
 - P16 wet-day definition and P17 feature contribution are deferred until approximately ten years of daily data are available.
 
 Do not merge ARCO/CDS artifacts or silently harmonize source-specific behavior.
@@ -152,7 +153,6 @@ TRANSFORMED = Parquet
 Artifacts live under `data/` and are deterministic by logical request partition.
 
 RAW is immutable.
-
 Existing RAW/transformed checkpoints must be resumed and validated, not silently overwritten.
 
 Runtime boundaries:
@@ -180,8 +180,6 @@ Canonical detail foreign key:
 daily_climate_id
 ```
 
-The development database is not yet production data. Therefore the code supports only the current schema and must not carry compatibility logic for discarded development schemas.
-
 Observation identity for database UPSERT:
 
 ```text
@@ -198,21 +196,27 @@ swvl1  -> swvl1_daily_mean_m3_m3
 ssrd   -> ssrd_daily_total_j_m2
 ```
 
-When the development schema changes, prefer recreating the development database/schema over adding legacy migration code.
+The development database supports only the current schema. Prefer recreating development state over adding compatibility behavior for discarded schemas.
 
 ---
 
-## P15 — Modelling Data Access Contract
+## P15 — Daily Climate Repository Contract
 
-Implementation lives in:
+Implementation:
 
 ```text
-pipeline/modelling_data.py
+pipeline/daily_climate_repository.py
+```
+
+Tests:
+
+```text
+tests/unit/test_daily_climate_repository.py
 ```
 
 P15 provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.
 
-The selection must explicitly define:
+Selection explicitly defines:
 
 ```text
 source
@@ -237,33 +241,36 @@ swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
 ```
 
-P15 must:
+P15 must remain read-only, preserve missing values, preserve both timestamps, enforce local-midnight and period bounds, reject empty selections and duplicate local-day/grid observations, and return deterministic ordering.
 
-- remain read-only;
-- fail on empty selections;
-- fail on missing required columns;
-- fail on duplicate `(valid_time_local, latitude, longitude)` observations across selected partitions;
-- preserve local-midnight semantics;
-- preserve missing values as missing;
-- return deterministically ordered rows.
+P15 must not add wet-day labels, scaling, anomaly/rolling features, final clustering features, or create duplicate physical modelling datasets.
 
-P15 must not:
+---
 
-- create database/schema objects;
-- create a duplicate physical feature table/file;
-- add `is_wet_day`;
-- scale/normalize values;
-- create anomaly/rolling features;
-- select final clustering features.
+## P18 — Test Coverage Hardening
 
-P16 and P17 remain separate and are intentionally deferred until the historical dataset is available.
+P18 protects the pipeline boundaries needed before provenance and historical backfill.
+
+Coverage should include:
+
+- fresh/resumed RAW checkpoints and validation after resume;
+- fresh/resumed transformed checkpoints and validation after resume;
+- deterministic artifact paths and overwrite refusal;
+- missing-artifact failures;
+- ERA5-Land transformation edge cases;
+- canonical database schema and indexes;
+- metadata and observation UPSERT contracts;
+- missing-value preservation into database NULL;
+- P15 negative cases and handoff validation;
+- runtime loader delegation without Airflow.
+
+Do not mark P18 complete until the expanded focused test suite passes locally.
 
 ---
 
 ## Validation Rules
 
 Do not bypass validation because an artifact or database row already exists.
-
 Scientific validation takes precedence over generic row-count checks.
 
 ---
@@ -274,13 +281,9 @@ Follow `tests/AGENTS.md`.
 
 Tests must be pytest-based, deterministic, offline by default, small, readable, and independent from Airflow for core pipeline behavior.
 
-P15 tests belong in `tests/unit/test_modelling_data.py` and must verify read-access contracts without requiring live PostgreSQL for routine unit tests.
-
 ---
 
 ## Current Status
-
-Verified before P15 implementation:
 
 ```text
 [x] P4  RAW hourly retained
@@ -294,21 +297,16 @@ Verified before P15 implementation:
 [x] P12 temporal validation
 [x] P13 spatial validation
 [x] P14 unit conversion
+[x] P15 controlled daily-climate modelling access
 [x] P20 hourly ERA5-Land RAW
-```
-
-Current:
-
-```text
-[~] P15 controlled daily-climate modelling access — implemented, verification pending
-[ ] P18 complete ERA5-Land test coverage
+[~] P18 test coverage hardening — implementation added, verification pending
 [ ] P19 provenance
 [ ] Airflow DAG / historical backfill orchestration
+[ ] 10-year historical backfill
 [ ] P16 wet-day definition — deferred until 10-year data exists
 [ ] P17 feature contribution — deferred until 10-year data exists
+[ ] wet-day clustering
 ```
-
-Do not mark P15 complete until both focused tests and a real PostgreSQL read have succeeded.
 
 ---
 
@@ -320,7 +318,6 @@ Do not mark P15 complete until both focused tests and a real PostgreSQL read hav
 - Do not change unit/time semantics silently.
 - Do not bypass validation on resumed artifacts.
 - Do not return database loading to blind append behavior.
-- Do not add compatibility code for discarded development database schemas.
 - Do not use any foreign key other than `daily_climate_id` for canonical daily-climate details.
 - Do not create a duplicate P15 physical dataset without a demonstrated need.
 - Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
