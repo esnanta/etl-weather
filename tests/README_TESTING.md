@@ -99,15 +99,7 @@ Canonical detail foreign key:
 daily_climate_id
 ```
 
-Legacy names:
-
-```text
-weather_dataset
-weather_dataset_detail
-dataset_id
-```
-
-are migration inputs only and must not be treated as the active schema contract.
+The development database supports only the current schema. Tests must not preserve compatibility behavior for discarded development schemas.
 
 `daily_climate.request_key` identifies a logical request partition.
 
@@ -151,7 +143,7 @@ test_validation.py
 - canonical `daily_climate` / `daily_climate_detail` configuration;
 - `daily_climate_id` foreign-key naming;
 - provider-to-database column mapping;
-- request-key reuse;
+- deterministic request-key UPSERT;
 - idempotent metadata behavior;
 - UPSERT-oriented observation persistence.
 
@@ -255,7 +247,7 @@ pytest \
   tests/unit/test_load.py -v
 ```
 
-Baseline before the current daily-climate schema refinement:
+Baseline before the current clean daily-climate schema:
 
 ```text
 31 passed
