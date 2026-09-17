@@ -1,6 +1,6 @@
 # Tests AGENTS
 
-This document defines the testing rules for code under `tests/` and complements the project-level `../AGENTS.md`.
+This document defines testing rules for `tests/` and complements `../AGENTS.md`.
 
 Authoritative references:
 
@@ -10,29 +10,24 @@ Authoritative references:
 - `../docs/AIRFLOW_CODING_GUIDELINES.md`
 - `README_TESTING.md`
 
-If this file conflicts with a broader project rule, follow the more specific testing rule here unless the project-level file explicitly defines a stricter scientific contract.
-
 ## Scope
 
-Testing protects the Weather ETL pipeline before Airflow orchestration is introduced.
+Core tests protect the Weather ETL pipeline and P15 modelling-data access before Airflow orchestration is introduced.
 
-Current active development context:
+Current path:
 
 ```text
 CDS ERA5-Land hourly RAW
-→ local daily transformed dataset
-→ PostgreSQL
+→ UTC+7 daily transformed data
+→ PostgreSQL daily_climate / daily_climate_detail
+→ P15 in-memory modelling access
 ```
 
-Airflow will later orchestrate pipeline boundaries, but core tests must remain runnable without an Airflow scheduler or DAG runtime.
+Core tests must not require Airflow.
 
-## Current Locked Contracts
+## Locked Contracts
 
-Tests must preserve the currently accepted pipeline contracts unless a task explicitly revises them.
-
-### Provider variable identity
-
-Primary variable names are:
+Provider variables:
 
 ```text
 tp
@@ -42,38 +37,14 @@ swvl1
 ssrd
 ```
 
-Do not rewrite tests to make CDS long API names the internal canonical names.
-
-Long names may appear only where testing API mapping, normalization, human-readable descriptions, or legacy migration behavior.
-
-### ERA5-Land daily semantics
-
-Timezone:
+Daily timestamps:
 
 ```text
-Asia/Jakarta (UTC+07:00)
+valid_time
+valid_time_local
 ```
 
-Local midnight boundary:
-
-```text
-17:00 UTC
-```
-
-Accumulated variables:
-
-```text
-tp
-ssrd
-```
-
-Daily mean variables:
-
-```text
-t2m
-d2m
-swvl1
-```
+Do not drop either timestamp or rename `valid_time_local` to generic `date`.
 
 Output units:
 
@@ -85,35 +56,27 @@ swvl1 = m3/m3
 ssrd  = J/m2/day
 ```
 
-Do not replace the established accumulated-variable boundary formula with hourly differencing in tests or fixtures.
+Missing values are not zero.
 
-### Transformed schema
+## PostgreSQL Contract
 
-Expected core transformed columns:
-
-```text
-valid_time
-valid_time_local
-latitude
-longitude
-tp
-t2m
-swvl1
-ssrd
-d2m
-```
-
-### Checkpoint and idempotency
-
-P10 and P11 are completed contracts:
+Canonical tables:
 
 ```text
-same logical request → deterministic artifact path
-RAW checkpoint       → immutable
-existing checkpoint  → resume, then validate
-same request_key     → same dataset identity
-same observation key → UPSERT, not duplicate append
+climate_data.daily_climate
+climate_data.daily_climate_detail
 ```
+
+Legacy names:
+
+```text
+weather_dataset
+weather_dataset_detail
+```
+
+may appear only in migration tests. Do not use them as the active schema contract.
+
+Logical partition identity uses deterministic `request_key`.
 
 Observation identity:
 
@@ -121,322 +84,119 @@ Observation identity:
 dataset_id + valid_time + latitude + longitude
 ```
 
-## Testing Structure
+Database writes must remain idempotent UPSERT operations.
 
-Use the formal structure:
+## P10/P11 Rules
+
+Protect:
 
 ```text
-tests/
-├── unit/
-└── integration/
+same logical request → deterministic artifact path
+RAW checkpoint       → immutable
+existing checkpoint  → resume and validate
+same request_key     → same partition identity
+same observation key → UPSERT, not duplicate append
 ```
 
-Do not move ordinary core-pipeline tests into Airflow DAG tests.
+Do not weaken these tests to make later modelling work pass.
 
-### Unit tests
+## P15 Rules
 
-`tests/unit/` contains isolated tests for one module or one responsibility.
+P15 means controlled, validated read access from canonical PostgreSQL daily climate observations to an in-memory modelling dataset.
 
-Typical responsibilities include:
+P15 tests must verify that:
 
-- request/config validation;
-- CDS normalization;
-- scientific transformation;
-- temporal validation;
-- spatial validation;
-- storage/checkpoint behavior;
-- database-load preparation and idempotency.
+- source/dataset/period/spatial or partition selection is explicit;
+- both time fields are preserved;
+- daily climate values retain their database meanings and units;
+- missing values remain missing;
+- read access does not mutate canonical climate truth;
+- no duplicate physical feature table/file is created merely to copy existing data.
 
-### Integration tests
+The five meteorological variables are candidate parameters, not a locked clustering feature set.
 
-`tests/integration/` verifies multiple real pipeline components working together.
+Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to P15 tests. Those belong to later stages.
 
-Use isolated resources and mock only external systems where necessary.
+## Test Structure
 
-## Testing Style
+Use:
 
-- Use `pytest`.
-- Prefer test functions over test classes unless a class materially improves organization.
-- Keep tests small, deterministic, readable, and offline-first.
-- Prefer real pipeline functions and domain objects.
-- Mock external network/provider boundaries, not internal business logic.
-- Keep one implementation responsibility aligned with one test module where practical.
-- Do not rely on test execution order.
-- Do not share mutable state between tests.
-- Use explicit expected values rather than broad truthy assertions when scientific correctness is involved.
+```text
+tests/unit/
+tests/integration/
+```
+
+Unit tests should be small, deterministic, offline-first, and focused on one responsibility.
+
+Integration tests should use isolated resources and real pipeline components where practical.
 
 ## Fixtures
-
-Fixtures should be the smallest realistic data needed to prove a rule.
 
 Prefer:
 
 ```text
 1–3 local days
 1–a few grid cells
-small xarray.Dataset objects
-small pandas.DataFrame objects
-explicit timestamps
+small xarray.Dataset
+small pandas.DataFrame
+explicit UTC/local timestamps
 manually verifiable numeric values
 ```
 
-Use temporary directories for generated artifacts.
+Use temporary directories for artifact tests.
 
-Do not write test artifacts into the repository's real `data/` directory.
+Do not require live CDS/ARCO access in routine tests.
 
-Do not require live CDS or ARCO downloads in routine tests.
+## Scientific Testing
 
-## Scientific Test Requirements
+Expected values must be traceable to explicit rules:
 
-Scientific correctness is part of software correctness.
-
-When testing transformations, make expected values traceable to an explicit rule:
-
-- aggregation formula;
+- accumulation formula;
 - unit conversion;
 - timezone offset;
-- provider data contract;
-- spatial grid rule.
+- grid resolution;
+- schema contract.
 
-Avoid tests that merely assert that a function returns a non-empty DataFrame.
+Do not settle for non-empty/truthy assertions when a precise value can be asserted.
 
-For accumulated variables, choose fixture values whose expected daily result can be calculated manually.
+Negative tests are required where meaningful, including missing hourly steps, wrong grid resolution, wrong UTC/local offset, duplicate observations, unsupported variables, and RAW overwrite attempts.
 
-For UTC/local tests, choose timestamps that visibly exercise the 17:00 UTC local-midnight boundary.
+## Module Guidance
 
-For missing values, preserve the distinction:
+- `test_config_requests.py`: typed source/dataset request configuration.
+- `test_extract.py`: extraction helpers without live provider access.
+- `test_extract_cds_normalization.py`: API names → provider codes and `valid_time` normalization.
+- `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
+- `test_transform.py`: daily aggregation, timestamps, units, source metadata removal.
+- `test_validation.py`: temporal/spatial positive and negative contracts.
+- `test_storage.py`: deterministic artifacts, RAW immutability, checkpoint resume.
+- `test_load.py`: canonical daily-climate table names, column mapping, metadata reuse, UPSERT preparation.
 
-```text
-0   = observed zero
-NaN = missing/invalid observation
-```
-
-Do not globally fill NaNs with zero in fixtures or expected outputs unless the specific behavior being tested explicitly requires it.
-
-## Positive and Negative Cases
-
-Validation behavior should normally have both acceptance and rejection tests.
-
-Important rejection cases include:
-
-- missing hourly timestep;
-- wrong spatial resolution;
-- wrong UTC/local offset;
-- missing requested local day;
-- duplicate transformed grid record;
-- off-grid coordinate;
-- unsupported provider variable;
-- CDS API long name used as an internal request variable;
-- duplicate requested variables;
-- attempted overwrite of an existing RAW checkpoint.
-
-Do not weaken negative tests simply to make a new implementation pass.
-
-## P10 Checkpoint/Resume Rules
-
-Tests for storage/runtime resume behavior must protect these semantics:
-
-```text
-RAW missing  → create checkpoint
-RAW exists   → resume checkpoint
-RAW exists   → do not overwrite silently
-```
-
-Likewise for transformed Parquet:
-
-```text
-Parquet missing → transform and create
-Parquet exists  → resume and validate
-```
-
-Artifact naming must remain deterministic for the same logical request.
-
-A checkpoint being present does not remove the requirement to validate it before downstream use.
-
-## P11 Database Idempotency Rules
-
-Tests must treat `request_key` as the logical dataset-partition identity.
-
-The request key must account for:
-
-```text
-source
-dataset
-period
-variable set
-bbox
-```
-
-Variable ordering alone must not produce a different key.
-
-Database tests should distinguish:
-
-```text
-rows_processed
-```
-
-from:
-
-```text
-rows_inserted
-```
-
-because a retry may process rows through UPSERT without creating new rows.
-
-When a real/isolated PostgreSQL integration test is used, loading the same transformed partition twice should result in:
-
-```text
-same logical dataset identity
-0 duplicate observation keys
-```
-
-## Unit Test Module Guidance
-
-### `test_config_requests.py`
-
-Protect default typed request construction and supported source/dataset configuration.
-
-### `test_extract.py`
-
-Test extraction helpers that do not require live provider access.
-
-### `test_extract_cds_normalization.py`
-
-Protect normalization from CDS response naming to provider codes and `valid_time` semantics.
-
-### `test_utils_request_validation.py`
-
-Protect provider-name request validation, deterministic variable signatures, and deterministic request keys.
-
-### `test_transform.py`
-
-Protect local-day aggregation, accumulated-variable formula, daily means, unit conversion, and removal of source-only metadata.
-
-### `test_validation.py`
-
-Protect temporal and spatial contracts with both pass and fail cases.
-
-### `test_storage.py`
-
-Protect deterministic artifact paths, RAW immutability, NetCDF persistence, and checkpoint resume behavior.
-
-### `test_load.py`
-
-Protect provider-to-database daily-column mapping and idempotent dataset metadata behavior.
-
-Do not describe `test_load.py` as CSV export testing; the active load target is PostgreSQL.
-
-## Integration Test Rules
-
-Integration tests should verify pipeline contracts across boundaries, for example:
-
-```text
-synthetic RAW
-→ validation
-→ RAW checkpoint
-→ reload
-→ transform
-→ transformed validation
-→ Parquet checkpoint
-```
-
-or:
-
-```text
-transformed fixture
-→ PostgreSQL load
-→ repeated load
-→ duplicate check
-```
-
-Prefer isolated test infrastructure.
-
-Do not make ARCO the sole integration entrypoint. CDS ERA5-Land is currently the active development path and must be covered as a first-class source.
+P15 access tests should be placed in a dedicated test module when the modelling data-access component is introduced rather than overloading transform tests.
 
 ## Airflow Testing
 
-Airflow-specific testing begins when DAGs are implemented.
+When DAGs are added, test orchestration only:
 
-Airflow tests should cover orchestration only:
-
-- DAG import/parse;
-- task IDs;
-- dependency graph;
-- schedule/data interval behavior;
-- retry configuration;
-- concurrency/pools where configured;
+- DAG parsing;
+- task graph;
+- schedule/data intervals;
+- retries;
+- concurrency/pools;
 - small metadata/artifact handoff.
 
-Do not duplicate transformation, validation, unit-conversion, checkpoint, or database-idempotency logic inside DAG tests.
-
-The intended responsibility split is:
-
-```text
-Airflow decides when/what order
-Pipeline decides how data is processed
-```
-
-## P15 Guardrail
-
-P15 — Daily Feature Dataset is the next stage.
-
-When adding P15 tests:
-
-- treat `tp`, `t2m`, `d2m`, `swvl1`, and `ssrd` as candidate variables;
-- do not encode an assumption that all five must be clustering features;
-- keep daily feature-dataset construction separate from P16 wet-day definition;
-- keep feature contribution/subset evaluation separate for P17;
-- do not let modelling-oriented tests redefine locked RAW/transformed scientific semantics.
-
-## Execution Expectations
-
-Routine tests should run offline:
-
-```bash
-pytest tests/unit
-```
-
-Use integration tests separately when needed:
-
-```bash
-pytest tests/integration
-```
-
-The currently verified focused baseline before P15 is:
-
-```text
-31 passed
-3 external dependency deprecation warnings
-```
-
-A warning from an external dependency is not automatically a pipeline failure, but new warnings should be reviewed rather than ignored blindly.
-
-## Definition of Done for Tests
-
-For a new pipeline behavior, prefer this completion standard:
-
-```text
-focused unit test
-+ negative case when meaningful
-+ deterministic fixture
-+ no unnecessary external dependency
-+ integration/runtime verification when external I/O behavior matters
-```
-
-Do not mark a scientific or persistence behavior complete based only on a successful manual run.
+Do not duplicate pipeline scientific tests inside DAG tests.
 
 ## Current Priority
 
-Protect the completed baseline while extending toward P15:
-
 ```text
-[x] P9  provider/native variable naming
+[x] P9  provider variable naming
 [x] P10 checkpoint / resume
 [x] P11 idempotent database load
 [x] P12 temporal validation
 [x] P13 spatial validation
 [x] P14 unit conversion
-[ ] P15 daily feature dataset
+[ ] P15 controlled daily-climate modelling access
 ```
 
-New tests should extend this baseline, not silently alter it.
+New tests must extend this baseline without silently changing it.
