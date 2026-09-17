@@ -111,14 +111,14 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
     source_dataframe = _dataframe().iloc[::-1].reset_index(drop=True)
     captured: dict[str, object] = {}
 
-    def fake_read_sql_query(statement, connection, params):
+    def fake_execute_modelling_query(connection, statement, params):
         captured["sql"] = str(statement)
         captured["params"] = params
         return source_dataframe.copy()
 
     monkeypatch.setattr(
-        "pipeline.daily_climate_repository.pd.read_sql_query",
-        fake_read_sql_query,
+        "pipeline.daily_climate_repository._execute_modelling_query",
+        fake_execute_modelling_query,
     )
 
     engine = create_engine("sqlite://", future=True)
