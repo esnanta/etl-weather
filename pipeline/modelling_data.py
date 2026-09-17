@@ -74,7 +74,7 @@ def _build_modelling_statement(config: DatabaseConfig):
         FROM {daily_climate} AS dc
         JOIN {detail} AS dcd
           ON dcd.daily_climate_id = dc.id
-        WHERE dc.source = :source
+        WHERE CAST(dc.source AS TEXT) = :source
           AND dc.dataset_name = :dataset_name
           AND dc.north_lat = :north_lat
           AND dc.south_lat = :south_lat
@@ -106,11 +106,7 @@ def _build_query_params(selection: DailyClimateSelection) -> dict[str, object]:
     }
 
 
-def validate_modelling_dataframe(
-    dataframe: pd.DataFrame,
-    selection: DailyClimateSelection,
-) -> None:
-    """Validate the canonical database-to-modelling handoff without changing values."""
+def _validate_required_columns(dataframe: pd.DataFrame) -> None:
     missing_columns = [
         column for column in MODELLING_COLUMNS if column not in dataframe.columns
     ]
@@ -119,6 +115,14 @@ def validate_modelling_dataframe(
             "Modelling dataset is missing required columns: "
             + ", ".join(missing_columns)
         )
+
+
+def validate_modelling_dataframe(
+    dataframe: pd.DataFrame,
+    selection: DailyClimateSelection,
+) -> None:
+    """Validate the canonical database-to-modelling handoff without changing values."""
+    _validate_required_columns(dataframe)
     if dataframe.empty:
         raise ValueError("No daily climate observations matched the modelling selection.")
 
@@ -166,6 +170,7 @@ def load_daily_climate_for_modelling(
         if owns_engine:
             resolved_engine.dispose()
 
+    _validate_required_columns(dataframe)
     dataframe = dataframe.loc[:, list(MODELLING_COLUMNS)].copy()
     dataframe["valid_time"] = pd.to_datetime(dataframe["valid_time"])
     dataframe["valid_time_local"] = pd.to_datetime(dataframe["valid_time_local"])
