@@ -88,16 +88,31 @@ def artifact_exists(artifact: DatasetArtifact) -> bool:
     return artifact.path.exists()
 
 
+def _temporary_path(target: Path) -> Path:
+    """Return a same-directory temporary path for atomic replacement."""
+    return target.with_name(f".{target.name}.tmp")
+
+
 def save_raw_netcdf(dataset: RawWeatherDataset) -> DatasetArtifact:
-    """Persist RAW source truth once; RAW artifacts are immutable."""
+    """Persist RAW source truth once using an atomic same-filesystem write."""
     nc_artifact = raw_artifact_for_request(dataset.request)
     if artifact_exists(nc_artifact):
         raise FileExistsError(
             f"RAW artifact already exists and is immutable: {nc_artifact.path}"
         )
+
     nc_artifact.path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = _temporary_path(nc_artifact.path)
+    if temporary_path.exists():
+        temporary_path.unlink()
+
     logger.info("Writing RAW NetCDF checkpoint:\n%s", nc_artifact.path)
-    dataset.raw_data.to_netcdf(nc_artifact.path)
+    try:
+        dataset.raw_data.to_netcdf(temporary_path)
+        temporary_path.replace(nc_artifact.path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
     return nc_artifact
 
 
@@ -135,21 +150,31 @@ def save_transformed_parquet(
     request: WeatherRequest,
     downloaded_at: datetime,
 ) -> DatasetArtifact:
-    """Persist a transformed checkpoint once for deterministic retries."""
+    """Persist a transformed checkpoint once using an atomic write."""
     parquet_artifact = transformed_artifact_for_request(request)
     if artifact_exists(parquet_artifact):
         raise FileExistsError(
             "Transformed artifact already exists; resume it explicitly instead of "
             f"overwriting: {parquet_artifact.path}"
         )
+
     parquet_artifact = DatasetArtifact(
         layer=parquet_artifact.layer,
         created_at=downloaded_at,
         path=parquet_artifact.path,
     )
     parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = _temporary_path(parquet_artifact.path)
+    if temporary_path.exists():
+        temporary_path.unlink()
+
     logger.info("Writing transformed Parquet checkpoint:\n%s", parquet_artifact.path)
-    df.to_parquet(parquet_artifact.path, index=False)
+    try:
+        df.to_parquet(temporary_path, index=False)
+        temporary_path.replace(parquet_artifact.path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
     return parquet_artifact
 
 
