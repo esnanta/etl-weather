@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
-from pipeline.load import _prepare_observation_dataframe, insert_dataset
+from pipeline.load import _prepare_observation_dataframe, upsert_daily_climate_metadata
 from pipeline.model import (
     BoundingBox,
     DataSource,
@@ -58,6 +58,13 @@ def _config() -> DatabaseConfig:
     )
 
 
+def test_database_config_uses_daily_climate_table_names() -> None:
+    config = _config()
+
+    assert config.daily_climate_table == "daily_climate"
+    assert config.daily_climate_detail_table == "daily_climate_detail"
+
+
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
     dataframe, rename_map = _prepare_observation_dataframe(_dataset(), dataset_id=7)
 
@@ -83,7 +90,7 @@ class _ScalarResult:
         return self.value
 
 
-class _ExistingDatasetConnection:
+class _ExistingDailyClimateConnection:
     def __init__(self, dataset_id: int):
         self.dataset_id = dataset_id
         self.statements: list[str] = []
@@ -96,11 +103,12 @@ class _ExistingDatasetConnection:
         raise AssertionError(f"Unexpected SQL after existing request key was found: {sql}")
 
 
-def test_insert_dataset_reuses_existing_request_key_dataset_id() -> None:
-    connection = _ExistingDatasetConnection(dataset_id=42)
+def test_upsert_daily_climate_metadata_reuses_existing_request_key_id() -> None:
+    connection = _ExistingDailyClimateConnection(dataset_id=42)
 
-    dataset_id = insert_dataset(_dataset(), connection, _config())
+    dataset_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
 
     assert dataset_id == 42
     assert len(connection.statements) == 1
     assert connection.statements[0].lstrip().startswith("SELECT id")
+    assert "daily_climate" in connection.statements[0]
