@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 SCHEMA_NAME = "climate_data"
 DAILY_CLIMATE_TABLE = "daily_climate"
 DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
-LEGACY_DATASET_TABLE = "weather_dataset"
-LEGACY_DATASET_DETAIL_TABLE = "weather_dataset_detail"
-LEGACY_DETAIL_FOREIGN_KEY = "dataset_id"
-DAILY_CLIMATE_FOREIGN_KEY = "daily_climate_id"
 
 DAILY_CLIMATE_COLUMNS = (
     "tp_daily_total_mm",
@@ -29,19 +25,6 @@ DAILY_CLIMATE_COLUMNS = (
     "swvl1_daily_mean_m3_m3",
     "ssrd_daily_total_j_m2",
 )
-
-LEGACY_TO_DAILY_COLUMNS = {
-    "tp": "tp_daily_total_mm",
-    "total_precipitation": "tp_daily_total_mm",
-    "t2m": "t2m_daily_mean_c",
-    "2m_temperature": "t2m_daily_mean_c",
-    "d2m": "d2m_daily_mean_c",
-    "2m_dewpoint_temperature": "d2m_daily_mean_c",
-    "swvl1": "swvl1_daily_mean_m3_m3",
-    "volumetric_soil_water_layer_1": "swvl1_daily_mean_m3_m3",
-    "ssrd": "ssrd_daily_total_j_m2",
-    "surface_solar_radiation_downwards": "ssrd_daily_total_j_m2",
-}
 
 
 @dataclass(frozen=True)
@@ -148,44 +131,11 @@ def create_schema(
     log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
-def migrate_legacy_table_names(
-    engine: Engine,
-    config: DatabaseConfig | None = None,
-) -> None:
-    """Rename pre-P15 weather tables when the new daily-climate names do not exist."""
-    resolved_config = resolve_database_config(config)
-    schema = resolved_config.schema
-    daily_table = resolved_config.daily_climate_table
-    detail_table = resolved_config.daily_climate_detail_table
-
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                f"""
-                DO $$
-                BEGIN
-                    IF to_regclass('{schema}.{daily_table}') IS NULL
-                       AND to_regclass('{schema}.{LEGACY_DATASET_TABLE}') IS NOT NULL THEN
-                        ALTER TABLE {schema}.{LEGACY_DATASET_TABLE}
-                        RENAME TO {daily_table};
-                    END IF;
-
-                    IF to_regclass('{schema}.{detail_table}') IS NULL
-                       AND to_regclass('{schema}.{LEGACY_DATASET_DETAIL_TABLE}') IS NOT NULL THEN
-                        ALTER TABLE {schema}.{LEGACY_DATASET_DETAIL_TABLE}
-                        RENAME TO {detail_table};
-                    END IF;
-                END $$;
-                """
-            )
-        )
-
-
 def create_daily_climate_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create daily-climate partition metadata with stable logical identity."""
+    """Create metadata for one logical daily-climate partition."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.daily_climate_table}"
     index_name = f"uq_{resolved_config.daily_climate_table}_request_key"
@@ -208,41 +158,25 @@ def create_daily_climate_table(
                 CREATE TABLE IF NOT EXISTS {table}
                 (
                     id BIGSERIAL PRIMARY KEY,
-                    request_key TEXT,
+                    request_key TEXT NOT NULL,
                     dataset_name TEXT NOT NULL,
                     source {resolved_config.schema}.data_source_enum NOT NULL,
                     start_date DATE NOT NULL,
                     end_date DATE NOT NULL,
-                    variable_signature TEXT,
-                    north_lat DOUBLE PRECISION,
-                    south_lat DOUBLE PRECISION,
-                    east_lon DOUBLE PRECISION,
-                    west_lon DOUBLE PRECISION,
+                    variable_signature TEXT NOT NULL,
+                    north_lat DOUBLE PRECISION NOT NULL,
+                    south_lat DOUBLE PRECISION NOT NULL,
+                    east_lon DOUBLE PRECISION NOT NULL,
+                    west_lon DOUBLE PRECISION NOT NULL,
                     transformed_at TIMESTAMPTZ NOT NULL
                 )
                 """
             )
         )
-
-        for column_definition in (
-            "request_key TEXT",
-            "variable_signature TEXT",
-            "north_lat DOUBLE PRECISION",
-            "south_lat DOUBLE PRECISION",
-            "east_lon DOUBLE PRECISION",
-            "west_lon DOUBLE PRECISION",
-        ):
-            connection.execute(
-                text(
-                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
-                    f"{column_definition}"
-                )
-            )
-
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON {table} (request_key) WHERE request_key IS NOT NULL"
+                f"ON {table} (request_key)"
             )
         )
 
@@ -256,73 +190,11 @@ def create_daily_climate_table(
     )
 
 
-def _migrate_legacy_weather_columns(
-    connection,
-    *,
-    schema: str,
-    table_name: str,
-    table: str,
-) -> None:
-    for legacy_name, daily_name in LEGACY_TO_DAILY_COLUMNS.items():
-        connection.execute(
-            text(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_schema = '{schema}'
-                          AND table_name = '{table_name}'
-                          AND column_name = '{legacy_name}'
-                    ) THEN
-                        EXECUTE 'UPDATE {table} SET {daily_name} = COALESCE({daily_name}, "{legacy_name}")';
-                        EXECUTE 'ALTER TABLE {table} DROP COLUMN "{legacy_name}"';
-                    END IF;
-                END $$;
-                """
-            )
-        )
-
-
-def _migrate_daily_climate_foreign_key(
-    connection,
-    *,
-    schema: str,
-    table_name: str,
-    table: str,
-) -> None:
-    """Rename legacy dataset_id to daily_climate_id without dropping detail data."""
-    connection.execute(
-        text(
-            f"""
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = '{schema}'
-                      AND table_name = '{table_name}'
-                      AND column_name = '{LEGACY_DETAIL_FOREIGN_KEY}'
-                ) AND NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = '{schema}'
-                      AND table_name = '{table_name}'
-                      AND column_name = '{DAILY_CLIMATE_FOREIGN_KEY}'
-                ) THEN
-                    ALTER TABLE {table}
-                    RENAME COLUMN {LEGACY_DETAIL_FOREIGN_KEY}
-                    TO {DAILY_CLIMATE_FOREIGN_KEY};
-                END IF;
-            END $$;
-            """
-        )
-    )
-
-
 def create_daily_climate_detail_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create daily climate observations with retry-safe natural uniqueness."""
+    """Create canonical daily climate observations."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.daily_climate_detail_table}"
     index_name = f"uq_{resolved_config.daily_climate_detail_table}_grid_time"
@@ -336,7 +208,7 @@ def create_daily_climate_detail_table(
                     id BIGSERIAL PRIMARY KEY,
                     daily_climate_id BIGINT NOT NULL,
                     valid_time TIMESTAMP NOT NULL,
-                    valid_time_local TIMESTAMP,
+                    valid_time_local TIMESTAMP NOT NULL,
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
                     tp_daily_total_mm DOUBLE PRECISION,
@@ -352,50 +224,6 @@ def create_daily_climate_detail_table(
                 """
             )
         )
-
-        _migrate_daily_climate_foreign_key(
-            connection,
-            schema=resolved_config.schema,
-            table_name=resolved_config.daily_climate_detail_table,
-            table=table,
-        )
-
-        connection.execute(
-            text(
-                f"ALTER TABLE {table} "
-                "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
-            )
-        )
-        for column_name in DAILY_CLIMATE_COLUMNS:
-            connection.execute(
-                text(
-                    f"ALTER TABLE {table} "
-                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
-                )
-            )
-
-        _migrate_legacy_weather_columns(
-            connection,
-            schema=resolved_config.schema,
-            table_name=resolved_config.daily_climate_detail_table,
-            table=table,
-        )
-
-        connection.execute(
-            text(
-                f"""
-                DELETE FROM {table} duplicate
-                USING {table} keeper
-                WHERE duplicate.id > keeper.id
-                  AND duplicate.daily_climate_id = keeper.daily_climate_id
-                  AND duplicate.valid_time = keeper.valid_time
-                  AND duplicate.latitude = keeper.latitude
-                  AND duplicate.longitude = keeper.longitude
-                """
-            )
-        )
-        connection.execute(text(f"DROP INDEX IF EXISTS {resolved_config.schema}.uq_weather_dataset_detail_grid_time"))
-        connection.execute(text(f"DROP INDEX IF EXISTS {resolved_config.schema}.uq_daily_climate_detail_grid_time"))
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
@@ -409,6 +237,8 @@ def create_daily_climate_detail_table(
             "table": resolved_config.daily_climate_detail_table,
             "status": "ready",
             "weather_column_contract": "provider-based daily statistics",
-            "idempotency_key": "daily_climate_id + valid_time + latitude + longitude",
+            "idempotency_key": (
+                "daily_climate_id + valid_time + latitude + longitude"
+            ),
         },
     )
