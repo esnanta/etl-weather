@@ -117,7 +117,8 @@ def _execute_modelling_query(
 ) -> pd.DataFrame:
     """Execute the parameterized read through SQLAlchemy and return a DataFrame."""
     result = connection.execute(statement, params)
-    return pd.DataFrame(result.mappings().all(), columns=result.keys())
+    columns = list(result.keys())
+    return pd.DataFrame(result.mappings().all(), columns=columns)
 
 
 def _validate_required_columns(dataframe: pd.DataFrame) -> None:
