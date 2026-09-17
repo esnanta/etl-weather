@@ -69,7 +69,7 @@ def test_build_modelling_statement_uses_canonical_tables_and_filters() -> None:
     assert "climate_data.daily_climate AS dc" in sql
     assert "climate_data.daily_climate_detail AS dcd" in sql
     assert "dcd.daily_climate_id = dc.id" in sql
-    assert "dc.source = :source" in sql
+    assert "CAST(dc.source AS TEXT) = :source" in sql
     assert "dc.dataset_name = :dataset_name" in sql
     assert "dcd.valid_time_local >= :start_time" in sql
     assert "dcd.valid_time_local < :end_time_exclusive" in sql
@@ -86,6 +86,13 @@ def test_validate_daily_climate_selection_rejects_reversed_period() -> None:
 
     with pytest.raises(ValueError, match="start_date"):
         validate_daily_climate_selection(selection)
+
+
+def test_validate_modelling_dataframe_rejects_missing_required_column() -> None:
+    dataframe = _dataframe().drop(columns=["valid_time"])
+
+    with pytest.raises(ValueError, match="valid_time"):
+        validate_modelling_dataframe(dataframe, _selection())
 
 
 def test_validate_modelling_dataframe_rejects_duplicate_local_grid_observation() -> None:
