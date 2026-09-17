@@ -15,10 +15,12 @@ from pipeline.logging import log_metric
 logger = logging.getLogger(__name__)
 
 SCHEMA_NAME = "climate_data"
-DATASET_TABLE = "weather_dataset"
-DATASET_TABLE_DETAIL = "weather_dataset_detail"
+DAILY_CLIMATE_TABLE = "daily_climate"
+DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
+LEGACY_DATASET_TABLE = "weather_dataset"
+LEGACY_DATASET_DETAIL_TABLE = "weather_dataset_detail"
 
-DAILY_WEATHER_COLUMNS = (
+DAILY_CLIMATE_COLUMNS = (
     "tp_daily_total_mm",
     "t2m_daily_mean_c",
     "d2m_daily_mean_c",
@@ -48,8 +50,8 @@ class DatabaseConfig:
     user: str
     password: str
     schema: str = SCHEMA_NAME
-    dataset_table: str = DATASET_TABLE
-    dataset_table_detail: str = DATASET_TABLE_DETAIL
+    daily_climate_table: str = DAILY_CLIMATE_TABLE
+    daily_climate_detail_table: str = DAILY_CLIMATE_DETAIL_TABLE
 
     @classmethod
     def from_env(
@@ -144,14 +146,47 @@ def create_schema(
     log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
-def create_dataset_table(
+def migrate_legacy_table_names(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create dataset metadata with a stable logical request identity."""
+    """Rename pre-P15 weather tables when the new daily-climate names do not exist."""
     resolved_config = resolve_database_config(config)
-    table = f"{resolved_config.schema}.{resolved_config.dataset_table}"
-    index_name = f"uq_{resolved_config.dataset_table}_request_key"
+    schema = resolved_config.schema
+    daily_table = resolved_config.daily_climate_table
+    detail_table = resolved_config.daily_climate_detail_table
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF to_regclass('{schema}.{daily_table}') IS NULL
+                       AND to_regclass('{schema}.{LEGACY_DATASET_TABLE}') IS NOT NULL THEN
+                        ALTER TABLE {schema}.{LEGACY_DATASET_TABLE}
+                        RENAME TO {daily_table};
+                    END IF;
+
+                    IF to_regclass('{schema}.{detail_table}') IS NULL
+                       AND to_regclass('{schema}.{LEGACY_DATASET_DETAIL_TABLE}') IS NOT NULL THEN
+                        ALTER TABLE {schema}.{LEGACY_DATASET_DETAIL_TABLE}
+                        RENAME TO {detail_table};
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
+
+def create_daily_climate_table(
+    engine: Engine,
+    config: DatabaseConfig | None = None,
+) -> None:
+    """Create daily-climate partition metadata with stable logical identity."""
+    resolved_config = resolve_database_config(config)
+    table = f"{resolved_config.schema}.{resolved_config.daily_climate_table}"
+    index_name = f"uq_{resolved_config.daily_climate_table}_request_key"
 
     with engine.begin() as connection:
         connection.execute(
@@ -212,7 +247,7 @@ def create_dataset_table(
     log_metric(
         "Table status",
         {
-            "table": resolved_config.dataset_table,
+            "table": resolved_config.daily_climate_table,
             "status": "ready",
             "idempotency_key": "request_key",
         },
@@ -247,14 +282,14 @@ def _migrate_legacy_weather_columns(
         )
 
 
-def create_dataset_table_detail(
+def create_daily_climate_detail_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create observations with a retry-safe natural uniqueness constraint."""
+    """Create daily climate observations with retry-safe natural uniqueness."""
     resolved_config = resolve_database_config(config)
-    table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
-    index_name = f"uq_{resolved_config.dataset_table_detail}_grid_time"
+    table = f"{resolved_config.schema}.{resolved_config.daily_climate_detail_table}"
+    index_name = f"uq_{resolved_config.daily_climate_detail_table}_grid_time"
 
     with engine.begin() as connection:
         connection.execute(
@@ -273,9 +308,9 @@ def create_dataset_table_detail(
                     d2m_daily_mean_c DOUBLE PRECISION,
                     swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
                     ssrd_daily_total_j_m2 DOUBLE PRECISION,
-                    CONSTRAINT fk_detail_dataset
+                    CONSTRAINT fk_daily_climate_detail_dataset
                     FOREIGN KEY (dataset_id)
-                    REFERENCES {resolved_config.schema}.{resolved_config.dataset_table}(id)
+                    REFERENCES {resolved_config.schema}.{resolved_config.daily_climate_table}(id)
                     ON DELETE CASCADE
                 )
                 """
@@ -288,7 +323,7 @@ def create_dataset_table_detail(
                 "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
             )
         )
-        for column_name in DAILY_WEATHER_COLUMNS:
+        for column_name in DAILY_CLIMATE_COLUMNS:
             connection.execute(
                 text(
                     f"ALTER TABLE {table} "
@@ -299,12 +334,10 @@ def create_dataset_table_detail(
         _migrate_legacy_weather_columns(
             connection,
             schema=resolved_config.schema,
-            table_name=resolved_config.dataset_table_detail,
+            table_name=resolved_config.daily_climate_detail_table,
             table=table,
         )
 
-        # Older versions could append duplicate detail rows. Keep one row per
-        # dataset/time/grid before enforcing the retry-safe uniqueness index.
         connection.execute(
             text(
                 f"""
@@ -328,7 +361,7 @@ def create_dataset_table_detail(
     log_metric(
         "Table status",
         {
-            "table": resolved_config.dataset_table_detail,
+            "table": resolved_config.daily_climate_detail_table,
             "status": "ready",
             "weather_column_contract": "provider-based daily statistics",
             "idempotency_key": "dataset_id + valid_time + latitude + longitude",
