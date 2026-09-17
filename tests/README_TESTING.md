@@ -129,6 +129,7 @@ Current modules include:
 
 ```text
 test_config_requests.py
+test_daily_climate_repository.py
 test_extract.py
 test_extract_cds_normalization.py
 test_load.py
@@ -146,6 +147,16 @@ test_validation.py
 - deterministic request-key UPSERT;
 - idempotent metadata behavior;
 - UPSERT-oriented observation persistence.
+
+`test_daily_climate_repository.py` should protect:
+
+- explicit P15 source/dataset/period/bbox selection;
+- canonical table joins;
+- required DataFrame columns;
+- deterministic ordering;
+- duplicate local-day grid detection;
+- preservation of missing values;
+- read-only PostgreSQL-to-DataFrame behavior.
 
 Routine unit tests must not require a live PostgreSQL server.
 
@@ -235,7 +246,7 @@ pytest tests/unit
 pytest tests/integration
 ```
 
-Focused ERA5-Land/P9-P14/P10-P11 suite:
+Focused ERA5-Land/P9-P15 suite:
 
 ```bash
 pytest \
@@ -244,13 +255,14 @@ pytest \
   tests/unit/test_transform.py \
   tests/unit/test_validation.py \
   tests/unit/test_storage.py \
-  tests/unit/test_load.py -v
+  tests/unit/test_load.py \
+  tests/unit/test_daily_climate_repository.py -v
 ```
 
-Baseline before the current clean daily-climate schema:
+Latest verified focused baseline before P15 verification:
 
 ```text
-31 passed
+32 passed
 ```
 
 ---
