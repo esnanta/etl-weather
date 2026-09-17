@@ -12,15 +12,15 @@ Authoritative references:
 
 ## Scope
 
-Core tests protect the Weather ETL pipeline and P15 modelling-data access before Airflow orchestration is introduced.
+Core tests protect the ERA5-Land ETL pipeline and P15 daily-climate repository before Airflow orchestration and long historical backfill.
 
 Current path:
 
 ```text
 CDS ERA5-Land hourly RAW
-→ UTC+7 daily transformed data
-→ PostgreSQL daily_climate / daily_climate_detail
-→ P15 read-only in-memory modelling access
+-> UTC+7 daily transformed data
+-> PostgreSQL daily_climate / daily_climate_detail
+-> P15 read-only in-memory modelling access
 ```
 
 Core tests must not require Airflow.
@@ -73,8 +73,6 @@ Canonical detail foreign key:
 daily_climate_id
 ```
 
-The development database supports only the current schema. Do not add tests for compatibility with discarded development schemas.
-
 Database observation identity:
 
 ```text
@@ -88,26 +86,33 @@ Database writes must remain idempotent UPSERT operations.
 Implementation:
 
 ```text
-pipeline/modelling_data.py
-tests/unit/test_modelling_data.py
+pipeline/daily_climate_repository.py
+tests/unit/test_daily_climate_repository.py
 ```
 
-P15 tests must protect:
+P15 tests must protect explicit source/dataset/period/bbox selection, canonical tables, both time columns, missing values, deterministic ordering, local-midnight semantics, period bounds, duplicate local-day/grid rejection, and read-only behavior.
 
-- explicit source/dataset/period/bbox selection;
-- use of canonical `daily_climate` and `daily_climate_detail` tables;
-- preservation of `daily_climate_id`, `valid_time`, and `valid_time_local`;
-- preservation of database daily-statistic column meanings;
-- missing values remaining missing;
-- deterministic ordering;
-- rejection of missing required columns;
-- rejection of duplicate `(valid_time_local, latitude, longitude)` observations across selected partitions;
-- rejection of invalid date ranges;
-- read-only behavior with no database/schema creation in the P15 access path.
+Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to P15 tests.
 
-The five meteorological variables are candidate parameters, not a locked clustering feature set.
+## P18 Hardening Rules
 
-Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to P15 tests. P16 and P17 are deferred until the historical dataset is available.
+P18 must protect the boundaries that become critical during retry/backfill:
+
+- fresh versus resumed RAW checkpoints;
+- validation after RAW resume;
+- fresh versus resumed transformed checkpoints;
+- validation after transformed resume;
+- deterministic artifact paths;
+- refusal to overwrite checkpoints silently;
+- missing-artifact failures;
+- canonical database schema and indexes;
+- metadata and observation UPSERT identities;
+- missing-value preservation into database NULL;
+- transformation failure for missing inputs or incomplete local days;
+- P15 negative cases and deterministic handoff.
+
+`tests/unit/test_runtime.py` owns orchestration-boundary behavior without Airflow.
+`tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
 
 ## Test Structure
 
@@ -119,40 +124,31 @@ tests/integration/
 ```
 
 Unit tests should be small, deterministic, offline-first, and focused on one responsibility.
-
 Integration tests should use isolated resources and real pipeline components where practical.
 
-## Fixtures
+Prefer 1-3 local days, one or a few grid cells, explicit UTC/local timestamps, deterministic numeric values, and explicit missing-value cases.
 
-Prefer 1–3 local days, one or a few grid cells, explicit UTC/local timestamps, deterministic numeric values, and explicit missing-value cases.
-
-Use temporary directories for artifact tests. Do not require live CDS/ARCO access in routine tests.
-
-## Scientific Testing
-
-Expected values must be traceable to explicit rules such as accumulation formulas, unit conversion, timezone offset, grid resolution, and schema contract.
-
-Do not settle for non-empty/truthy assertions when a precise value can be asserted.
-
-Negative tests are required where meaningful.
+Scientific expected values must be traceable to accumulation formulas, unit conversion, timezone offset, grid resolution, or schema contracts. Prefer exact assertions over truthy/non-empty assertions.
 
 ## Module Guidance
 
-- `test_config_requests.py`: typed source/dataset request configuration.
+- `test_config_requests.py`: typed request configuration.
 - `test_extract.py`: extraction helpers without live provider access.
-- `test_extract_cds_normalization.py`: API names → provider codes and `valid_time` normalization.
+- `test_extract_cds_normalization.py`: API names -> provider codes and `valid_time` normalization.
 - `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
-- `test_transform.py`: daily aggregation, timestamps, units, source metadata removal.
+- `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
-- `test_storage.py`: deterministic artifacts, RAW immutability, checkpoint resume.
-- `test_load.py`: canonical daily-climate schema, column mapping, metadata UPSERT, observation UPSERT preparation.
-- `test_modelling_data.py`: P15 selection, SQL read contract, handoff validation, ordering, and missing-value preservation.
+- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, resume and missing artifacts.
+- `test_database.py`: canonical schema, foreign key, indexes and observation identity.
+- `test_load.py`: column mapping, NULL handling, metadata UPSERT and observation UPSERT.
+- `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
+- `test_daily_climate_repository.py`: P15 selection, SQL contract, validation, ordering and missing values.
 
 ## Airflow Testing
 
 When DAGs are added, test orchestration only: DAG parsing, task graph, schedule/data intervals, retries, concurrency/pools, and small metadata/artifact handoff.
 
-Do not duplicate pipeline scientific or P15 data-access tests inside DAG tests.
+Do not duplicate scientific or P15 tests inside DAG tests.
 
 ## Current Priority
 
@@ -163,9 +159,9 @@ Do not duplicate pipeline scientific or P15 data-access tests inside DAG tests.
 [x] P12 temporal validation
 [x] P13 spatial validation
 [x] P14 unit conversion
-[~] P15 controlled daily-climate modelling access — implementation added, verification pending
-[ ] P18 complete ERA5-Land test coverage
+[x] P15 controlled daily-climate modelling access
+[~] P18 test coverage hardening — implementation added, verification pending
 [ ] P19 provenance
 ```
 
-New tests must extend this baseline without silently changing it.
+Do not mark P18 complete until the expanded focused suite passes locally.
