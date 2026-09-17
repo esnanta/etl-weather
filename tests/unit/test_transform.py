@@ -96,3 +96,23 @@ def test_source_metadata_is_not_propagated_to_transformed_dataset() -> None:
     assert "surface" not in transformed.columns
     assert "expver" not in transformed.columns
     assert set(["tp", "t2m", "d2m", "swvl1", "ssrd"]).issubset(transformed.columns)
+
+
+def test_era5_land_transform_rejects_missing_requested_column() -> None:
+    loaded = _create_loaded_dataset()
+    loaded.raw_data.drop(columns=["d2m"], inplace=True)
+
+    with pytest.raises(ValueError, match="missing required columns: d2m"):
+        transform_data(loaded)
+
+
+def test_era5_land_transform_rejects_incomplete_local_day() -> None:
+    loaded = _create_loaded_dataset()
+    missing_hour = pd.Timestamp("2022-01-01 06:00:00")
+    loaded.raw_data.drop(
+        loaded.raw_data.index[loaded.raw_data["valid_time"].eq(missing_hour)],
+        inplace=True,
+    )
+
+    with pytest.raises(ValueError, match="produced no complete local days"):
+        transform_data(loaded)
