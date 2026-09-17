@@ -5,8 +5,9 @@ from datetime import date, datetime, time, timedelta
 from typing import TypeAlias
 
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.sql.elements import TextClause
 
 from pipeline.database import DatabaseConfig, resolve_database_config
 from pipeline.logging import log_metric
@@ -58,10 +59,11 @@ def validate_daily_climate_selection(selection: DailyClimateSelection) -> None:
         raise ValueError("east_lon must be greater than or equal to west_lon.")
 
 
-def _build_modelling_statement(config: DatabaseConfig):
+def _build_modelling_statement(config: DatabaseConfig) -> TextClause:
     daily_climate = f"{config.schema}.{config.daily_climate_table}"
     detail = f"{config.schema}.{config.daily_climate_detail_table}"
-    return f"""
+    return text(
+        f"""
         SELECT
             dc.id AS daily_climate_id,
             dcd.valid_time,
@@ -90,6 +92,7 @@ def _build_modelling_statement(config: DatabaseConfig):
             dcd.longitude,
             dc.id
         """
+    )
 
 
 def _build_query_params(selection: DailyClimateSelection) -> dict[str, SqlParamValue]:
@@ -105,6 +108,17 @@ def _build_query_params(selection: DailyClimateSelection) -> dict[str, SqlParamV
             selection.end_date + timedelta(days=1), time.min
         ),
     }
+
+
+def _execute_modelling_query(
+    connection: Connection,
+    statement: TextClause,
+    params: dict[str, SqlParamValue],
+) -> pd.DataFrame:
+    """Execute the parameterized read through SQLAlchemy and return a DataFrame."""
+    result = connection.execute(statement, params)
+    columns = list(result.keys())
+    return pd.DataFrame(result.mappings().all(), columns=columns)
 
 
 def _validate_required_columns(dataframe: pd.DataFrame) -> None:
@@ -166,7 +180,7 @@ def load_daily_climate_for_modelling(
     resolved_engine = engine or create_engine(resolved_config.url, future=True)
     try:
         with resolved_engine.connect() as connection:
-            dataframe = pd.read_sql_query(statement, connection, params=params)
+            dataframe = _execute_modelling_query(connection, statement, params)
     finally:
         if owns_engine:
             resolved_engine.dispose()
