@@ -137,7 +137,7 @@ RAW is immutable. Existing deterministic checkpoints are resumed and validated r
 
 ## PostgreSQL Daily Climate Contract
 
-The database terminology now reflects the data semantics directly.
+The database terminology reflects the data semantics directly.
 
 ### `climate_data.daily_climate`
 
@@ -176,7 +176,7 @@ The same logical request reuses the same metadata row.
 Stores daily grid-cell observations:
 
 ```text
-dataset_id
+daily_climate_id
 valid_time
 valid_time_local
 latitude
@@ -191,25 +191,26 @@ ssrd_daily_total_j_m2
 Observation identity is:
 
 ```text
-dataset_id + valid_time + latitude + longitude
+daily_climate_id + valid_time + latitude + longitude
 ```
 
 Writes use UPSERT semantics, so retrying the same logical partition does not create duplicate observations.
 
-The `dataset_id` name is retained as the partition foreign-key identity; table names are now domain-specific (`daily_climate`, `daily_climate_detail`).
+`daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
 
-### Legacy table migration
+### Legacy schema migration
 
-For development databases created before this naming change, the pipeline can rename:
+For development databases created before this naming change, the pipeline can migrate:
 
 ```text
 weather_dataset        → daily_climate
 weather_dataset_detail → daily_climate_detail
+dataset_id             → daily_climate_id
 ```
 
-when the new table names do not already exist.
+when the canonical replacement does not already exist.
 
-This preserves existing test data while establishing the new canonical names.
+This preserves existing development data while establishing the domain-specific schema.
 
 ---
 
