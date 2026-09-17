@@ -13,7 +13,6 @@ from pipeline.database import (
     create_daily_climate_table,
     create_database_engine,
     create_schema,
-    migrate_legacy_table_names,
     resolve_database_config,
 )
 from pipeline.interfaces import DataLoader
@@ -32,68 +31,6 @@ ERA5_LAND_DATABASE_COLUMNS = {
 }
 
 
-def _adopt_single_legacy_daily_climate(
-    dataset: TransformedWeatherDataset,
-    connection: Connection,
-    config: DatabaseConfig,
-    request_key: str,
-) -> int | None:
-    request = dataset.request
-    legacy_rows = connection.execute(
-        text(
-            f"""
-            SELECT id
-            FROM {config.schema}.{config.daily_climate_table}
-            WHERE request_key IS NULL
-              AND dataset_name = :dataset_name
-              AND source = :source
-              AND start_date = :start_date
-              AND end_date = :end_date
-            ORDER BY id
-            """
-        ),
-        {
-            "dataset_name": request.dataset,
-            "source": request.source.value,
-            "start_date": request.start_date,
-            "end_date": request.end_date,
-        },
-    ).scalars().all()
-
-    if len(legacy_rows) != 1:
-        return None
-
-    daily_climate_id = int(legacy_rows[0])
-    connection.execute(
-        text(
-            f"""
-            UPDATE {config.schema}.{config.daily_climate_table}
-            SET request_key = :request_key,
-                variable_signature = :variable_signature,
-                north_lat = :north_lat,
-                south_lat = :south_lat,
-                east_lon = :east_lon,
-                west_lon = :west_lon
-            WHERE id = :daily_climate_id
-            """
-        ),
-        {
-            "request_key": request_key,
-            "variable_signature": build_variable_signature(request.variables),
-            "north_lat": request.bbox.north_lat,
-            "south_lat": request.bbox.south_lat,
-            "east_lon": request.bbox.east_lon,
-            "west_lon": request.bbox.west_lon,
-            "daily_climate_id": daily_climate_id,
-        },
-    )
-    log_metric(
-        "Legacy daily climate metadata adopted",
-        {"daily_climate_id": daily_climate_id, "request_key": request_key},
-    )
-    return daily_climate_id
-
-
 def upsert_daily_climate_metadata(
     dataset: TransformedWeatherDataset,
     connection: Connection,
@@ -103,63 +40,54 @@ def upsert_daily_climate_metadata(
     request = dataset.request
     request_key = build_request_key(request)
 
-    existing_id = connection.execute(
+    result = connection.execute(
         text(
             f"""
-            SELECT id
-            FROM {config.schema}.{config.daily_climate_table}
-            WHERE request_key = :request_key
+            INSERT INTO {config.schema}.{config.daily_climate_table}
+            (
+                request_key, dataset_name, source, start_date, end_date,
+                variable_signature, north_lat, south_lat, east_lon, west_lon,
+                transformed_at
+            )
+            VALUES
+            (
+                :request_key, :dataset_name, :source, :start_date, :end_date,
+                :variable_signature, :north_lat, :south_lat, :east_lon, :west_lon,
+                :transformed_at
+            )
+            ON CONFLICT (request_key)
+            DO UPDATE SET
+                dataset_name = EXCLUDED.dataset_name,
+                source = EXCLUDED.source,
+                start_date = EXCLUDED.start_date,
+                end_date = EXCLUDED.end_date,
+                variable_signature = EXCLUDED.variable_signature,
+                north_lat = EXCLUDED.north_lat,
+                south_lat = EXCLUDED.south_lat,
+                east_lon = EXCLUDED.east_lon,
+                west_lon = EXCLUDED.west_lon,
+                transformed_at = EXCLUDED.transformed_at
+            RETURNING id
             """
         ),
-        {"request_key": request_key},
-    ).scalar()
-
-    if existing_id is None:
-        existing_id = _adopt_single_legacy_daily_climate(
-            dataset, connection, config, request_key
-        )
-
-    if existing_id is not None:
-        daily_climate_id = int(existing_id)
-    else:
-        result = connection.execute(
-            text(
-                f"""
-                INSERT INTO {config.schema}.{config.daily_climate_table}
-                (
-                    request_key, dataset_name, source, start_date, end_date,
-                    variable_signature, north_lat, south_lat, east_lon, west_lon,
-                    transformed_at
-                )
-                VALUES
-                (
-                    :request_key, :dataset_name, :source, :start_date, :end_date,
-                    :variable_signature, :north_lat, :south_lat, :east_lon, :west_lon,
-                    :transformed_at
-                )
-                ON CONFLICT (request_key) WHERE request_key IS NOT NULL
-                DO UPDATE SET request_key = EXCLUDED.request_key
-                RETURNING id
-                """
-            ),
-            {
-                "request_key": request_key,
-                "dataset_name": request.dataset,
-                "source": request.source.value,
-                "start_date": request.start_date,
-                "end_date": request.end_date,
-                "variable_signature": build_variable_signature(request.variables),
-                "north_lat": request.bbox.north_lat,
-                "south_lat": request.bbox.south_lat,
-                "east_lon": request.bbox.east_lon,
-                "west_lon": request.bbox.west_lon,
-                "transformed_at": datetime.now(timezone.utc),
-            },
-        )
-        daily_climate_id = result.scalar()
-        if daily_climate_id is None:
-            raise RuntimeError("Failed to retrieve daily climate id after metadata upsert.")
-        daily_climate_id = int(daily_climate_id)
+        {
+            "request_key": request_key,
+            "dataset_name": request.dataset,
+            "source": request.source.value,
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+            "variable_signature": build_variable_signature(request.variables),
+            "north_lat": request.bbox.north_lat,
+            "south_lat": request.bbox.south_lat,
+            "east_lon": request.bbox.east_lon,
+            "west_lon": request.bbox.west_lon,
+            "transformed_at": datetime.now(timezone.utc),
+        },
+    )
+    daily_climate_id = result.scalar()
+    if daily_climate_id is None:
+        raise RuntimeError("Failed to retrieve daily climate id after metadata upsert.")
+    daily_climate_id = int(daily_climate_id)
 
     log_metric(
         "Daily climate metadata upsert",
@@ -254,7 +182,6 @@ def load_to_postgresql(
     resolved_config = resolve_database_config(config)
     engine = create_database_engine(resolved_config)
     create_schema(engine, resolved_config)
-    migrate_legacy_table_names(engine, resolved_config)
     create_daily_climate_table(engine, resolved_config)
     create_daily_climate_detail_table(engine, resolved_config)
 
