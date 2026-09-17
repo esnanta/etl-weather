@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, timezone
 
 import pandas as pd
-
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
@@ -16,11 +15,19 @@ from pipeline.database import (
     create_schema,
     resolve_database_config,
 )
+from pipeline.interfaces import DataLoader
 from pipeline.logging import log_metric
 from pipeline.model import TransformedWeatherDataset
-from pipeline.interfaces import DataLoader
 
 logger = logging.getLogger(__name__)
+
+ERA5_LAND_DATABASE_COLUMNS = {
+    "tp": "tp_daily_total_mm",
+    "t2m": "t2m_daily_mean_c",
+    "d2m": "d2m_daily_mean_c",
+    "swvl1": "swvl1_daily_mean_m3_m3",
+    "ssrd": "ssrd_daily_total_j_m2",
+}
 
 
 def insert_dataset(
@@ -28,27 +35,12 @@ def insert_dataset(
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """Insert dataset metadata."""
     result = connection.execute(
         text(
             f"""
-            INSERT INTO
-            {config.schema}.{config.dataset_table}
-            (
-                dataset_name,
-                source,
-                start_date,
-                end_date,
-                transformed_at
-            )
-            VALUES
-            (
-                :dataset_name,
-                :source,
-                :start_date,
-                :end_date,
-                :transformed_at
-            )
+            INSERT INTO {config.schema}.{config.dataset_table}
+            (dataset_name, source, start_date, end_date, transformed_at)
+            VALUES (:dataset_name, :source, :start_date, :end_date, :transformed_at)
             RETURNING id
             """
         ),
@@ -60,13 +52,10 @@ def insert_dataset(
             "transformed_at": datetime.now(timezone.utc),
         },
     )
-
     dataset_id = result.scalar()
     if dataset_id is None:
         raise RuntimeError("Failed to retrieve the dataset id after inserting metadata.")
-    if isinstance(dataset_id, int):
-        return dataset_id
-    return int(str(dataset_id))
+    return int(dataset_id)
 
 
 def insert_observations(
@@ -75,7 +64,7 @@ def insert_observations(
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
-    """Insert weather observations using pipeline canonical column names."""
+    """Insert transformed observations using descriptive daily DB columns."""
     dataframe = dataset.dataset.copy()
 
     for time_column in ("valid_time", "valid_time_local"):
@@ -84,9 +73,14 @@ def insert_observations(
 
     dataframe["dataset_id"] = dataset_id
 
-    # Canonical variable names are intentionally preserved in PostgreSQL.
-    # Provider aliases such as tp/t2m/d2m/swvl1/ssrd belong only at source
-    # normalization boundaries and compact artifact signatures.
+    rename_map = {
+        provider_name: database_name
+        for provider_name, database_name in ERA5_LAND_DATABASE_COLUMNS.items()
+        if provider_name in dataframe.columns
+    }
+    if rename_map:
+        dataframe = dataframe.rename(columns=rename_map)
+
     dataframe.to_sql(
         name=config.dataset_table_detail,
         con=connection,
@@ -102,9 +96,9 @@ def insert_observations(
         {
             "rows": len(dataframe),
             "columns": list(dataframe.columns),
+            "provider_to_database_columns": rename_map,
         },
     )
-
     return len(dataframe)
 
 
@@ -112,10 +106,8 @@ def load_to_postgresql(
     dataset: TransformedWeatherDataset,
     config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
-    """Load a transformed dataset into PostgreSQL."""
     resolved_config = resolve_database_config(config)
     engine = create_database_engine(resolved_config)
-
     create_schema(engine, resolved_config)
     create_dataset_table(engine, resolved_config)
     create_dataset_table_detail(engine, resolved_config)
@@ -135,18 +127,12 @@ def load_to_postgresql(
 
     log_metric(
         "PostgreSQL load completed",
-        {
-            "dataset_id": dataset_id,
-            "rows": rows_inserted,
-        },
+        {"dataset_id": dataset_id, "rows": rows_inserted},
     )
-
     return dataset_id, rows_inserted
 
 
 class PostgresDataLoader(DataLoader):
-    """Handles loading transformed weather data into PostgreSQL."""
-
     def __init__(self, config: DatabaseConfig | None = None):
         self.config = config
 
