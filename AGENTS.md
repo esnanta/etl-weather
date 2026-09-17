@@ -197,7 +197,7 @@ Stores canonical daily climate observations.
 Observation identity:
 
 ```text
-dataset_id + valid_time + latitude + longitude
+daily_climate_id + valid_time + latitude + longitude
 ```
 
 Use UPSERT semantics. Do not return to append-only loading.
@@ -212,16 +212,17 @@ swvl1  -> swvl1_daily_mean_m3_m3
 ssrd   -> ssrd_daily_total_j_m2
 ```
 
-`dataset_id` remains the foreign-key identity of the logical partition.
+`daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
 
-Development databases with legacy table names may be migrated by renaming:
+Development databases with legacy schema may be migrated by renaming:
 
 ```text
 weather_dataset        -> daily_climate
 weather_dataset_detail -> daily_climate_detail
+dataset_id             -> daily_climate_id
 ```
 
-only when the canonical table names do not already exist.
+when the canonical replacement does not already exist.
 
 ---
 
@@ -338,6 +339,7 @@ Do not mark a roadmap item complete without test/runtime evidence.
 - Do not bypass validation on resumed artifacts.
 - Do not return database loading to blind append behavior.
 - Do not use `weather_dataset` names as the active schema contract.
+- Do not reintroduce `dataset_id` as the canonical daily-climate detail foreign key.
 - Do not create a duplicate P15 physical dataset without a demonstrated need.
 - Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
 - Do not treat missing values as zero.
