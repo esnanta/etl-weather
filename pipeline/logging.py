@@ -87,7 +87,7 @@ def _log_dataframe_preview(
 def log_pipeline_summary(
     *,
     request,
-    dataset_id: int,
+    daily_climate_id: int,
     rows_processed: int,
     parquet_path: Path,
     started_at: datetime,
@@ -110,7 +110,7 @@ def log_pipeline_summary(
         "Pipeline summary",
         {
             "rows_processed": f"{rows_processed:,}",
-            "dataset_id": dataset_id,
+            "daily_climate_id": daily_climate_id,
             "parquet_file": parquet_path.name,
             "parquet_size_mb": f"{file_size_mb:.2f}",
             "duration_seconds": f"{duration:.2f}",
