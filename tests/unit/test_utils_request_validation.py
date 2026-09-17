@@ -3,11 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
-from pipeline.utils import (
-    CANONICAL_VARIABLE_NAMES,
-    build_request,
-    build_variable_signature,
-)
+from pipeline.utils import build_request, build_variable_signature
 
 
 def _bbox() -> BoundingBox:
@@ -19,39 +15,31 @@ def _bbox() -> BoundingBox:
     )
 
 
-def test_build_request_keeps_explicit_canonical_cds_variables() -> None:
+def test_build_request_keeps_provider_variable_names() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
         dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
-        variables=[
-            "total_precipitation",
-            "2m_temperature",
-            "2m_dewpoint_temperature",
-            "volumetric_soil_water_layer_1",
-            "surface_solar_radiation_downwards",
-        ],
+        variables=["tp", "t2m", "d2m", "swvl1", "ssrd"],
         bbox=_bbox(),
     )
 
     normalized_request = build_request(request)
-
     assert normalized_request.variables == request.variables
-    assert set(normalized_request.variables).issubset(CANONICAL_VARIABLE_NAMES)
 
 
-def test_build_request_rejects_short_provider_variable_name() -> None:
+def test_build_request_rejects_long_api_variable_name() -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
         dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
-        variables=["tp"],
+        variables=["total_precipitation"],
         bbox=_bbox(),
     )
 
-    with pytest.raises(ValueError, match="canonical variable name"):
+    with pytest.raises(ValueError, match="provider variable name"):
         build_request(request)
 
 
@@ -75,7 +63,7 @@ def test_build_request_rejects_duplicate_variables() -> None:
         dataset="reanalysis-era5-land",
         start_date="2024-01-01",
         end_date="2024-01-07",
-        variables=["total_precipitation", "total_precipitation"],
+        variables=["tp", "tp"],
         bbox=_bbox(),
     )
 
@@ -83,17 +71,6 @@ def test_build_request_rejects_duplicate_variables() -> None:
         build_request(request)
 
 
-def test_build_variable_signature_uses_canonical_names() -> None:
-    signature = build_variable_signature(
-        [
-            "total_precipitation",
-            "2m_temperature",
-            "volumetric_soil_water_layer_1",
-            "surface_solar_radiation_downwards",
-        ]
-    )
-
-    assert signature == (
-        "2m_temperature_surface_solar_radiation_downwards_"
-        "total_precipitation_volumetric_soil_water_layer_1"
-    )
+def test_build_variable_signature_uses_provider_names() -> None:
+    signature = build_variable_signature(["tp", "t2m", "swvl1", "ssrd"])
+    assert signature == "ssrd_swvl1_t2m_tp"
