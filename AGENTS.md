@@ -20,7 +20,8 @@ Scientific data contracts documented in code and tests must not be changed impli
 - RAW hourly data is the scientific source of truth.
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
-- P15 is the current modelling-data access stage.
+- P15 controlled PostgreSQL-to-DataFrame modelling access is implemented and awaiting verification.
+- P16 wet-day definition and P17 feature contribution are deferred until approximately ten years of daily data are available.
 
 Do not merge ARCO/CDS artifacts or silently harmonize source-specific behavior.
 
@@ -181,32 +182,11 @@ daily_climate_id
 
 The development database is not yet production data. Therefore the code supports only the current schema and must not carry compatibility logic for discarded development schemas.
 
-### `daily_climate`
-
-Stores logical partition metadata. `request_key` is deterministic from:
-
-```text
-source
-dataset
-start_date
-end_date
-variable set
-bbox
-```
-
-Variable order must not change request identity.
-
-### `daily_climate_detail`
-
-Stores canonical daily climate observations.
-
-Observation identity:
+Observation identity for database UPSERT:
 
 ```text
 daily_climate_id + valid_time + latitude + longitude
 ```
-
-Use UPSERT semantics. Do not return to append-only loading.
 
 Database daily-statistic columns:
 
@@ -218,66 +198,71 @@ swvl1  -> swvl1_daily_mean_m3_m3
 ssrd   -> ssrd_daily_total_j_m2
 ```
 
-`daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
-
 When the development schema changes, prefer recreating the development database/schema over adding legacy migration code.
 
 ---
 
 ## P15 — Modelling Data Access Contract
 
-P15 means:
-
-> Provide controlled and validated access from canonical daily climate observations in PostgreSQL to an in-memory dataset ready for modelling, without creating a duplicate physical dataset and without changing meteorological semantics.
-
-P15 does **not** create a separate physical `daily_feature_dataset` merely to copy existing columns.
-
-Canonical flow:
+Implementation lives in:
 
 ```text
-daily_climate + daily_climate_detail
-        ↓
-explicit modelling query / repository access
-        ↓
-in-memory DataFrame
-        ↓
-P16 wet-day identification
-        ↓
-P17 feature contribution evaluation
+pipeline/modelling_data.py
 ```
 
-Modelling selection must explicitly constrain the relevant:
+P15 provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.
+
+The selection must explicitly define:
 
 ```text
 source
-dataset
-period
-spatial scope
-partition / variable identity
+dataset_name
+start_date
+end_date
+bbox
 ```
 
-All five meteorological variables are candidate parameters only. Do not assume all five become clustering features.
+Returned columns:
 
-Do not add `is_wet_day` to canonical climate truth during P15. Wet-day semantics belong to P16.
+```text
+daily_climate_id
+valid_time
+valid_time_local
+latitude
+longitude
+tp_daily_total_mm
+t2m_daily_mean_c
+d2m_daily_mean_c
+swvl1_daily_mean_m3_m3
+ssrd_daily_total_j_m2
+```
 
-Do not perform scaling, anomaly calculation, rolling features, or clustering transformations in P15 unless separately justified by a later contract.
+P15 must:
+
+- remain read-only;
+- fail on empty selections;
+- fail on missing required columns;
+- fail on duplicate `(valid_time_local, latitude, longitude)` observations across selected partitions;
+- preserve local-midnight semantics;
+- preserve missing values as missing;
+- return deterministically ordered rows.
+
+P15 must not:
+
+- create database/schema objects;
+- create a duplicate physical feature table/file;
+- add `is_wet_day`;
+- scale/normalize values;
+- create anomaly/rolling features;
+- select final clustering features.
+
+P16 and P17 remain separate and are intentionally deferred until the historical dataset is available.
 
 ---
 
 ## Validation Rules
 
 Do not bypass validation because an artifact or database row already exists.
-
-Important checks include:
-
-- continuous hourly RAW time;
-- valid ERA5-Land grid spacing;
-- exact UTC/local +7-hour relation;
-- local midnight semantics;
-- complete requested local-day coverage;
-- duplicate grid-record prevention;
-- stable valid-land grid membership;
-- required transformed columns.
 
 Scientific validation takes precedence over generic row-count checks.
 
@@ -287,21 +272,15 @@ Scientific validation takes precedence over generic row-count checks.
 
 Follow `tests/AGENTS.md`.
 
-Tests must be:
+Tests must be pytest-based, deterministic, offline by default, small, readable, and independent from Airflow for core pipeline behavior.
 
-- pytest-based;
-- deterministic;
-- offline by default;
-- small and readable;
-- independent from Airflow for core pipeline behavior.
-
-For P15, tests must verify controlled selection and returned schema/semantics rather than creating a duplicate feature-storage layer.
+P15 tests belong in `tests/unit/test_modelling_data.py` and must verify read-access contracts without requiring live PostgreSQL for routine unit tests.
 
 ---
 
 ## Current Status
 
-Completed and verified before the current schema cleanup:
+Verified before P15 implementation:
 
 ```text
 [x] P4  RAW hourly retained
@@ -318,13 +297,18 @@ Completed and verified before the current schema cleanup:
 [x] P20 hourly ERA5-Land RAW
 ```
 
-Active:
+Current:
 
 ```text
-[ ] P15 controlled daily-climate modelling access
+[~] P15 controlled daily-climate modelling access — implemented, verification pending
+[ ] P18 complete ERA5-Land test coverage
+[ ] P19 provenance
+[ ] Airflow DAG / historical backfill orchestration
+[ ] P16 wet-day definition — deferred until 10-year data exists
+[ ] P17 feature contribution — deferred until 10-year data exists
 ```
 
-The cleaned PostgreSQL schema must be reverified before P15 is marked complete.
+Do not mark P15 complete until both focused tests and a real PostgreSQL read have succeeded.
 
 ---
 
@@ -342,6 +326,7 @@ The cleaned PostgreSQL schema must be reverified before P15 is marked complete.
 - Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
 - Do not treat missing values as zero.
 - Do not encode wet-day or clustering semantics into canonical daily climate data.
+- Do not make the P15 read path create database objects.
 - Do not place scientific transformations in future DAG files.
 - Do not pass full datasets through future XCom.
 
