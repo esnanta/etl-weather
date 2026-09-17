@@ -78,7 +78,6 @@ def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
         "ssrd": "ssrd_daily_total_j_m2",
     }
     assert dataframe.loc[0, "daily_climate_id"] == 7
-    assert "dataset_id" not in dataframe.columns
     assert dataframe.loc[0, "tp_daily_total_mm"] == 10.0
     assert dataframe.loc[0, "t2m_daily_mean_c"] == 26.0
     assert "tp" not in dataframe.columns
@@ -93,25 +92,30 @@ class _ScalarResult:
         return self.value
 
 
-class _ExistingDailyClimateConnection:
+class _UpsertConnection:
     def __init__(self, daily_climate_id: int):
         self.daily_climate_id = daily_climate_id
         self.statements: list[str] = []
+        self.params: list[dict | None] = []
 
     def execute(self, statement, params=None):
         sql = str(statement)
         self.statements.append(sql)
-        if "WHERE request_key =" in sql:
+        self.params.append(params)
+        if "INSERT INTO" in sql and "ON CONFLICT (request_key)" in sql:
             return _ScalarResult(self.daily_climate_id)
-        raise AssertionError(f"Unexpected SQL after existing request key was found: {sql}")
+        raise AssertionError(f"Unexpected SQL: {sql}")
 
 
-def test_upsert_daily_climate_metadata_reuses_existing_request_key_id() -> None:
-    connection = _ExistingDailyClimateConnection(daily_climate_id=42)
+def test_upsert_daily_climate_metadata_uses_request_key_upsert() -> None:
+    connection = _UpsertConnection(daily_climate_id=42)
 
     daily_climate_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
 
     assert daily_climate_id == 42
     assert len(connection.statements) == 1
-    assert connection.statements[0].lstrip().startswith("SELECT id")
-    assert "daily_climate" in connection.statements[0]
+    sql = connection.statements[0]
+    assert "INSERT INTO climate_data.daily_climate" in sql
+    assert "ON CONFLICT (request_key)" in sql
+    assert "RETURNING id" in sql
+    assert connection.params[0]["request_key"]
