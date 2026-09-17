@@ -63,7 +63,7 @@ def _adopt_single_legacy_daily_climate(
     if len(legacy_rows) != 1:
         return None
 
-    dataset_id = int(legacy_rows[0])
+    daily_climate_id = int(legacy_rows[0])
     connection.execute(
         text(
             f"""
@@ -74,7 +74,7 @@ def _adopt_single_legacy_daily_climate(
                 south_lat = :south_lat,
                 east_lon = :east_lon,
                 west_lon = :west_lon
-            WHERE id = :dataset_id
+            WHERE id = :daily_climate_id
             """
         ),
         {
@@ -84,14 +84,14 @@ def _adopt_single_legacy_daily_climate(
             "south_lat": request.bbox.south_lat,
             "east_lon": request.bbox.east_lon,
             "west_lon": request.bbox.west_lon,
-            "dataset_id": dataset_id,
+            "daily_climate_id": daily_climate_id,
         },
     )
     log_metric(
         "Legacy daily climate metadata adopted",
-        {"dataset_id": dataset_id, "request_key": request_key},
+        {"daily_climate_id": daily_climate_id, "request_key": request_key},
     )
-    return dataset_id
+    return daily_climate_id
 
 
 def upsert_daily_climate_metadata(
@@ -120,7 +120,7 @@ def upsert_daily_climate_metadata(
         )
 
     if existing_id is not None:
-        dataset_id = int(existing_id)
+        daily_climate_id = int(existing_id)
     else:
         result = connection.execute(
             text(
@@ -156,25 +156,25 @@ def upsert_daily_climate_metadata(
                 "transformed_at": datetime.now(timezone.utc),
             },
         )
-        dataset_id = result.scalar()
-        if dataset_id is None:
+        daily_climate_id = result.scalar()
+        if daily_climate_id is None:
             raise RuntimeError("Failed to retrieve daily climate id after metadata upsert.")
-        dataset_id = int(dataset_id)
+        daily_climate_id = int(daily_climate_id)
 
     log_metric(
         "Daily climate metadata upsert",
         {
-            "dataset_id": dataset_id,
+            "daily_climate_id": daily_climate_id,
             "request_key": request_key,
             "variable_signature": build_variable_signature(request.variables),
         },
     )
-    return dataset_id
+    return daily_climate_id
 
 
 def _prepare_observation_dataframe(
     dataset: TransformedWeatherDataset,
-    dataset_id: int,
+    daily_climate_id: int,
 ) -> tuple[pd.DataFrame, dict[str, str]]:
     dataframe = dataset.dataset.copy()
     for time_column in ("valid_time", "valid_time_local"):
@@ -183,7 +183,7 @@ def _prepare_observation_dataframe(
                 lambda value: value.to_pydatetime()
             )
 
-    dataframe["dataset_id"] = dataset_id
+    dataframe["daily_climate_id"] = daily_climate_id
     rename_map = {
         provider_name: database_name
         for provider_name, database_name in ERA5_LAND_DATABASE_COLUMNS.items()
@@ -198,19 +198,19 @@ def _prepare_observation_dataframe(
 
 def upsert_daily_climate_observations(
     dataset: TransformedWeatherDataset,
-    dataset_id: int,
+    daily_climate_id: int,
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
     """UPSERT daily observations using partition/time/grid identity."""
-    dataframe, rename_map = _prepare_observation_dataframe(dataset, dataset_id)
+    dataframe, rename_map = _prepare_observation_dataframe(dataset, daily_climate_id)
     if dataframe.empty:
         return 0
 
     columns = list(dataframe.columns)
     insert_columns = ", ".join(columns)
     bind_columns = ", ".join(f":{column}" for column in columns)
-    key_columns = {"dataset_id", "valid_time", "latitude", "longitude"}
+    key_columns = {"daily_climate_id", "valid_time", "latitude", "longitude"}
     update_columns = [column for column in columns if column not in key_columns]
     conflict_action = (
         "DO UPDATE SET "
@@ -224,7 +224,7 @@ def upsert_daily_climate_observations(
         INSERT INTO {config.schema}.{config.daily_climate_detail_table}
         ({insert_columns})
         VALUES ({bind_columns})
-        ON CONFLICT (dataset_id, valid_time, latitude, longitude)
+        ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)
         {conflict_action}
         """
     )
@@ -240,7 +240,7 @@ def upsert_daily_climate_observations(
             "rows_processed": len(dataframe),
             "columns": columns,
             "provider_to_database_columns": rename_map,
-            "conflict_key": "dataset_id + valid_time + latitude + longitude",
+            "conflict_key": "daily_climate_id + valid_time + latitude + longitude",
         },
     )
     return len(dataframe)
@@ -259,14 +259,14 @@ def load_to_postgresql(
     create_daily_climate_detail_table(engine, resolved_config)
 
     with engine.begin() as connection:
-        dataset_id = upsert_daily_climate_metadata(
+        daily_climate_id = upsert_daily_climate_metadata(
             dataset=dataset,
             connection=connection,
             config=resolved_config,
         )
         rows_processed = upsert_daily_climate_observations(
             dataset=dataset,
-            dataset_id=dataset_id,
+            daily_climate_id=daily_climate_id,
             connection=connection,
             config=resolved_config,
         )
@@ -274,12 +274,12 @@ def load_to_postgresql(
     log_metric(
         "PostgreSQL load completed",
         {
-            "dataset_id": dataset_id,
+            "daily_climate_id": daily_climate_id,
             "rows_processed": rows_processed,
             "mode": "idempotent upsert",
         },
     )
-    return dataset_id, rows_processed
+    return daily_climate_id, rows_processed
 
 
 class PostgresDataLoader(DataLoader):
