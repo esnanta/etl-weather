@@ -13,7 +13,6 @@ ACEH_BBOX = BoundingBox(
     west_lon=94.8,
 )
 
-# Land-dominant subset inside Aceh to reduce ERA5-Land ocean-only NaNs.
 ACEH_LAND_DOMINANT_BBOX = BoundingBox(
     north_lat=5.2,
     south_lat=3.4,
@@ -24,24 +23,15 @@ ACEH_LAND_DOMINANT_BBOX = BoundingBox(
 ARCO_DATASET = "era5-single-levels"
 ARCO_START_DATE = "1990-01-01"
 ARCO_END_DATE = "1990-01-02"
-ARCO_VARIABLES = [
-    "surface_solar_radiation_downwards",
-    "total_precipitation",
-]
+ARCO_VARIABLES = ["ssrd", "tp"]
 
 CDS_DATASET = "reanalysis-era5-land"
 CDS_START_DATE = "2022-01-01"
 CDS_END_DATE = "2022-01-03"
-CDS_VARIABLES = [
-    "total_precipitation",
-    "2m_temperature",
-    "volumetric_soil_water_layer_1",
-    "surface_solar_radiation_downwards",
-    "2m_dewpoint_temperature"
-]
+CDS_VARIABLES = ["tp", "t2m", "swvl1", "ssrd", "d2m"]
+
 
 def build_arco_request() -> WeatherRequest:
-    """Return default local request for ARCO source."""
     return WeatherRequest(
         source=DataSource.ARCO,
         dataset=ARCO_DATASET,
@@ -53,7 +43,6 @@ def build_arco_request() -> WeatherRequest:
 
 
 def build_cds_request() -> WeatherRequest:
-    """Return default local request for CDS ERA5-Land source."""
     _require_cds_api_key()
     return WeatherRequest(
         source=DataSource.CDS,
@@ -66,16 +55,12 @@ def build_cds_request() -> WeatherRequest:
 
 
 def build_request_from_env() -> WeatherRequest:
-    """Wrapper helper for selecting source via WEATHER_DATA_SOURCE."""
     load_dotenv()
     source_name = os.getenv("WEATHER_DATA_SOURCE", DataSource.ARCO.value).strip().lower()
-
     if source_name == DataSource.ARCO.value:
         return build_arco_request()
-
     if source_name == DataSource.CDS.value:
         return build_cds_request()
-
     raise ValueError(
         f"Invalid WEATHER_DATA_SOURCE: '{source_name}'. "
         f"Supported values: {DataSource.ARCO.value}, {DataSource.CDS.value}."
@@ -83,7 +68,6 @@ def build_request_from_env() -> WeatherRequest:
 
 
 def _require_cds_api_key() -> None:
-    """Fail fast when CDS run is selected without CDS API key."""
     load_dotenv()
     if not os.getenv("CDSAPI_KEY", "").strip():
         raise ValueError(

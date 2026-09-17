@@ -6,9 +6,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from dotenv import load_dotenv
-
-from sqlalchemy import create_engine
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
@@ -19,6 +17,27 @@ logger = logging.getLogger(__name__)
 SCHEMA_NAME = "climate_data"
 DATASET_TABLE = "weather_dataset"
 DATASET_TABLE_DETAIL = "weather_dataset_detail"
+
+DAILY_WEATHER_COLUMNS = (
+    "tp_daily_total_mm",
+    "t2m_daily_mean_c",
+    "d2m_daily_mean_c",
+    "swvl1_daily_mean_m3_m3",
+    "ssrd_daily_total_j_m2",
+)
+
+LEGACY_TO_DAILY_COLUMNS = {
+    "tp": "tp_daily_total_mm",
+    "total_precipitation": "tp_daily_total_mm",
+    "t2m": "t2m_daily_mean_c",
+    "2m_temperature": "t2m_daily_mean_c",
+    "d2m": "d2m_daily_mean_c",
+    "2m_dewpoint_temperature": "d2m_daily_mean_c",
+    "swvl1": "swvl1_daily_mean_m3_m3",
+    "volumetric_soil_water_layer_1": "swvl1_daily_mean_m3_m3",
+    "ssrd": "ssrd_daily_total_j_m2",
+    "surface_solar_radiation_downwards": "ssrd_daily_total_j_m2",
+}
 
 
 @dataclass(frozen=True)
@@ -39,7 +58,6 @@ class DatabaseConfig:
     ) -> "DatabaseConfig":
         load_dotenv()
         env_vars = env or os.environ
-
         required_keys = (
             "POSTGRES_HOST",
             "POSTGRES_PORT",
@@ -49,11 +67,10 @@ class DatabaseConfig:
         )
         missing_keys = [key for key in required_keys if not env_vars.get(key)]
         if missing_keys:
-            missing = ", ".join(missing_keys)
             raise ValueError(
-                f"Missing required database environment variables: {missing}"
+                "Missing required database environment variables: "
+                + ", ".join(missing_keys)
             )
-
         return cls(
             host=env_vars["POSTGRES_HOST"],
             port=int(env_vars["POSTGRES_PORT"]),
@@ -85,7 +102,6 @@ def resolve_database_config(
 
 def ensure_database_exists(config: DatabaseConfig | None = None) -> None:
     resolved_config = resolve_database_config(config)
-
     try:
         engine = create_engine(resolved_config.url)
         conn = engine.connect()
@@ -103,7 +119,6 @@ def ensure_database_exists(config: DatabaseConfig | None = None) -> None:
     maintenance_engine = create_engine(resolved_config.url_maintenance)
     with maintenance_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(text(f'CREATE DATABASE "{resolved_config.database}"'))
-
     logger.info("Database '%s' created.", resolved_config.database)
 
 
@@ -124,21 +139,9 @@ def create_schema(
     config: DatabaseConfig | None = None,
 ) -> None:
     resolved_config = resolve_database_config(config)
-
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}"
-            )
-        )
-
-    log_metric(
-        "Schema status",
-        {
-            "schema": resolved_config.schema,
-            "status": "ready",
-        },
-    )
+        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {resolved_config.schema}"))
+    log_metric("Schema status", {"schema": resolved_config.schema, "status": "ready"})
 
 
 def create_dataset_table(
@@ -146,7 +149,6 @@ def create_dataset_table(
     config: DatabaseConfig | None = None,
 ) -> None:
     resolved_config = resolve_database_config(config)
-
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -154,13 +156,11 @@ def create_dataset_table(
                 DO $$ BEGIN
                     CREATE TYPE {resolved_config.schema}.data_source_enum
                     AS ENUM ('arco', 'cds', 'other');
-                EXCEPTION
-                    WHEN duplicate_object THEN null;
+                EXCEPTION WHEN duplicate_object THEN null;
                 END $$;
                 """
             )
         )
-
         connection.execute(
             text(
                 f"""
@@ -177,21 +177,44 @@ def create_dataset_table(
                 """
             )
         )
-
     log_metric(
         "Table status",
-        {
-            "table": resolved_config.dataset_table,
-            "status": "ready",
-        },
+        {"table": resolved_config.dataset_table, "status": "ready"},
     )
+
+
+def _migrate_legacy_weather_columns(
+    connection,
+    *,
+    schema: str,
+    table_name: str,
+    table: str,
+) -> None:
+    for legacy_name, daily_name in LEGACY_TO_DAILY_COLUMNS.items():
+        connection.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = '{schema}'
+                          AND table_name = '{table_name}'
+                          AND column_name = '{legacy_name}'
+                    ) THEN
+                        EXECUTE 'UPDATE {table} SET {daily_name} = COALESCE({daily_name}, "{legacy_name}")';
+                        EXECUTE 'ALTER TABLE {table} DROP COLUMN "{legacy_name}"';
+                    END IF;
+                END $$;
+                """
+            )
+        )
 
 
 def create_dataset_table_detail(
     engine: Engine,
     config: DatabaseConfig | None = None,
 ) -> None:
-    """Create or minimally migrate the weather detail table."""
     resolved_config = resolve_database_config(config)
     table = f"{resolved_config.schema}.{resolved_config.dataset_table_detail}"
 
@@ -203,22 +226,15 @@ def create_dataset_table_detail(
                 (
                     id BIGSERIAL PRIMARY KEY,
                     dataset_id BIGINT NOT NULL,
-
                     valid_time TIMESTAMP NOT NULL,
                     valid_time_local TIMESTAMP,
                     latitude DOUBLE PRECISION NOT NULL,
                     longitude DOUBLE PRECISION NOT NULL,
-
-                    tp DOUBLE PRECISION,
-                    ssrd DOUBLE PRECISION,
-                    t2m DOUBLE PRECISION,
-                    d2m DOUBLE PRECISION,
-                    swvl1 DOUBLE PRECISION,
-                    u10 DOUBLE PRECISION,
-                    v10 DOUBLE PRECISION,
-                    swh DOUBLE PRECISION,
-                    msl DOUBLE PRECISION,
-
+                    tp_daily_total_mm DOUBLE PRECISION,
+                    t2m_daily_mean_c DOUBLE PRECISION,
+                    d2m_daily_mean_c DOUBLE PRECISION,
+                    swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
+                    ssrd_daily_total_j_m2 DOUBLE PRECISION,
                     CONSTRAINT fk_detail_dataset
                     FOREIGN KEY (dataset_id)
                     REFERENCES {resolved_config.schema}.{resolved_config.dataset_table}(id)
@@ -228,43 +244,13 @@ def create_dataset_table_detail(
             )
         )
 
-        # Backward-compatible migration for databases created by the earlier
-        # pipeline version that used the generic column name `time`.
-        connection.execute(
-            text(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = '{resolved_config.schema}'
-                          AND table_name = '{resolved_config.dataset_table_detail}'
-                          AND column_name = 'time'
-                    ) AND NOT EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = '{resolved_config.schema}'
-                          AND table_name = '{resolved_config.dataset_table_detail}'
-                          AND column_name = 'valid_time'
-                    ) THEN
-                        ALTER TABLE {table} RENAME COLUMN time TO valid_time;
-                    END IF;
-                END $$;
-                """
-            )
-        )
-
-        # Existing historical rows predate explicit local-time tracking, so
-        # the migration intentionally leaves valid_time_local NULL for them.
         connection.execute(
             text(
                 f"ALTER TABLE {table} "
                 "ADD COLUMN IF NOT EXISTS valid_time_local TIMESTAMP"
             )
         )
-
-        for column_name in ("d2m", "swvl1"):
+        for column_name in DAILY_WEATHER_COLUMNS:
             connection.execute(
                 text(
                     f"ALTER TABLE {table} "
@@ -272,10 +258,18 @@ def create_dataset_table_detail(
                 )
             )
 
+        _migrate_legacy_weather_columns(
+            connection,
+            schema=resolved_config.schema,
+            table_name=resolved_config.dataset_table_detail,
+            table=table,
+        )
+
     log_metric(
         "Table status",
         {
             "table": resolved_config.dataset_table_detail,
             "status": "ready",
+            "weather_column_contract": "provider-based daily statistics",
         },
     )
