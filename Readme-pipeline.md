@@ -137,11 +137,11 @@ RAW is immutable. Existing deterministic checkpoints are resumed and validated r
 
 ## PostgreSQL Daily Climate Contract
 
-The database terminology reflects the data semantics directly.
+The database is still in development, so only the current canonical schema is supported. Old table names, old foreign keys, and compatibility migrations are intentionally not retained.
 
 ### `climate_data.daily_climate`
 
-Stores metadata for one logical daily-climate partition, including:
+Stores metadata for one logical daily-climate partition:
 
 ```text
 id
@@ -158,7 +158,7 @@ west_lon
 transformed_at
 ```
 
-`request_key` is deterministic from:
+`request_key` is required and deterministic from:
 
 ```text
 source
@@ -169,13 +169,14 @@ variable set
 bbox
 ```
 
-The same logical request reuses the same metadata row.
+The same logical request reuses the same metadata row through UPSERT.
 
 ### `climate_data.daily_climate_detail`
 
 Stores daily grid-cell observations:
 
 ```text
+id
 daily_climate_id
 valid_time
 valid_time_local
@@ -198,19 +199,7 @@ Writes use UPSERT semantics, so retrying the same logical partition does not cre
 
 `daily_climate_id` is the canonical foreign key from `daily_climate_detail` to `daily_climate.id`.
 
-### Legacy schema migration
-
-For development databases created before this naming change, the pipeline can migrate:
-
-```text
-weather_dataset        → daily_climate
-weather_dataset_detail → daily_climate_detail
-dataset_id             → daily_climate_id
-```
-
-when the canonical replacement does not already exist.
-
-This preserves existing development data while establishing the domain-specific schema.
+Because this database has not entered production use, schema changes during development may require dropping/recreating the development database or schema instead of maintaining compatibility code.
 
 ---
 
@@ -220,7 +209,7 @@ P15 is defined as:
 
 > **Provide controlled and validated access from daily climate observations in PostgreSQL to an in-memory dataset ready for modelling, without creating a new physical copy and without changing meteorological semantics.**
 
-Therefore P15 does **not** create a separate `daily_feature_dataset` table/file merely to duplicate the same columns.
+P15 does **not** create a separate `daily_feature_dataset` table/file merely to duplicate the same columns.
 
 The canonical modelling source is PostgreSQL daily climate data:
 
@@ -286,7 +275,7 @@ Airflow should pass small identifiers/artifact references, not full DataFrames o
 
 ## Current Verification State
 
-Completed and verified:
+Completed and verified before the current schema cleanup:
 
 ```text
 [x] P4  retain hourly RAW data
@@ -303,7 +292,9 @@ Completed and verified:
 [x] P20 hourly ERA5-Land as primary RAW input
 ```
 
-P15 is now the active design/implementation stage.
+The cleaned `daily_climate` schema must be reverified with pytest and a fresh development database before P15 implementation continues.
+
+P15 is the active design/implementation stage.
 
 ---
 
