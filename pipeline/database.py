@@ -19,6 +19,8 @@ DAILY_CLIMATE_TABLE = "daily_climate"
 DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
 LEGACY_DATASET_TABLE = "weather_dataset"
 LEGACY_DATASET_DETAIL_TABLE = "weather_dataset_detail"
+LEGACY_DETAIL_FOREIGN_KEY = "dataset_id"
+DAILY_CLIMATE_FOREIGN_KEY = "daily_climate_id"
 
 DAILY_CLIMATE_COLUMNS = (
     "tp_daily_total_mm",
@@ -282,6 +284,40 @@ def _migrate_legacy_weather_columns(
         )
 
 
+def _migrate_daily_climate_foreign_key(
+    connection,
+    *,
+    schema: str,
+    table_name: str,
+    table: str,
+) -> None:
+    """Rename legacy dataset_id to daily_climate_id without dropping detail data."""
+    connection.execute(
+        text(
+            f"""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = '{schema}'
+                      AND table_name = '{table_name}'
+                      AND column_name = '{LEGACY_DETAIL_FOREIGN_KEY}'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = '{schema}'
+                      AND table_name = '{table_name}'
+                      AND column_name = '{DAILY_CLIMATE_FOREIGN_KEY}'
+                ) THEN
+                    ALTER TABLE {table}
+                    RENAME COLUMN {LEGACY_DETAIL_FOREIGN_KEY}
+                    TO {DAILY_CLIMATE_FOREIGN_KEY};
+                END IF;
+            END $$;
+            """
+        )
+    )
+
+
 def create_daily_climate_detail_table(
     engine: Engine,
     config: DatabaseConfig | None = None,
@@ -298,7 +334,7 @@ def create_daily_climate_detail_table(
                 CREATE TABLE IF NOT EXISTS {table}
                 (
                     id BIGSERIAL PRIMARY KEY,
-                    dataset_id BIGINT NOT NULL,
+                    daily_climate_id BIGINT NOT NULL,
                     valid_time TIMESTAMP NOT NULL,
                     valid_time_local TIMESTAMP,
                     latitude DOUBLE PRECISION NOT NULL,
@@ -308,13 +344,20 @@ def create_daily_climate_detail_table(
                     d2m_daily_mean_c DOUBLE PRECISION,
                     swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
                     ssrd_daily_total_j_m2 DOUBLE PRECISION,
-                    CONSTRAINT fk_daily_climate_detail_dataset
-                    FOREIGN KEY (dataset_id)
+                    CONSTRAINT fk_daily_climate_detail_daily_climate
+                    FOREIGN KEY (daily_climate_id)
                     REFERENCES {resolved_config.schema}.{resolved_config.daily_climate_table}(id)
                     ON DELETE CASCADE
                 )
                 """
             )
+        )
+
+        _migrate_daily_climate_foreign_key(
+            connection,
+            schema=resolved_config.schema,
+            table_name=resolved_config.daily_climate_detail_table,
+            table=table,
         )
 
         connection.execute(
@@ -344,17 +387,19 @@ def create_daily_climate_detail_table(
                 DELETE FROM {table} duplicate
                 USING {table} keeper
                 WHERE duplicate.id > keeper.id
-                  AND duplicate.dataset_id = keeper.dataset_id
+                  AND duplicate.daily_climate_id = keeper.daily_climate_id
                   AND duplicate.valid_time = keeper.valid_time
                   AND duplicate.latitude = keeper.latitude
                   AND duplicate.longitude = keeper.longitude
                 """
             )
         )
+        connection.execute(text(f"DROP INDEX IF EXISTS {resolved_config.schema}.uq_weather_dataset_detail_grid_time"))
+        connection.execute(text(f"DROP INDEX IF EXISTS {resolved_config.schema}.uq_daily_climate_detail_grid_time"))
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                f"ON {table} (dataset_id, valid_time, latitude, longitude)"
+                f"ON {table} (daily_climate_id, valid_time, latitude, longitude)"
             )
         )
 
@@ -364,6 +409,6 @@ def create_daily_climate_detail_table(
             "table": resolved_config.daily_climate_detail_table,
             "status": "ready",
             "weather_column_contract": "provider-based daily statistics",
-            "idempotency_key": "dataset_id + valid_time + latitude + longitude",
+            "idempotency_key": "daily_climate_id + valid_time + latitude + longitude",
         },
     )
