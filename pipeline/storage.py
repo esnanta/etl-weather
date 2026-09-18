@@ -108,10 +108,9 @@ def _create_artifact(
     filename = f"{period_signature}_{variable_signature}{extension}"
     path = (
         data_directory
-        / request.dataset
+        / f"{request.source.value}_{request.dataset}"
         / bbox_signature
         / layer.value
-        / request.source.value
         / request.start_date[:4]
         / filename
     )

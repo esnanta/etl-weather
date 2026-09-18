@@ -92,10 +92,9 @@ def test_save_raw_netcdf_and_convert_to_dataframe(tmp_path, monkeypatch) -> None
     assert artifact.path.suffix == ".nc"
     assert artifact.path.parent == (
         tmp_path
-        / "reanalysis-era5-land"
+        / "cds_reanalysis-era5-land"
         / "bbox_n5_w95_s5_e95"
         / "raw"
-        / "cds"
         / "2015"
     )
     assert artifact.path.name == "2015_0101_0101_tp.nc"
@@ -141,17 +140,15 @@ def test_artifact_paths_include_bbox_identity(tmp_path) -> None:
     raw = raw_artifact_for_request(request, data_directory=tmp_path)
     transformed = transformed_artifact_for_request(request, data_directory=tmp_path)
 
-    assert raw.path.relative_to(tmp_path).parts[:4] == (
-        "reanalysis-era5-land",
+    assert raw.path.relative_to(tmp_path).parts[:3] == (
+        "cds_reanalysis-era5-land",
         "bbox_n5_w95_s5_e95",
         "raw",
-        "cds",
     )
-    assert transformed.path.relative_to(tmp_path).parts[:4] == (
-        "reanalysis-era5-land",
+    assert transformed.path.relative_to(tmp_path).parts[:3] == (
+        "cds_reanalysis-era5-land",
         "bbox_n5_w95_s5_e95",
         "transformed",
-        "cds",
     )
 
 

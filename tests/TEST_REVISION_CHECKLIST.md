@@ -32,10 +32,12 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menambahkan bounding box ke identitas jalur artefak RAW dan Parquet.
 - [x] Menguji bahwa dua bounding box berbeda tidak menghasilkan jalur artefak yang sama.
 - [x] Menjalankan seluruh unit test setelah identitas bounding box ditambahkan: `75 passed`.
+- [x] Mengubah root artefak menjadi `cds_reanalysis-era5-land` dan menghapus direktori sumber yang redundan di bawah layer.
+- [x] Menambahkan test `CdsExtractor.extract()` dengan klien CDS palsu untuk konteks waktu, normalisasi, dan pemilihan variabel tanpa jaringan.
+- [x] Menjalankan seluruh unit test setelah test extractor terpadu ditambahkan: `76 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Tambahkan test `CdsExtractor.extract()` dengan downloader palsu untuk membuktikan konteks waktu, normalisasi, dan pemilihan variabel secara terpadu tanpa jaringan.
 - [ ] Tambahkan test kegagalan transformasi untuk hari lokal 1 Januari 1950 yang tidak mempunyai konteks hari sebelumnya.
 - [ ] Tambahkan integration test PostgreSQL terisolasi untuk membuktikan pemuatan ulang tidak menghasilkan duplikat.
 - [ ] Verifikasi transaksi PostgreSQL ketika pemuatan detail gagal di tengah proses.

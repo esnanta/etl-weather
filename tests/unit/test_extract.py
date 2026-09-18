@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 import pytest
+import xarray as xr
 
 from pipeline.extract import (
+    CdsExtractor,
     _build_cds_request_payload,
     _build_era5_land_retrieval_request,
 )
@@ -76,3 +83,85 @@ def test_cds_payload_rejects_interval_across_calendar_months() -> None:
 
     with pytest.raises(ValueError, match="must stay in one month"):
         _build_cds_request_payload(request)
+
+
+def test_cds_extractor_integrates_context_normalization_and_selection(
+    monkeypatch,
+) -> None:
+    request = WeatherRequest(
+        source=DataSource.CDS,
+        dataset=" REANALYSIS-ERA5-LAND ",
+        start_date="2022-01-02",
+        end_date="2022-01-02",
+        variables=[" T2M ", "tp"],
+        bbox=_request().bbox,
+    )
+    retrieve_calls: list[tuple[str, dict[str, object], Path]] = []
+
+    class FakeCdsClient:
+        def __init__(self, *, url: str, key: str, quiet: bool) -> None:
+            assert url == "https://example.invalid/api"
+            assert key == "1:offline-test-key"
+            assert quiet is True
+
+        def retrieve(
+            self,
+            dataset_name: str,
+            payload: dict[str, object],
+            target: str,
+        ) -> None:
+            target_path = Path(target)
+            retrieve_calls.append((dataset_name, payload, target_path))
+            xr.Dataset(
+                {
+                    "2m_temperature": (
+                        ("time", "latitude", "longitude"),
+                        np.array([[[300.0]], [[301.0]]]),
+                    ),
+                    "total_precipitation": (
+                        ("time", "latitude", "longitude"),
+                        np.array([[[0.001]], [[0.002]]]),
+                    ),
+                    "snow_depth": (
+                        ("time", "latitude", "longitude"),
+                        np.array([[[0.0]], [[0.0]]]),
+                    ),
+                },
+                coords={
+                    "time": np.array(
+                        ["2022-01-01T00:00:00", "2022-01-02T00:00:00"],
+                        dtype="datetime64[ns]",
+                    ),
+                    "latitude": [5.2],
+                    "longitude": [96.1],
+                },
+            ).to_netcdf(target_path)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "cdsapi",
+        SimpleNamespace(Client=FakeCdsClient),
+    )
+    monkeypatch.setattr("pipeline.extract.load_dotenv", lambda: False)
+    monkeypatch.setenv("CDSAPI_URL", "https://example.invalid/api")
+    monkeypatch.setenv("CDSAPI_KEY", "1:offline-test-key")
+
+    extracted = CdsExtractor().extract(request)
+
+    assert len(retrieve_calls) == 1
+    dataset_name, payload, temporary_path = retrieve_calls[0]
+    assert dataset_name == "reanalysis-era5-land"
+    assert payload["day"] == ["01", "02"]
+    assert payload["variable"] == ["2m_temperature", "total_precipitation"]
+    assert payload["area"] == [5.2, 96.1, 3.4, 97.6]
+    assert not temporary_path.exists()
+
+    assert extracted.request.dataset == "reanalysis-era5-land"
+    assert extracted.request.start_date == "2022-01-02"
+    assert extracted.request.end_date == "2022-01-02"
+    assert extracted.request.variables == ["t2m", "tp"]
+    assert list(extracted.raw_data.data_vars) == ["t2m", "tp"]
+    assert "valid_time" in extracted.raw_data.coords
+    assert "time" not in extracted.raw_data.coords
+    assert "snow_depth" not in extracted.raw_data.data_vars
+    assert extracted.downloaded_at.tzinfo is not None
