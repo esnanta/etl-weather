@@ -78,6 +78,7 @@ class WeatherPipeline:
     def transform_or_resume(
         self,
         loaded_dataset: LoadedWeatherDataset,
+        raw_artifact: DatasetArtifact,
     ) -> tuple[TransformedWeatherDataset, DatasetArtifact]:
         """Transform once, or resume from the deterministic Parquet checkpoint."""
         request = loaded_dataset.request
@@ -85,7 +86,11 @@ class WeatherPipeline:
         resumed = artifact_exists(artifact)
 
         if resumed:
-            transformed_dataset = self.storage.load_transformed(artifact, request)
+            transformed_dataset = self.storage.load_transformed(
+                artifact,
+                request,
+                raw_artifact,
+            )
         else:
             transformed_dataset = self.transformer.transform(loaded_dataset)
             validate_transformed_dataset(transformed_dataset)
@@ -93,6 +98,8 @@ class WeatherPipeline:
                 df=transformed_dataset.dataset,
                 request=request,
                 downloaded_at=loaded_dataset.downloaded_at,
+                transformed_at=transformed_dataset.transformed_at,
+                raw_artifact=raw_artifact,
             )
 
         validate_transformed_dataset(transformed_dataset)
@@ -108,9 +115,10 @@ class WeatherPipeline:
     def load(
         self,
         transformed_dataset: TransformedWeatherDataset,
+        transformed_artifact: DatasetArtifact,
     ) -> tuple[int, int]:
         """Load a transformed partition through an idempotent loader."""
-        return self.loader.load(transformed_dataset)
+        return self.loader.load(transformed_dataset, transformed_artifact)
 
     def run(self, request: WeatherRequest) -> None:
         """Local wrapper that composes the same stage boundaries Airflow can call."""
@@ -118,18 +126,22 @@ class WeatherPipeline:
         log_pipeline_header(request)
 
         extract_timer = log_section_start("EXTRACT")
-        raw_dataset, _, loaded_dataset = self.extract_or_resume(request)
+        raw_dataset, raw_artifact, loaded_dataset = self.extract_or_resume(request)
         normalized_request = raw_dataset.request
         log_section_completed("EXTRACT", extract_timer)
 
         transform_timer = log_section_start("TRANSFORM")
         transformed_dataset, parquet_artifact = self.transform_or_resume(
-            loaded_dataset
+            loaded_dataset,
+            raw_artifact,
         )
         log_section_completed("TRANSFORM", transform_timer)
 
         load_timer = log_section_start("LOAD DATABASE")
-        daily_climate_id, rows_processed = self.load(transformed_dataset)
+        daily_climate_id, rows_processed = self.load(
+            transformed_dataset,
+            parquet_artifact,
+        )
         log_section_completed("LOAD DATABASE", load_timer)
 
         finished_at = datetime.now()
