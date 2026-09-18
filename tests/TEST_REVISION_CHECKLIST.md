@@ -38,6 +38,7 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menguji kegagalan eksplisit transformasi hari lokal 1 Januari 1950 karena konteks UTC+7 dimulai sebelum cakupan ERA5-Land.
 - [x] Menjalankan seluruh unit test setelah proteksi hari pertama ERA5-Land ditambahkan: `77 passed`.
 - [x] Menambahkan integration test PostgreSQL dengan database test dan schema unik untuk membuktikan idempotensi pemuatan ulang.
+- [x] Memuat konfigurasi integration test PostgreSQL dari `.env` melalui variabel `TEST_POSTGRES_*`.
 
 ## Langkah selanjutnya — prioritas tinggi
 

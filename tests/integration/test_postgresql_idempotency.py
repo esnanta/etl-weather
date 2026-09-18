@@ -7,6 +7,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 import xarray as xr
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from pipeline.database import DatabaseConfig
@@ -32,6 +33,7 @@ TEST_POSTGRES_ENV_KEYS = (
 
 
 def _isolated_database_config() -> DatabaseConfig:
+    load_dotenv()
     missing = [key for key in TEST_POSTGRES_ENV_KEYS if not os.getenv(key)]
     if missing:
         pytest.skip(
