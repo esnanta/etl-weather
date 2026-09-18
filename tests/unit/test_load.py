@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -10,7 +11,9 @@ from pipeline.load import (
 )
 from pipeline.model import (
     BoundingBox,
+    DataLayer,
     DataSource,
+    DatasetArtifact,
     TransformedWeatherDataset,
     WeatherRequest,
 )
@@ -32,10 +35,14 @@ def _request() -> WeatherRequest:
     )
 
 
+def _transformed_at() -> datetime:
+    return datetime(2022, 1, 2, 4, 5, 6, tzinfo=UTC)
+
+
 def _dataset() -> TransformedWeatherDataset:
     return TransformedWeatherDataset(
         request=_request(),
-        transformed_at=datetime.now(timezone.utc),
+        transformed_at=_transformed_at(),
         dataset=pd.DataFrame(
             {
                 "valid_time": [pd.Timestamp("2021-12-31 17:00:00")],
@@ -49,6 +56,14 @@ def _dataset() -> TransformedWeatherDataset:
                 "d2m": [22.0],
             }
         ),
+    )
+
+
+def _artifact() -> DatasetArtifact:
+    return DatasetArtifact(
+        layer=DataLayer.TRANSFORMED,
+        created_at=_transformed_at(),
+        path=Path("/tmp/data/reanalysis-era5-land/transformed/cds/2022/daily.parquet"),
     )
 
 
@@ -122,18 +137,55 @@ class _UpsertConnection:
         raise AssertionError(f"Unexpected SQL: {sql}")
 
 
-def test_upsert_daily_climate_metadata_uses_request_key_upsert() -> None:
+def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
+    monkeypatch,
+) -> None:
     connection = _UpsertConnection(daily_climate_id=42)
+    artifact = _artifact()
 
-    daily_climate_id = upsert_daily_climate_metadata(_dataset(), connection, _config())
+    monkeypatch.setattr(
+        "pipeline.load.read_parquet_provenance",
+        lambda _: {
+            "raw_artifact_path": "data/raw.nc",
+            "raw_sha256": "raw-hash",
+            "downloaded_at": "2022-01-02T03:04:05+00:00",
+            "transformed_at": _transformed_at().isoformat(),
+        },
+    )
+    monkeypatch.setattr(
+        "pipeline.load.artifact_path_for_metadata",
+        lambda _: "data/transformed/daily.parquet",
+    )
+    monkeypatch.setattr(
+        "pipeline.load.calculate_file_sha256",
+        lambda _: "transformed-hash",
+    )
+
+    daily_climate_id = upsert_daily_climate_metadata(
+        _dataset(),
+        artifact,
+        connection,
+        _config(),
+    )
 
     assert daily_climate_id == 42
     assert len(connection.statements) == 1
     sql = connection.statements[0]
     assert "INSERT INTO climate_data.daily_climate" in sql
     assert "ON CONFLICT (request_key)" in sql
+    assert "downloaded_at" in sql
+    assert "transformed_artifact_path" in sql
+    assert "transformed_sha256" in sql
     assert "RETURNING id" in sql
-    assert connection.params[0]["request_key"]
+
+    params = connection.params[0]
+    assert params["request_key"]
+    assert params["downloaded_at"] == datetime(
+        2022, 1, 2, 3, 4, 5, tzinfo=UTC
+    )
+    assert params["transformed_artifact_path"] == "data/transformed/daily.parquet"
+    assert params["transformed_sha256"] == "transformed-hash"
+    assert params["transformed_at"] == _transformed_at()
 
 
 def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None:
