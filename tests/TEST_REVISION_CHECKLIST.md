@@ -39,10 +39,10 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menjalankan seluruh unit test setelah proteksi hari pertama ERA5-Land ditambahkan: `77 passed`.
 - [x] Menambahkan integration test PostgreSQL dengan database test dan schema unik untuk membuktikan idempotensi pemuatan ulang.
 - [x] Memuat konfigurasi integration test PostgreSQL dari `.env` melalui variabel `TEST_POSTGRES_*`.
+- [x] Menjalankan integration test dengan PostgreSQL test lokal: `1 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Jalankan integration test dengan PostgreSQL test lokal dan catat hasil verifikasinya.
 - [ ] Verifikasi transaksi PostgreSQL ketika pemuatan detail gagal di tengah proses.
 
 ## Langkah selanjutnya — penguatan validasi
