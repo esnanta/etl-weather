@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import xarray as xr
 
 from pipeline.interfaces import DataStorage
@@ -24,10 +27,48 @@ logger = logging.getLogger(__name__)
 PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
 DATA_DIRECTORY = PROJECT_DIRECTORY / "data"
 
+PARQUET_PROVENANCE_KEYS = (
+    "raw_artifact_path",
+    "raw_sha256",
+    "downloaded_at",
+    "transformed_at",
+)
 
-def _artifact_timestamp(path: Path) -> datetime:
-    """Return artifact modification time as UTC metadata."""
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+
+def calculate_file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest of one artifact file."""
+    if not path.exists():
+        raise FileNotFoundError(f"Artifact not found for checksum: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def artifact_path_for_metadata(path: Path) -> str:
+    """Return a stable human-readable artifact path for persisted metadata."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(PROJECT_DIRECTORY.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def _datetime_to_metadata(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat()
+
+
+def _datetime_from_metadata(value: str, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"Invalid {field} provenance timestamp: {value}") from error
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _create_artifact(
@@ -106,9 +147,13 @@ def save_raw_netcdf(dataset: RawWeatherDataset) -> DatasetArtifact:
     if temporary_path.exists():
         temporary_path.unlink()
 
+    raw_data = dataset.raw_data.copy(deep=False)
+    raw_data.attrs = dict(raw_data.attrs)
+    raw_data.attrs["downloaded_at"] = _datetime_to_metadata(dataset.downloaded_at)
+
     logger.info("Writing RAW NetCDF checkpoint:\n%s", nc_artifact.path)
     try:
-        dataset.raw_data.to_netcdf(temporary_path)
+        raw_data.to_netcdf(temporary_path)
         temporary_path.replace(nc_artifact.path)
     finally:
         if temporary_path.exists():
@@ -125,10 +170,19 @@ def load_raw_netcdf(
         raise FileNotFoundError(f"RAW artifact not found: {artifact.path}")
     logger.info("Resuming from RAW NetCDF checkpoint:\n%s", artifact.path)
     with xr.open_dataset(artifact.path) as opened:
+        downloaded_at_value = opened.attrs.get("downloaded_at")
+        if not downloaded_at_value:
+            raise ValueError(
+                "RAW checkpoint is missing downloaded_at provenance metadata. "
+                "Recreate the RAW checkpoint."
+            )
         dataset = opened.load()
     return RawWeatherDataset(
         request=request,
-        downloaded_at=_artifact_timestamp(artifact.path),
+        downloaded_at=_datetime_from_metadata(
+            str(downloaded_at_value),
+            "downloaded_at",
+        ),
         raw_data=dataset,
     )
 
@@ -145,12 +199,48 @@ def convert_netcdf_to_dataframe(artifact: DatasetArtifact) -> pd.DataFrame:
     return dataframe
 
 
+def _build_parquet_provenance(
+    *,
+    raw_artifact: DatasetArtifact,
+    downloaded_at: datetime,
+    transformed_at: datetime,
+) -> dict[str, str]:
+    return {
+        "raw_artifact_path": artifact_path_for_metadata(raw_artifact.path),
+        "raw_sha256": calculate_file_sha256(raw_artifact.path),
+        "downloaded_at": _datetime_to_metadata(downloaded_at),
+        "transformed_at": _datetime_to_metadata(transformed_at),
+    }
+
+
+def read_parquet_provenance(artifact: DatasetArtifact) -> dict[str, str]:
+    """Read required P19 provenance metadata from a transformed Parquet file."""
+    if not artifact_exists(artifact):
+        raise FileNotFoundError(f"Transformed artifact not found: {artifact.path}")
+
+    parquet_metadata = pq.read_metadata(artifact.path).metadata or {}
+    decoded = {
+        key.decode("utf-8"): value.decode("utf-8")
+        for key, value in parquet_metadata.items()
+    }
+    missing = [key for key in PARQUET_PROVENANCE_KEYS if key not in decoded]
+    if missing:
+        raise ValueError(
+            "Transformed checkpoint is missing provenance metadata: "
+            + ", ".join(missing)
+            + ". Recreate the transformed checkpoint."
+        )
+    return {key: decoded[key] for key in PARQUET_PROVENANCE_KEYS}
+
+
 def save_transformed_parquet(
     df: pd.DataFrame,
     request: WeatherRequest,
     downloaded_at: datetime,
+    transformed_at: datetime,
+    raw_artifact: DatasetArtifact,
 ) -> DatasetArtifact:
-    """Persist a transformed checkpoint once using an atomic write."""
+    """Persist a transformed checkpoint with RAW provenance metadata."""
     parquet_artifact = transformed_artifact_for_request(request)
     if artifact_exists(parquet_artifact):
         raise FileExistsError(
@@ -160,7 +250,7 @@ def save_transformed_parquet(
 
     parquet_artifact = DatasetArtifact(
         layer=parquet_artifact.layer,
-        created_at=downloaded_at,
+        created_at=transformed_at,
         path=parquet_artifact.path,
     )
     parquet_artifact.path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,9 +258,24 @@ def save_transformed_parquet(
     if temporary_path.exists():
         temporary_path.unlink()
 
+    provenance = _build_parquet_provenance(
+        raw_artifact=raw_artifact,
+        downloaded_at=downloaded_at,
+        transformed_at=transformed_at,
+    )
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    schema_metadata = dict(table.schema.metadata or {})
+    schema_metadata.update(
+        {
+            key.encode("utf-8"): value.encode("utf-8")
+            for key, value in provenance.items()
+        }
+    )
+    table = table.replace_schema_metadata(schema_metadata)
+
     logger.info("Writing transformed Parquet checkpoint:\n%s", parquet_artifact.path)
     try:
-        df.to_parquet(temporary_path, index=False)
+        pq.write_table(table, temporary_path)
         temporary_path.replace(parquet_artifact.path)
     finally:
         if temporary_path.exists():
@@ -181,15 +286,35 @@ def save_transformed_parquet(
 def load_transformed_parquet(
     artifact: DatasetArtifact,
     request: WeatherRequest,
+    raw_artifact: DatasetArtifact,
 ) -> TransformedWeatherDataset:
-    """Load an existing transformed Parquet checkpoint for resume."""
+    """Load a transformed checkpoint and verify it still matches the RAW artifact."""
     if not artifact_exists(artifact):
         raise FileNotFoundError(f"Transformed artifact not found: {artifact.path}")
+
+    provenance = read_parquet_provenance(artifact)
+    expected_raw_path = artifact_path_for_metadata(raw_artifact.path)
+    if provenance["raw_artifact_path"] != expected_raw_path:
+        raise ValueError(
+            "Transformed checkpoint RAW artifact path does not match the current RAW "
+            "checkpoint. Recreate the transformed checkpoint."
+        )
+
+    current_raw_sha256 = calculate_file_sha256(raw_artifact.path)
+    if provenance["raw_sha256"] != current_raw_sha256:
+        raise ValueError(
+            "RAW artifact checksum changed since the transformed checkpoint was "
+            "created. Recreate the transformed checkpoint before loading."
+        )
+
     logger.info("Resuming from transformed Parquet checkpoint:\n%s", artifact.path)
     dataframe = pd.read_parquet(artifact.path)
     return TransformedWeatherDataset(
         request=request,
-        transformed_at=_artifact_timestamp(artifact.path),
+        transformed_at=_datetime_from_metadata(
+            provenance["transformed_at"],
+            "transformed_at",
+        ),
         dataset=dataframe,
     )
 
@@ -198,7 +323,7 @@ def load_raw_dataset(
     artifact: DatasetArtifact,
     metadata: RawWeatherDataset,
 ) -> LoadedWeatherDataset:
-    """Backward-compatible helper for legacy Parquet-based RAW callers."""
+    """Load a Parquet artifact into a Pandas DataFrame."""
     logger.info("Loading Parquet artifact:\n%s", artifact.path)
     dataframe = pd.read_parquet(artifact.path)
     return LoadedWeatherDataset(
@@ -238,15 +363,24 @@ class LocalDataStorage(DataStorage):
         df: pd.DataFrame,
         request: WeatherRequest,
         downloaded_at: datetime,
+        transformed_at: datetime,
+        raw_artifact: DatasetArtifact,
     ) -> DatasetArtifact:
-        return save_transformed_parquet(df, request, downloaded_at)
+        return save_transformed_parquet(
+            df,
+            request,
+            downloaded_at,
+            transformed_at,
+            raw_artifact,
+        )
 
     def load_transformed(
         self,
         artifact: DatasetArtifact,
         request: WeatherRequest,
+        raw_artifact: DatasetArtifact,
     ) -> TransformedWeatherDataset:
-        return load_transformed_parquet(artifact, request)
+        return load_transformed_parquet(artifact, request, raw_artifact)
 
     def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
         return convert_netcdf_to_dataframe(artifact)
