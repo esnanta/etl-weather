@@ -12,7 +12,6 @@ class DataLayer(Enum):
     TRANSFORMED = "transformed"
 
 class DataSource(Enum):
-    ARCO = "arco"
     CDS = "cds"
 
 @dataclass(frozen=True)
