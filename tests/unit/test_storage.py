@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pandas as pd
@@ -94,6 +95,7 @@ def test_save_raw_netcdf_and_convert_to_dataframe(tmp_path, monkeypatch) -> None
         / "reanalysis-era5-land"
         / "raw"
         / "cds"
+        / "bbox_n5_w95_s5_e95"
         / "2015"
     )
     assert artifact.path.name == "2015_0101_0101_tp.nc"
@@ -131,6 +133,43 @@ def test_raw_artifact_path_is_deterministic(tmp_path) -> None:
     second = raw_artifact_for_request(request, data_directory=tmp_path)
 
     assert first.path == second.path
+
+
+def test_artifact_paths_include_bbox_identity(tmp_path) -> None:
+    request = _request()
+
+    raw = raw_artifact_for_request(request, data_directory=tmp_path)
+    transformed = transformed_artifact_for_request(request, data_directory=tmp_path)
+
+    assert "bbox_n5_w95_s5_e95" in raw.path.parts
+    assert "bbox_n5_w95_s5_e95" in transformed.path.parts
+
+
+def test_different_bounding_boxes_do_not_share_artifact_paths(tmp_path) -> None:
+    first_request = _request()
+    second_request = replace(
+        first_request,
+        bbox=BoundingBox(
+            north_lat=5.2,
+            west_lon=96.1,
+            south_lat=3.4,
+            east_lon=97.6,
+        ),
+    )
+
+    first_raw = raw_artifact_for_request(first_request, data_directory=tmp_path)
+    second_raw = raw_artifact_for_request(second_request, data_directory=tmp_path)
+    first_transformed = transformed_artifact_for_request(
+        first_request, data_directory=tmp_path
+    )
+    second_transformed = transformed_artifact_for_request(
+        second_request, data_directory=tmp_path
+    )
+
+    assert first_raw.path != second_raw.path
+    assert first_transformed.path != second_transformed.path
+    assert "bbox_n5p2_w96p1_s3p4_e97p6" in second_raw.path.parts
+    assert "bbox_n5p2_w96p1_s3p4_e97p6" in second_transformed.path.parts
 
 
 def test_transformed_artifact_path_is_deterministic(tmp_path) -> None:

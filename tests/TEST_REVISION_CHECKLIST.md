@@ -29,11 +29,12 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menguji penghapusan metadata sumber dari observasi hasil transformasi.
 - [x] Mengisolasi test API key yang hilang dari `CDSAPI_KEY` pada berkas `.env` pengembang.
 - [x] Menjalankan seluruh unit test setelah penghapusan ARCO: `73 passed`.
+- [x] Menambahkan bounding box ke identitas jalur artefak RAW dan Parquet.
+- [x] Menguji bahwa dua bounding box berbeda tidak menghasilkan jalur artefak yang sama.
+- [x] Menjalankan seluruh unit test setelah identitas bounding box ditambahkan: `75 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Tambahkan bounding box ke identitas jalur artefak RAW dan Parquet.
-- [ ] Tambahkan test bahwa dua bounding box berbeda tidak menghasilkan jalur artefak yang sama.
 - [ ] Tambahkan test `CdsExtractor.extract()` dengan downloader palsu untuk membuktikan konteks waktu, normalisasi, dan pemilihan variabel secara terpadu tanpa jaringan.
 - [ ] Tambahkan test kegagalan transformasi untuk hari lokal 1 Januari 1950 yang tidak mempunyai konteks hari sebelumnya.
 - [ ] Tambahkan integration test PostgreSQL terisolasi untuk membuktikan pemuatan ulang tidak menghasilkan duplikat.

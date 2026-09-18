@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -71,6 +72,27 @@ def _datetime_from_metadata(value: str, field: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _format_coordinate_for_path(value: float) -> str:
+    """Return a deterministic, filesystem-safe coordinate representation."""
+    coordinate = format(Decimal(str(float(value))).normalize(), "f")
+    if coordinate == "-0":
+        coordinate = "0"
+    return coordinate.replace("-", "m").replace(".", "p")
+
+
+def build_bbox_signature(request: WeatherRequest) -> str:
+    """Return a readable spatial identity for request artifact paths."""
+    bbox = request.bbox
+    return "_".join(
+        (
+            f"bbox_n{_format_coordinate_for_path(bbox.north_lat)}",
+            f"w{_format_coordinate_for_path(bbox.west_lon)}",
+            f"s{_format_coordinate_for_path(bbox.south_lat)}",
+            f"e{_format_coordinate_for_path(bbox.east_lon)}",
+        )
+    )
+
+
 def _create_artifact(
     *,
     request: WeatherRequest,
@@ -82,12 +104,14 @@ def _create_artifact(
     """Create deterministic artifact metadata for one logical request."""
     period_signature = format_request_period(request.start_date, request.end_date)
     variable_signature = build_variable_signature(request.variables)
+    bbox_signature = build_bbox_signature(request)
     filename = f"{period_signature}_{variable_signature}{extension}"
     path = (
         data_directory
         / request.dataset
         / layer.value
         / request.source.value
+        / bbox_signature
         / request.start_date[:4]
         / filename
     )
