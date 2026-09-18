@@ -54,7 +54,7 @@ def test_create_schema_uses_canonical_climate_schema() -> None:
     ]
 
 
-def test_daily_climate_table_protects_request_identity() -> None:
+def test_daily_climate_table_protects_request_identity_and_provenance() -> None:
     engine = _Engine()
 
     create_daily_climate_table(engine, _config())
@@ -65,6 +65,9 @@ def test_daily_climate_table_protects_request_identity() -> None:
     assert "request_key TEXT NOT NULL" in sql
     assert "variable_signature TEXT NOT NULL" in sql
     assert "north_lat DOUBLE PRECISION NOT NULL" in sql
+    assert "downloaded_at TIMESTAMPTZ NOT NULL" in sql
+    assert "transformed_artifact_path TEXT NOT NULL" in sql
+    assert "transformed_sha256 TEXT NOT NULL" in sql
     assert "transformed_at TIMESTAMPTZ NOT NULL" in sql
     assert "CREATE UNIQUE INDEX IF NOT EXISTS uq_daily_climate_request_key" in sql
     assert "ON climate_data.daily_climate (request_key)" in sql

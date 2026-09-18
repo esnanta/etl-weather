@@ -38,7 +38,7 @@ Tests must protect:
 - deterministic request identity;
 - idempotent PostgreSQL loading;
 - canonical daily-climate table and foreign-key names;
-- P15 controlled database-to-memory access.
+- P15 controlled database-to-memory access;\n- P19 artifact provenance and checksum integrity.
 
 Scientific correctness is part of software correctness.
 
@@ -102,6 +102,17 @@ daily_climate_id
 The development database supports only the current schema. Tests must not preserve compatibility behavior for discarded development schemas.
 
 `daily_climate.request_key` identifies a logical request partition.
+
+P19 partition provenance stored in `daily_climate`:
+
+```text
+downloaded_at
+transformed_artifact_path
+transformed_sha256
+transformed_at
+```
+
+RAW path/checksum are stored in Parquet file metadata rather than PostgreSQL.
 
 Observation uniqueness:
 
@@ -209,6 +220,26 @@ P17 feature contribution / subset evaluation
 
 ---
 
+## P18 / P19 Verification
+
+P18 completed with:
+
+```text
+59 passed
+```
+
+P19 adds tests for:
+
+- SHA-256 byte-change detection;
+- preservation of RAW `downloaded_at`;
+- Parquet RAW provenance metadata;
+- rejection of transformed resume after RAW checksum change;
+- PostgreSQL provenance columns;
+- metadata UPSERT of transformed artifact path/checksum;
+- runtime artifact handoff into transform/resume and database load.
+
+---
+
 ## Test Style
 
 - Use `pytest`.
@@ -246,7 +277,7 @@ pytest tests/unit
 pytest tests/integration
 ```
 
-Focused ERA5-Land/P9-P15 suite:
+Focused ERA5-Land/P9-P19 suite:
 
 ```bash
 pytest \
@@ -255,14 +286,16 @@ pytest \
   tests/unit/test_transform.py \
   tests/unit/test_validation.py \
   tests/unit/test_storage.py \
+  tests/unit/test_database.py \
   tests/unit/test_load.py \
+  tests/unit/test_runtime.py \
   tests/unit/test_daily_climate_repository.py -v
 ```
 
-Latest verified focused baseline before P15 verification:
+Latest verified pre-P19 baseline:
 
 ```text
-32 passed
+59 passed
 ```
 
 ---

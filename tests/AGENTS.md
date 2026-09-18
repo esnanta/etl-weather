@@ -114,7 +114,21 @@ P18 must protect the boundaries that become critical during retry/backfill:
 `tests/unit/test_runtime.py` owns orchestration-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
 
-## Test Structure
+## P19 Provenance Rules
+
+P19 tests protect minimal artifact provenance:
+
+- SHA-256 changes when artifact bytes change;
+- RAW `downloaded_at` survives save/resume;
+- transformed Parquet metadata contains RAW path/checksum plus download/transform timestamps;
+- transformed resume rejects a changed RAW checksum;
+- `daily_climate` DDL includes download time and transformed artifact path/checksum;
+- metadata UPSERT persists transformed provenance;
+- runtime passes RAW artifact into transform/resume and transformed artifact into the loader.
+
+Do not introduce transform-version or Git-commit provenance tests. RAW checksum/path remain Parquet metadata rather than PostgreSQL columns.
+
+---\n\n## Test Structure
 
 Use:
 
@@ -138,9 +152,9 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
 - `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
-- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, resume and missing artifacts.
-- `test_database.py`: canonical schema, foreign key, indexes and observation identity.
-- `test_load.py`: column mapping, NULL handling, metadata UPSERT and observation UPSERT.
+- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume and missing artifacts.
+- `test_database.py`: canonical schema, provenance fields, foreign key, indexes and observation identity.
+- `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT and observation UPSERT.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: P15 selection, SQL contract, validation, ordering and missing values.
 
@@ -164,4 +178,4 @@ Do not duplicate scientific or P15 tests inside DAG tests.
 [ ] P19 provenance
 ```
 
-Do not mark P18 complete until the expanded focused suite passes locally.
+P18 is complete: the expanded focused suite passed locally with 59 tests.

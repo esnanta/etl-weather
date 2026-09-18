@@ -21,7 +21,7 @@ Scientific data contracts documented in code and tests must not be changed impli
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
 - P15 controlled PostgreSQL-to-DataFrame access is implemented and verified.
-- P18 test coverage hardening is implemented and awaits local verification.
+- P18 test coverage hardening is complete and verified with 59 passing focused tests.\n- P19 minimal artifact provenance is implemented and awaits local verification.
 - P16 wet-day definition and P17 feature contribution are deferred until approximately ten years of daily data are available.
 
 Do not merge ARCO/CDS artifacts or silently harmonize source-specific behavior.
@@ -268,7 +268,21 @@ Do not mark P18 complete until the expanded focused test suite passes locally.
 
 ---
 
-## Validation Rules
+## P19 — Minimal Provenance Contract
+
+P19 tracks artifact identity without introducing transform-version or Git-commit versioning.
+
+Rules:
+
+- RAW NetCDF stores `downloaded_at` as file metadata.
+- Parquet metadata stores `raw_artifact_path`, `raw_sha256`, `downloaded_at`, and `transformed_at`.
+- PostgreSQL `daily_climate` stores `downloaded_at`, `transformed_artifact_path`, `transformed_sha256`, and `transformed_at`.
+- RAW path/checksum do not belong in PostgreSQL.
+- Provenance values are partition metadata, not repeated observation columns.
+- A resumed transformed checkpoint must reject a changed RAW checksum.
+- Development artifacts/schema created before P19 should be recreated rather than migrated.
+
+---\n\n## Validation Rules
 
 Do not bypass validation because an artifact or database row already exists.
 Scientific validation takes precedence over generic row-count checks.

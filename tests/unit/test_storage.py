@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -12,10 +12,12 @@ from pipeline.model import (
 )
 from pipeline.storage import (
     artifact_exists,
+    calculate_file_sha256,
     convert_netcdf_to_dataframe,
     load_raw_netcdf,
     load_transformed_parquet,
     raw_artifact_for_request,
+    read_parquet_provenance,
     save_raw_netcdf,
     save_transformed_parquet,
     transformed_artifact_for_request,
@@ -38,6 +40,14 @@ def _request() -> WeatherRequest:
     )
 
 
+def _downloaded_at() -> datetime:
+    return datetime(2015, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+
+def _transformed_at() -> datetime:
+    return datetime(2015, 1, 2, 4, 5, 6, tzinfo=UTC)
+
+
 def _raw_dataset(request: WeatherRequest) -> RawWeatherDataset:
     dataset = xr.Dataset(
         {
@@ -54,7 +64,7 @@ def _raw_dataset(request: WeatherRequest) -> RawWeatherDataset:
     )
     return RawWeatherDataset(
         request=request,
-        downloaded_at=datetime.now(timezone.utc),
+        downloaded_at=_downloaded_at(),
         raw_data=dataset,
     )
 
@@ -101,6 +111,19 @@ def test_save_raw_netcdf_and_convert_to_dataframe(tmp_path, monkeypatch) -> None
     assert loaded.loc[0, "longitude"] == 95.0
 
 
+def test_file_sha256_detects_byte_changes(tmp_path) -> None:
+    path = tmp_path / "artifact.bin"
+    path.write_bytes(b"first")
+    first = calculate_file_sha256(path)
+
+    path.write_bytes(b"second")
+    second = calculate_file_sha256(path)
+
+    assert first != second
+    assert len(first) == 64
+    assert len(second) == 64
+
+
 def test_raw_artifact_path_is_deterministic(tmp_path) -> None:
     request = _request()
 
@@ -134,7 +157,7 @@ def test_save_raw_netcdf_refuses_to_overwrite_existing_checkpoint(
         save_raw_netcdf(raw_dataset)
 
 
-def test_load_raw_netcdf_resumes_existing_checkpoint(tmp_path, monkeypatch) -> None:
+def test_load_raw_netcdf_preserves_downloaded_at(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
     request = _request()
     artifact = save_raw_netcdf(_raw_dataset(request))
@@ -142,24 +165,66 @@ def test_load_raw_netcdf_resumes_existing_checkpoint(tmp_path, monkeypatch) -> N
     resumed = load_raw_netcdf(artifact, request)
 
     assert resumed.request == request
+    assert resumed.downloaded_at == _downloaded_at()
     assert "tp" in resumed.raw_data.data_vars
     assert resumed.raw_data["tp"].item() == 1.0
 
 
-def test_save_and_load_transformed_parquet_checkpoint(tmp_path, monkeypatch) -> None:
+def test_save_and_load_transformed_parquet_checkpoint_with_provenance(
+    tmp_path,
+    monkeypatch,
+) -> None:
     monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
     request = _request()
+    raw_artifact = save_raw_netcdf(_raw_dataset(request))
     dataframe = _transformed_dataframe()
-    downloaded_at = datetime(2015, 1, 2, tzinfo=timezone.utc)
 
-    artifact = save_transformed_parquet(dataframe, request, downloaded_at)
-    resumed = load_transformed_parquet(artifact, request)
+    artifact = save_transformed_parquet(
+        dataframe,
+        request,
+        _downloaded_at(),
+        _transformed_at(),
+        raw_artifact,
+    )
+    provenance = read_parquet_provenance(artifact)
+    resumed = load_transformed_parquet(artifact, request, raw_artifact)
 
     assert artifact_exists(artifact)
     assert artifact.path.suffix == ".parquet"
-    assert artifact.created_at == downloaded_at
+    assert artifact.created_at == _transformed_at()
+    assert provenance["raw_artifact_path"].endswith("2015_0101_0101_tp.nc")
+    assert provenance["raw_sha256"] == calculate_file_sha256(raw_artifact.path)
+    assert provenance["downloaded_at"] == _downloaded_at().isoformat()
+    assert provenance["transformed_at"] == _transformed_at().isoformat()
     assert resumed.request == request
+    assert resumed.transformed_at == _transformed_at()
     pd.testing.assert_frame_equal(resumed.dataset, dataframe)
+
+
+def test_transformed_resume_rejects_changed_raw_checksum(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    raw_artifact = save_raw_netcdf(_raw_dataset(request))
+    transformed_artifact = save_transformed_parquet(
+        _transformed_dataframe(),
+        request,
+        _downloaded_at(),
+        _transformed_at(),
+        raw_artifact,
+    )
+
+    with raw_artifact.path.open("ab") as file_handle:
+        file_handle.write(b"changed")
+
+    with pytest.raises(ValueError, match="checksum changed"):
+        load_transformed_parquet(
+            transformed_artifact,
+            request,
+            raw_artifact,
+        )
 
 
 def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(
@@ -168,13 +233,25 @@ def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(
 ) -> None:
     monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
     request = _request()
+    raw_artifact = save_raw_netcdf(_raw_dataset(request))
     dataframe = _transformed_dataframe()
-    downloaded_at = datetime(2015, 1, 2, tzinfo=timezone.utc)
 
-    save_transformed_parquet(dataframe, request, downloaded_at)
+    save_transformed_parquet(
+        dataframe,
+        request,
+        _downloaded_at(),
+        _transformed_at(),
+        raw_artifact,
+    )
 
     with pytest.raises(FileExistsError, match="resume it explicitly"):
-        save_transformed_parquet(dataframe, request, downloaded_at)
+        save_transformed_parquet(
+            dataframe,
+            request,
+            _downloaded_at(),
+            _transformed_at(),
+            raw_artifact,
+        )
 
 
 def test_load_checkpoint_raises_when_artifact_is_missing(tmp_path) -> None:
@@ -188,4 +265,4 @@ def test_load_checkpoint_raises_when_artifact_is_missing(tmp_path) -> None:
         load_raw_netcdf(raw_artifact, request)
 
     with pytest.raises(FileNotFoundError, match="Transformed artifact not found"):
-        load_transformed_parquet(transformed_artifact, request)
+        load_transformed_parquet(transformed_artifact, request, raw_artifact)

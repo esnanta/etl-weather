@@ -168,6 +168,9 @@ def create_daily_climate_table(
                     south_lat DOUBLE PRECISION NOT NULL,
                     east_lon DOUBLE PRECISION NOT NULL,
                     west_lon DOUBLE PRECISION NOT NULL,
+                    downloaded_at TIMESTAMPTZ NOT NULL,
+                    transformed_artifact_path TEXT NOT NULL,
+                    transformed_sha256 TEXT NOT NULL,
                     transformed_at TIMESTAMPTZ NOT NULL
                 )
                 """
@@ -186,6 +189,9 @@ def create_daily_climate_table(
             "table": resolved_config.daily_climate_table,
             "status": "ready",
             "idempotency_key": "request_key",
+            "provenance": (
+                "downloaded_at + transformed_artifact_path + transformed_sha256"
+            ),
         },
     )
 

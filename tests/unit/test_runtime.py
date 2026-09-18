@@ -66,7 +66,7 @@ def _loaded_dataset(request: WeatherRequest) -> LoadedWeatherDataset:
 def _transformed_dataset(request: WeatherRequest) -> TransformedWeatherDataset:
     return TransformedWeatherDataset(
         request=request,
-        transformed_at=datetime(2022, 1, 2, tzinfo=UTC),
+        transformed_at=datetime(2022, 1, 2, 1, tzinfo=UTC),
         dataset=pd.DataFrame(
             {
                 "valid_time": [pd.Timestamp("2021-12-31 17:00:00")],
@@ -109,7 +109,7 @@ class _Storage:
         )
         self.transformed_artifact_value = DatasetArtifact(
             layer=DataLayer.TRANSFORMED,
-            created_at=datetime(2022, 1, 2, tzinfo=UTC),
+            created_at=datetime(2022, 1, 2, 1, tzinfo=UTC),
             path=Path("daily.parquet"),
         )
         self.load_raw_calls = 0
@@ -148,10 +148,12 @@ class _Storage:
         self,
         artifact: DatasetArtifact,
         request: WeatherRequest,
+        raw_artifact: DatasetArtifact,
     ) -> TransformedWeatherDataset:
         self.load_transformed_calls += 1
         assert artifact == self.transformed_artifact_value
         assert request == self.request
+        assert raw_artifact == self.raw_artifact_value
         return self.transformed_dataset_value
 
     def save_transformed(
@@ -159,11 +161,15 @@ class _Storage:
         df: pd.DataFrame,
         request: WeatherRequest,
         downloaded_at: datetime,
+        transformed_at: datetime,
+        raw_artifact: DatasetArtifact,
     ) -> DatasetArtifact:
         self.save_transformed_calls += 1
         assert request == self.request
         assert list(df.columns) == list(self.transformed_dataset_value.dataset.columns)
         assert downloaded_at == self.loaded_dataset_value.downloaded_at
+        assert transformed_at == self.transformed_dataset_value.transformed_at
+        assert raw_artifact == self.raw_artifact_value
         return self.transformed_artifact_value
 
 
@@ -184,10 +190,16 @@ class _Loader:
     def __init__(self):
         self.calls = 0
         self.dataset = None
+        self.artifact = None
 
-    def load(self, dataset: TransformedWeatherDataset) -> tuple[int, int]:
+    def load(
+        self,
+        dataset: TransformedWeatherDataset,
+        artifact: DatasetArtifact,
+    ) -> tuple[int, int]:
         self.calls += 1
         self.dataset = dataset
+        self.artifact = artifact
         return 7, len(dataset.dataset)
 
 
@@ -253,7 +265,10 @@ def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch)
         lambda dataset: validation_calls.append(dataset),
     )
 
-    transformed, artifact = pipeline.transform_or_resume(storage.loaded_dataset_value)
+    transformed, artifact = pipeline.transform_or_resume(
+        storage.loaded_dataset_value,
+        storage.raw_artifact_value,
+    )
 
     assert transformer.calls == 0
     assert storage.load_transformed_calls == 1
@@ -274,7 +289,10 @@ def test_transform_or_resume_validates_before_and_after_saving_new_checkpoint(
         lambda dataset: validation_calls.append(dataset),
     )
 
-    transformed, _ = pipeline.transform_or_resume(storage.loaded_dataset_value)
+    transformed, _ = pipeline.transform_or_resume(
+        storage.loaded_dataset_value,
+        storage.raw_artifact_value,
+    )
 
     assert transformer.calls == 1
     assert storage.load_transformed_calls == 0
@@ -282,11 +300,15 @@ def test_transform_or_resume_validates_before_and_after_saving_new_checkpoint(
     assert validation_calls == [transformed, transformed]
 
 
-def test_load_delegates_to_idempotent_loader() -> None:
+def test_load_delegates_dataset_and_artifact_to_idempotent_loader() -> None:
     _, pipeline, _, storage, _, loader = _pipeline()
 
-    result = pipeline.load(storage.transformed_dataset_value)
+    result = pipeline.load(
+        storage.transformed_dataset_value,
+        storage.transformed_artifact_value,
+    )
 
     assert result == (7, 1)
     assert loader.calls == 1
     assert loader.dataset == storage.transformed_dataset_value
+    assert loader.artifact == storage.transformed_artifact_value

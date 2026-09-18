@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pandas as pd
 from sqlalchemy import text
@@ -17,7 +17,12 @@ from pipeline.database import (
 )
 from pipeline.interfaces import DataLoader
 from pipeline.logging import log_metric
-from pipeline.model import TransformedWeatherDataset
+from pipeline.model import DatasetArtifact, TransformedWeatherDataset
+from pipeline.storage import (
+    artifact_path_for_metadata,
+    calculate_file_sha256,
+    read_parquet_provenance,
+)
 from pipeline.utils import build_request_key, build_variable_signature
 
 logger = logging.getLogger(__name__)
@@ -33,12 +38,17 @@ ERA5_LAND_DATABASE_COLUMNS = {
 
 def upsert_daily_climate_metadata(
     dataset: TransformedWeatherDataset,
+    artifact: DatasetArtifact,
     connection: Connection,
     config: DatabaseConfig,
 ) -> int:
     """Create or reuse metadata for one logical daily-climate partition."""
     request = dataset.request
     request_key = build_request_key(request)
+    provenance = read_parquet_provenance(artifact)
+    downloaded_at = datetime.fromisoformat(provenance["downloaded_at"])
+    transformed_artifact_path = artifact_path_for_metadata(artifact.path)
+    transformed_sha256 = calculate_file_sha256(artifact.path)
 
     result = connection.execute(
         text(
@@ -47,12 +57,14 @@ def upsert_daily_climate_metadata(
             (
                 request_key, dataset_name, source, start_date, end_date,
                 variable_signature, north_lat, south_lat, east_lon, west_lon,
+                downloaded_at, transformed_artifact_path, transformed_sha256,
                 transformed_at
             )
             VALUES
             (
                 :request_key, :dataset_name, :source, :start_date, :end_date,
                 :variable_signature, :north_lat, :south_lat, :east_lon, :west_lon,
+                :downloaded_at, :transformed_artifact_path, :transformed_sha256,
                 :transformed_at
             )
             ON CONFLICT (request_key)
@@ -66,6 +78,9 @@ def upsert_daily_climate_metadata(
                 south_lat = EXCLUDED.south_lat,
                 east_lon = EXCLUDED.east_lon,
                 west_lon = EXCLUDED.west_lon,
+                downloaded_at = EXCLUDED.downloaded_at,
+                transformed_artifact_path = EXCLUDED.transformed_artifact_path,
+                transformed_sha256 = EXCLUDED.transformed_sha256,
                 transformed_at = EXCLUDED.transformed_at
             RETURNING id
             """
@@ -81,7 +96,10 @@ def upsert_daily_climate_metadata(
             "south_lat": request.bbox.south_lat,
             "east_lon": request.bbox.east_lon,
             "west_lon": request.bbox.west_lon,
-            "transformed_at": datetime.now(timezone.utc),
+            "downloaded_at": downloaded_at,
+            "transformed_artifact_path": transformed_artifact_path,
+            "transformed_sha256": transformed_sha256,
+            "transformed_at": dataset.transformed_at,
         },
     )
     daily_climate_id = result.scalar()
@@ -95,6 +113,9 @@ def upsert_daily_climate_metadata(
             "daily_climate_id": daily_climate_id,
             "request_key": request_key,
             "variable_signature": build_variable_signature(request.variables),
+            "downloaded_at": downloaded_at,
+            "transformed_artifact_path": transformed_artifact_path,
+            "transformed_sha256": transformed_sha256,
         },
     )
     return daily_climate_id
@@ -176,6 +197,7 @@ def upsert_daily_climate_observations(
 
 def load_to_postgresql(
     dataset: TransformedWeatherDataset,
+    artifact: DatasetArtifact,
     config: DatabaseConfig | None = None,
 ) -> tuple[int, int]:
     """Load one daily-climate partition safely and idempotently."""
@@ -188,6 +210,7 @@ def load_to_postgresql(
     with engine.begin() as connection:
         daily_climate_id = upsert_daily_climate_metadata(
             dataset=dataset,
+            artifact=artifact,
             connection=connection,
             config=resolved_config,
         )
@@ -213,5 +236,9 @@ class PostgresDataLoader(DataLoader):
     def __init__(self, config: DatabaseConfig | None = None):
         self.config = config
 
-    def load(self, dataset: TransformedWeatherDataset) -> tuple[int, int]:
-        return load_to_postgresql(dataset, self.config)
+    def load(
+        self,
+        dataset: TransformedWeatherDataset,
+        artifact: DatasetArtifact,
+    ) -> tuple[int, int]:
+        return load_to_postgresql(dataset, artifact, self.config)
