@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 import logging
 
@@ -131,6 +132,31 @@ def test_era5_land_transform_rejects_incomplete_local_day() -> None:
     )
 
     with pytest.raises(ValueError, match="produced no complete local days"):
+        transform_data(loaded)
+
+
+def test_era5_land_transform_rejects_first_local_day_without_prior_context() -> None:
+    request = replace(
+        _create_era5_land_request(),
+        start_date="1950-01-01",
+        end_date="1950-01-01",
+    )
+    available_hourly_data = _create_hourly_dataframe().iloc[:24].copy()
+    available_hourly_data["valid_time"] = pd.date_range(
+        "1950-01-01 00:00:00",
+        "1950-01-01 23:00:00",
+        freq="h",
+    )
+    loaded = LoadedWeatherDataset(
+        request=request,
+        downloaded_at=datetime.now(timezone.utc),
+        raw_data=available_hourly_data,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="requires UTC context starting at 1949-12-31 17:00",
+    ):
         transform_data(loaded)
 
 

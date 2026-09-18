@@ -35,10 +35,11 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Mengubah root artefak menjadi `cds_reanalysis-era5-land` dan menghapus direktori sumber yang redundan di bawah layer.
 - [x] Menambahkan test `CdsExtractor.extract()` dengan klien CDS palsu untuk konteks waktu, normalisasi, dan pemilihan variabel tanpa jaringan.
 - [x] Menjalankan seluruh unit test setelah test extractor terpadu ditambahkan: `76 passed`.
+- [x] Menguji kegagalan eksplisit transformasi hari lokal 1 Januari 1950 karena konteks UTC+7 dimulai sebelum cakupan ERA5-Land.
+- [x] Menjalankan seluruh unit test setelah proteksi hari pertama ERA5-Land ditambahkan: `77 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Tambahkan test kegagalan transformasi untuk hari lokal 1 Januari 1950 yang tidak mempunyai konteks hari sebelumnya.
 - [ ] Tambahkan integration test PostgreSQL terisolasi untuk membuktikan pemuatan ulang tidak menghasilkan duplikat.
 - [ ] Verifikasi transaksi PostgreSQL ketika pemuatan detail gagal di tengah proses.
 
