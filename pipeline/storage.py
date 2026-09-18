@@ -109,9 +109,9 @@ def _create_artifact(
     path = (
         data_directory
         / request.dataset
+        / bbox_signature
         / layer.value
         / request.source.value
-        / bbox_signature
         / request.start_date[:4]
         / filename
     )
