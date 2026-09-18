@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 import pandas as pd
 import pytest
@@ -79,6 +80,21 @@ def test_era5_land_accumulated_variables_use_boundary_formula() -> None:
     assert transformed.loc[0, "ssrd"] == pytest.approx(24 * 3600.0)
 
 
+def test_era5_land_daily_mean_uses_all_24_local_hours() -> None:
+    loaded = _create_loaded_dataset()
+    local_day_mask = loaded.raw_data["valid_time"].between(
+        pd.Timestamp("2021-12-31 17:00:00"),
+        pd.Timestamp("2022-01-01 16:00:00"),
+    )
+    loaded.raw_data.loc[local_day_mask, "t2m"] = [
+        273.15 + local_hour for local_hour in range(24)
+    ]
+
+    transformed = transform_data(loaded).dataset
+
+    assert transformed.loc[0, "t2m"] == pytest.approx(11.5)
+
+
 def test_era5_land_temperature_units_are_celsius() -> None:
     transformed = transform_data(_create_loaded_dataset()).dataset
     assert transformed.loc[0, "t2m"] == pytest.approx(26.85)
@@ -116,3 +132,47 @@ def test_era5_land_transform_rejects_incomplete_local_day() -> None:
 
     with pytest.raises(ValueError, match="produced no complete local days"):
         transform_data(loaded)
+
+
+def test_era5_land_transform_rejects_null_state_sample() -> None:
+    loaded = _create_loaded_dataset()
+    missing_sample = pd.Timestamp("2022-01-01 06:00:00")
+    loaded.raw_data.loc[
+        loaded.raw_data["valid_time"].eq(missing_sample),
+        "t2m",
+    ] = float("nan")
+
+    with pytest.raises(ValueError, match="produced no complete local days"):
+        transform_data(loaded)
+
+
+def test_era5_land_accumulated_null_boundary_remains_missing() -> None:
+    loaded = _create_loaded_dataset()
+    loaded.raw_data.loc[
+        loaded.raw_data["valid_time"].eq(pd.Timestamp("2022-01-01 17:00:00")),
+        "tp",
+    ] = float("nan")
+
+    transformed = transform_data(loaded).dataset
+
+    assert pd.isna(transformed.loc[0, "tp"])
+
+
+def test_era5_land_negative_accumulation_is_retained_with_warning(caplog) -> None:
+    loaded = _create_loaded_dataset()
+    boundary_values = {
+        pd.Timestamp("2021-12-31 17:00:00"): 0.010,
+        pd.Timestamp("2022-01-01 00:00:00"): 0.002,
+        pd.Timestamp("2022-01-01 17:00:00"): 0.001,
+    }
+    for timestamp, value in boundary_values.items():
+        loaded.raw_data.loc[
+            loaded.raw_data["valid_time"].eq(timestamp),
+            "tp",
+        ] = value
+
+    with caplog.at_level(logging.WARNING):
+        transformed = transform_data(loaded).dataset
+
+    assert transformed.loc[0, "tp"] == pytest.approx(-7.0)
+    assert "negative daily accumulated values" in caplog.text

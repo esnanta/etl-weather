@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
-from pipeline.utils import build_request, build_request_key, build_variable_signature
+from pipeline.utils import (
+    build_request,
+    build_request_key,
+    build_variable_signature,
+    split_request_by_month,
+)
 
 
 def _bbox() -> BoundingBox:
@@ -74,3 +79,48 @@ def test_build_request_key_changes_when_partition_identity_changes() -> None:
     )
 
     assert build_request_key(first) != build_request_key(second)
+
+
+def test_build_request_key_changes_when_bounding_box_changes() -> None:
+    first = _request(["tp", "t2m"])
+    second = WeatherRequest(
+        source=first.source,
+        dataset=first.dataset,
+        start_date=first.start_date,
+        end_date=first.end_date,
+        variables=first.variables,
+        bbox=BoundingBox(
+            north_lat=5.2,
+            south_lat=3.4,
+            east_lon=97.6,
+            west_lon=96.1,
+        ),
+    )
+
+    assert build_request_key(first) != build_request_key(second)
+
+
+def test_split_request_by_month_preserves_partial_period_boundaries() -> None:
+    request = WeatherRequest(
+        source=DataSource.CDS,
+        dataset="reanalysis-era5-land",
+        start_date="2024-01-20",
+        end_date="2024-03-10",
+        variables=["tp"],
+        bbox=_bbox(),
+    )
+
+    monthly_requests = split_request_by_month(request)
+
+    assert [
+        (monthly.start_date, monthly.end_date)
+        for monthly in monthly_requests
+    ] == [
+        ("2024-01-20", "2024-01-31"),
+        ("2024-02-01", "2024-02-29"),
+        ("2024-03-01", "2024-03-10"),
+    ]
+    assert all(monthly.source is DataSource.CDS for monthly in monthly_requests)
+    assert all(monthly.dataset == request.dataset for monthly in monthly_requests)
+    assert all(monthly.variables == request.variables for monthly in monthly_requests)
+    assert all(monthly.bbox == request.bbox for monthly in monthly_requests)
