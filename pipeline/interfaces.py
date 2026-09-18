@@ -45,6 +45,8 @@ class DataStorage(ABC):
         df: pd.DataFrame,
         request: WeatherRequest,
         downloaded_at: datetime,
+        transformed_at: datetime,
+        raw_artifact: DatasetArtifact,
     ) -> DatasetArtifact:
         pass
 
@@ -53,6 +55,7 @@ class DataStorage(ABC):
         self,
         artifact: DatasetArtifact,
         request: WeatherRequest,
+        raw_artifact: DatasetArtifact,
     ) -> TransformedWeatherDataset:
         pass
 
@@ -69,5 +72,9 @@ class DataTransformer(ABC):
 
 class DataLoader(ABC):
     @abstractmethod
-    def load(self, dataset: TransformedWeatherDataset) -> tuple[int, int]:
+    def load(
+        self,
+        dataset: TransformedWeatherDataset,
+        artifact: DatasetArtifact,
+    ) -> tuple[int, int]:
         pass
