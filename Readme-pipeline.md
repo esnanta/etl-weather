@@ -122,6 +122,27 @@ Artifacts live under `data/`, remain source-separated, and are deterministic by 
 
 RAW checkpoints are immutable. Existing RAW/transformed checkpoints are resumed and validated rather than silently overwritten.
 
+P19 minimal provenance:
+
+```text
+RAW NetCDF metadata
+  downloaded_at
+
+Parquet metadata
+  raw_artifact_path
+  raw_sha256
+  downloaded_at
+  transformed_at
+
+daily_climate metadata
+  downloaded_at
+  transformed_artifact_path
+  transformed_sha256
+  transformed_at
+```
+
+RAW path/checksum stay in Parquet metadata and are not duplicated into PostgreSQL. Provenance is partition metadata, not observation columns.
+
 ---
 
 ## PostgreSQL Daily Climate Contract
@@ -266,19 +287,43 @@ Hardening added in this stage covers:
 - transformation rejection of incomplete local days;
 - P15 empty result, invalid bbox/dataset, local-midnight, and period-boundary failures.
 
-P18 remains **verification pending** until the expanded focused suite is executed locally. The previous verified baseline is:
+P18 is complete and verified locally:
 
 ```text
-37 passed
-```
-
-The expanded P18 suite is expected to collect:
-
-```text
-59 tests
+59 passed
 ```
 
 Warnings emitted by third-party `xarray/netCDF4` internals against NumPy 2.5 are not treated as pipeline failures.
+
+---
+
+## P19 — Minimal Provenance
+
+P19 adds practical traceability without transform-version or Git-commit versioning.
+
+The provenance chain is:
+
+```text
+RAW NetCDF
+  downloaded_at
+  SHA-256 calculated from file bytes
+        ↓
+Transformed Parquet
+  raw_artifact_path
+  raw_sha256
+  downloaded_at
+  transformed_at
+        ↓
+PostgreSQL daily_climate
+  downloaded_at
+  transformed_artifact_path
+  transformed_sha256
+  transformed_at
+```
+
+A transformed checkpoint is rejected on resume when the current RAW SHA-256 differs from the checksum recorded in the Parquet metadata. This prevents stale transformed data from being silently reused after RAW bytes change.
+
+Development artifacts and database schema created before P19 should be recreated for verification rather than migrated.
 
 ---
 
