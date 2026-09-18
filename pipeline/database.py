@@ -146,7 +146,7 @@ def create_daily_climate_table(
                 f"""
                 DO $$ BEGIN
                     CREATE TYPE {resolved_config.schema}.data_source_enum
-                    AS ENUM ('arco', 'cds', 'other');
+                    AS ENUM ('cds', 'other');
                 EXCEPTION WHEN duplicate_object THEN null;
                 END $$;
                 """

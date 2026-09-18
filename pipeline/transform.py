@@ -23,6 +23,7 @@ LOCAL_TIMEZONE = "Asia/Jakarta"
 LOCAL_UTC_OFFSET_HOURS = 7
 LOCAL_MIDNIGHT_IN_UTC_HOUR = (24 - LOCAL_UTC_OFFSET_HOURS) % 24
 EXPECTED_HOURLY_SAMPLES_PER_DAY = 24
+ERA5_LAND_FIRST_LOCAL_DAY = pd.Timestamp("1950-01-01")
 
 ERA5_LAND_ACCUMULATED_VARIABLES = {"tp", "ssrd"}
 ERA5_LAND_DAILY_MEAN_VARIABLES = {"t2m", "d2m", "swvl1"}
@@ -34,6 +35,21 @@ ERA5_LAND_OUTPUT_UNITS = {
     "swvl1": "m3/m3",
     "ssrd": "J/m2/day",
 }
+
+
+def _validate_era5_land_local_day_context(request: WeatherRequest) -> None:
+    """Reject the first local day because its UTC+7 context predates ERA5-Land."""
+    target_start = pd.Timestamp(request.start_date)
+    target_end = pd.Timestamp(request.end_date)
+    if target_start <= ERA5_LAND_FIRST_LOCAL_DAY <= target_end:
+        required_context_start = ERA5_LAND_FIRST_LOCAL_DAY - pd.Timedelta(
+            hours=LOCAL_UTC_OFFSET_HOURS
+        )
+        raise ValueError(
+            "ERA5-Land local day 1950-01-01 cannot be transformed for UTC+7: "
+            "it requires UTC context starting at "
+            f"{required_context_start:%Y-%m-%d %H:%M}, before ERA5-Land begins."
+        )
 
 
 def _select_observation_columns(
@@ -203,6 +219,7 @@ def _aggregate_era5_land_daily(
     dataframe: pd.DataFrame,
     request: WeatherRequest,
 ) -> pd.DataFrame:
+    _validate_era5_land_local_day_context(request)
     selected = _select_observation_columns(dataframe, request)
 
     unsupported_variables = [

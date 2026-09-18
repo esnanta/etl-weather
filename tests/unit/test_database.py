@@ -61,6 +61,8 @@ def test_daily_climate_table_protects_request_identity_and_provenance() -> None:
 
     sql = "\n".join(engine.connection.statements)
     assert "CREATE TYPE climate_data.data_source_enum" in sql
+    assert "AS ENUM ('cds', 'other')" in sql
+    assert "'arco'" not in sql
     assert "CREATE TABLE IF NOT EXISTS climate_data.daily_climate" in sql
     assert "request_key TEXT NOT NULL" in sql
     assert "variable_signature TEXT NOT NULL" in sql

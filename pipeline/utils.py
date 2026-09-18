@@ -19,11 +19,6 @@ VARIABLE_DESCRIPTIONS = {
     "d2m": "2 metre dewpoint temperature",
     "swvl1": "volumetric soil water layer 1",
     "ssrd": "surface solar radiation downwards",
-    "u10": "10 metre U wind component",
-    "v10": "10 metre V wind component",
-    "msl": "mean sea level pressure",
-    "sst": "sea surface temperature",
-    "swh": "significant height of combined wind waves and swell",
 }
 
 # CDS API request names are an external API detail. Internally and in stored
@@ -34,11 +29,6 @@ CDS_API_VARIABLE_NAMES = {
     "d2m": "2m_dewpoint_temperature",
     "swvl1": "volumetric_soil_water_layer_1",
     "ssrd": "surface_solar_radiation_downwards",
-    "u10": "10m_u_component_of_wind",
-    "v10": "10m_v_component_of_wind",
-    "msl": "mean_sea_level_pressure",
-    "sst": "sea_surface_temperature",
-    "swh": "significant_height_of_combined_wind_waves_and_swell",
 }
 
 CDS_API_TO_PROVIDER_VARIABLES = {
@@ -46,48 +36,11 @@ CDS_API_TO_PROVIDER_VARIABLES = {
     for provider_name, api_name in CDS_API_VARIABLE_NAMES.items()
 }
 
-ARCO_ERA5_SINGLE_LEVELS_VARIABLES = {
-    "tp", "ssrd", "t2m", "u10", "v10", "swh", "msl",
-}
-
-CDS_ERA5_SINGLE_LEVELS_VARIABLES = {
-    "tp", "t2m", "u10", "v10", "msl", "ssrd", "sst", "swh",
-}
-
 CDS_ERA5_LAND_VARIABLES = {
     "tp", "t2m", "d2m", "swvl1", "ssrd",
 }
 
-ARCO_DATASET_PROFILES = {
-    "era5-single-levels": {
-        "dataset_name": "arco-era5",
-        "zarr_url": "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
-        "data_reference": "https://github.com/google-research/arco-era5",
-        "grid": "equiangular lat-lon",
-        "horizontal_resolution": "0.25 deg",
-        "horizontal_resolution_degrees": 0.25,
-        "time_steps_utc": "00..23 (hourly)",
-        "levels": "1..1000 hPa (37 levels)",
-        "total_size": "2.05 PB",
-        "chunking": "{time:1, latitude:721, longitude:1440, level:37}",
-        "chunk_size_per_variable": "154 MB",
-        "supported_variables": ARCO_ERA5_SINGLE_LEVELS_VARIABLES,
-    },
-}
-
 CDS_DATASET_PROFILES = {
-    "reanalysis-era5-single-levels": {
-        "dataset_name": "copernicus-cds-era5-single-levels",
-        "api_dataset": "reanalysis-era5-single-levels",
-        "data_reference": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels",
-        "grid": "regular lat-lon",
-        "horizontal_resolution": "0.25 deg",
-        "horizontal_resolution_degrees": 0.25,
-        "time_steps_utc": "00..23 (hourly)",
-        "levels": "single level",
-        "requires_product_type": True,
-        "supported_variables": CDS_ERA5_SINGLE_LEVELS_VARIABLES,
-    },
     "reanalysis-era5-land": {
         "dataset_name": "copernicus-cds-era5-land",
         "api_dataset": "reanalysis-era5-land",
@@ -103,7 +56,6 @@ CDS_DATASET_PROFILES = {
 }
 
 DATASET_PROFILES_BY_SOURCE = {
-    DataSource.ARCO: ARCO_DATASET_PROFILES,
     DataSource.CDS: CDS_DATASET_PROFILES,
 }
 

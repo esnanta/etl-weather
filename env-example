@@ -1,8 +1,17 @@
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
+# PostgreSQL database used by the pipeline.
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=your_database_name
 POSTGRES_USER=your_username
 POSTGRES_PASSWORD=your_password
+
+# Isolated PostgreSQL database used only by integration tests.
+# TEST_POSTGRES_DATABASE must contain the word "test".
+TEST_POSTGRES_HOST=localhost
+TEST_POSTGRES_PORT=5432
+TEST_POSTGRES_DATABASE=weather_test
+TEST_POSTGRES_USER=your_test_username
+TEST_POSTGRES_PASSWORD=your_test_password

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from pipeline.extract import ArcoExtractor, CdsExtractor, _select_bbox, open_dataset
+from pipeline.extract import CdsExtractor
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.load import PostgresDataLoader
 from pipeline.logging import (
@@ -157,21 +157,11 @@ class WeatherPipeline:
 
 def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
     """Build the default pipeline for a preselected source dataset."""
-    if request.source is DataSource.ARCO:
-        global_dataset = open_dataset(request)
-        logger.info(
-            "Applying spatial subset and variable selection to the source dataset."
-        )
-        spatial_dataset = _select_bbox(global_dataset, request)
-        spatial_dataset = spatial_dataset[request.variables]
-        spatial_dataset = spatial_dataset.chunk("auto")
-        extractor = ArcoExtractor(spatial_dataset)
-    elif request.source is DataSource.CDS:
-        extractor = CdsExtractor()
-    else:
+    if request.source is not DataSource.CDS:
         raise ValueError(
             f"Unsupported source for runtime pipeline: {request.source.value}"
         )
+    extractor = CdsExtractor()
 
     return WeatherPipeline(
         extractor=extractor,
@@ -191,8 +181,3 @@ def run_monthly_batch(request: WeatherRequest) -> None:
         pipeline.run(monthly_request)
 
     logger.info("Monthly pipeline batch completed.")
-
-
-def run_weekly_batch(request: WeatherRequest) -> None:
-    """Backward-compatible alias for the current monthly batch strategy."""
-    run_monthly_batch(request)
