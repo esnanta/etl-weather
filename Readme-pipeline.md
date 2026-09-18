@@ -13,7 +13,7 @@ Core goals:
 - resumable RAW/transformed checkpoints;
 - idempotent PostgreSQL persistence;
 - controlled modelling-data access;
-- testability without Airflow;
+- strong offline test coverage before historical backfill;
 - thin future Airflow orchestration.
 
 ---
@@ -48,11 +48,11 @@ Asia/Jakarta = UTC+7
 Daily rules:
 
 ```text
-tp     accumulated → local-day total → mm/day
-ssrd   accumulated → local-day total → J/m²/day
-t2m    hourly instantaneous → local-day mean → °C
-d2m    hourly instantaneous → local-day mean → °C
-swvl1  hourly instantaneous → local-day mean → m³/m³
+tp     accumulated -> local-day total -> mm/day
+ssrd   accumulated -> local-day total -> J/m2/day
+t2m    hourly instantaneous -> local-day mean -> degC
+d2m    hourly instantaneous -> local-day mean -> degC
+swvl1  hourly instantaneous -> local-day mean -> m3/m3
 ```
 
 For ERA5-Land accumulated fields:
@@ -83,7 +83,7 @@ RAW NetCDF checkpoint
     ↓
 RAW validation
     ↓
-NetCDF → DataFrame
+NetCDF -> DataFrame
     ↓
 TRANSFORM OR RESUME
     ↓
@@ -125,8 +125,6 @@ RAW checkpoints are immutable. Existing RAW/transformed checkpoints are resumed 
 ---
 
 ## PostgreSQL Daily Climate Contract
-
-The development database supports only the current canonical schema. Discarded development schemas are not carried through compatibility code.
 
 Canonical tables:
 
@@ -188,16 +186,6 @@ daily_climate_id + valid_time + latitude + longitude
 
 P15 provides read-only access from canonical PostgreSQL daily climate observations into an in-memory modelling DataFrame.
 
-It does **not**:
-
-- create a `daily_feature_dataset` table/file;
-- change database schema;
-- copy observations into a second physical dataset;
-- replace missing values with zero;
-- add wet-day labels;
-- scale or normalize meteorological values;
-- choose final clustering features.
-
 Implementation:
 
 ```text
@@ -236,25 +224,61 @@ swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
 ```
 
-P15 validates that:
+P15 validates selection, required columns, non-empty results, local-midnight semantics, requested period bounds, duplicate local-day/grid observations across partitions, deterministic ordering, and preservation of missing values.
 
-- selection dates and bbox are valid;
-- required modelling columns exist;
-- the query returns observations;
-- no duplicate `(valid_time_local, latitude, longitude)` modelling observations exist across selected partitions;
-- `valid_time_local` remains local midnight;
-- observations stay inside the requested local-date period;
-- missing meteorological values remain missing.
+P15 does **not** create a duplicate physical feature dataset, mutate database state, add wet-day labels, scale values, or choose final clustering features.
 
-The read path deliberately opens the configured PostgreSQL database without creating database/schema objects. P15 is read-only.
-
-A thin local verification entrypoint is available:
+Verification entrypoint:
 
 ```bash
 python scripts/read_daily_climate.py
 ```
 
-For the current sanity configuration it should read the same three local days already loaded by `scripts/run_pipeline_cds.py`.
+Verified sanity result:
+
+```text
+rows                     747
+daily_climate_partitions 1
+local_days               3
+grid_cells               249
+```
+
+---
+
+## P18 — Test Coverage Hardening
+
+P18 strengthens the existing ERA5-Land test suite before provenance, Airflow orchestration, and long historical backfill.
+
+Hardening added in this stage covers:
+
+- runtime `extract_or_resume()` fresh and resume branches;
+- validation of resumed RAW checkpoints;
+- runtime `transform_or_resume()` fresh and resume branches;
+- validation of resumed transformed checkpoints;
+- loader delegation boundary;
+- canonical PostgreSQL schema DDL contracts;
+- observation UPSERT conflict identity;
+- missing-value conversion to database `NULL`;
+- empty observation loads;
+- transformed Parquet deterministic path, save/load, and overwrite refusal;
+- missing checkpoint failure behavior;
+- transformation rejection of missing requested variables;
+- transformation rejection of incomplete local days;
+- P15 empty result, invalid bbox/dataset, local-midnight, and period-boundary failures.
+
+P18 remains **verification pending** until the expanded focused suite is executed locally. The previous verified baseline is:
+
+```text
+37 passed
+```
+
+The expanded P18 suite is expected to collect:
+
+```text
+59 tests
+```
+
+Warnings emitted by third-party `xarray/netCDF4` internals against NumPy 2.5 are not treated as pipeline failures.
 
 ---
 
@@ -285,8 +309,6 @@ Future XCom handoff should contain small identifiers/artifact references, not fu
 
 ## Verification State
 
-Verified before P15 implementation:
-
 ```text
 [x] P4  retain hourly RAW data
 [x] P5  local day UTC+7
@@ -299,24 +321,37 @@ Verified before P15 implementation:
 [x] P12 temporal validation
 [x] P13 spatial validation
 [x] P14 unit conversion
+[x] P15 controlled daily-climate modelling access
 [x] P20 hourly ERA5-Land as primary RAW input
-```
-
-Latest verified focused baseline before the new P15 tests:
-
-```text
-32 passed
-```
-
-Current implementation status:
-
-```text
-[~] P15 controlled daily-climate modelling access — implemented, verification pending
-[ ] P18 complete ERA5-Land test coverage
+[~] P18 test coverage hardening — implementation added, verification pending
 [ ] P19 provenance
 [ ] Airflow DAG / historical backfill orchestration
+[ ] 10-year historical backfill
 [ ] P16 wet-day definition — deferred until 10-year data exists
 [ ] P17 feature contribution — deferred until 10-year data exists
+[ ] wet-day clustering
+```
+
+---
+
+## Current Roadmap
+
+```text
+P15 Controlled Modelling Access
+        ↓
+P18 Test Coverage Hardening
+        ↓
+P19 Provenance
+        ↓
+Airflow DAG ETL
+        ↓
+10-Year Historical Backfill
+        ↓
+P16 Wet-Day Definition
+        ↓
+P17 Feature Contribution
+        ↓
+Wet-Day Clustering
 ```
 
 ---

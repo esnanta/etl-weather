@@ -3,7 +3,11 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
-from pipeline.load import _prepare_observation_dataframe, upsert_daily_climate_metadata
+from pipeline.load import (
+    _prepare_observation_dataframe,
+    upsert_daily_climate_metadata,
+    upsert_daily_climate_observations,
+)
 from pipeline.model import (
     BoundingBox,
     DataSource,
@@ -84,6 +88,15 @@ def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
     assert "t2m" not in dataframe.columns
 
 
+def test_prepare_observation_dataframe_preserves_missing_as_null() -> None:
+    dataset = _dataset()
+    dataset.dataset.loc[0, "tp"] = float("nan")
+
+    dataframe, _ = _prepare_observation_dataframe(dataset, daily_climate_id=7)
+
+    assert dataframe.loc[0, "tp_daily_total_mm"] is None
+
+
 class _ScalarResult:
     def __init__(self, value):
         self.value = value
@@ -93,10 +106,10 @@ class _ScalarResult:
 
 
 class _UpsertConnection:
-    def __init__(self, daily_climate_id: int):
+    def __init__(self, daily_climate_id: int = 42):
         self.daily_climate_id = daily_climate_id
         self.statements: list[str] = []
-        self.params: list[dict | None] = []
+        self.params: list[object] = []
 
     def execute(self, statement, params=None):
         sql = str(statement)
@@ -104,6 +117,8 @@ class _UpsertConnection:
         self.params.append(params)
         if "INSERT INTO" in sql and "ON CONFLICT (request_key)" in sql:
             return _ScalarResult(self.daily_climate_id)
+        if "INSERT INTO" in sql and "ON CONFLICT (daily_climate_id" in sql:
+            return None
         raise AssertionError(f"Unexpected SQL: {sql}")
 
 
@@ -119,3 +134,50 @@ def test_upsert_daily_climate_metadata_uses_request_key_upsert() -> None:
     assert "ON CONFLICT (request_key)" in sql
     assert "RETURNING id" in sql
     assert connection.params[0]["request_key"]
+
+
+def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None:
+    connection = _UpsertConnection()
+
+    rows_processed = upsert_daily_climate_observations(
+        _dataset(),
+        daily_climate_id=42,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert rows_processed == 1
+    assert len(connection.statements) == 1
+    sql = connection.statements[0]
+    assert "INSERT INTO climate_data.daily_climate_detail" in sql
+    assert (
+        "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)" in sql
+    )
+    assert "DO UPDATE SET" in sql
+
+    records = connection.params[0]
+    assert isinstance(records, list)
+    assert records[0]["daily_climate_id"] == 42
+    assert records[0]["tp_daily_total_mm"] == 10.0
+    assert records[0]["valid_time"] == datetime(2021, 12, 31, 17, 0)
+    assert records[0]["valid_time_local"] == datetime(2022, 1, 1, 0, 0)
+
+
+def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> None:
+    connection = _UpsertConnection()
+    dataset = _dataset()
+    empty_dataset = TransformedWeatherDataset(
+        request=dataset.request,
+        transformed_at=dataset.transformed_at,
+        dataset=dataset.dataset.iloc[0:0].copy(),
+    )
+
+    rows_processed = upsert_daily_climate_observations(
+        empty_dataset,
+        daily_climate_id=42,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert rows_processed == 0
+    assert connection.statements == []
