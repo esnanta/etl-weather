@@ -9,6 +9,8 @@ from scripts.config import (
 
 
 def test_build_cds_request_requires_api_key(monkeypatch) -> None:
+    # Isolate the missing-key scenario from a developer's real .env file.
+    monkeypatch.setattr("scripts.config.load_dotenv", lambda: False)
     monkeypatch.delenv("CDSAPI_KEY", raising=False)
 
     with pytest.raises(ValueError):

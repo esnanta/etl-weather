@@ -27,6 +27,7 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menguji bahwa batas akumulasi `NaN` tetap menjadi nilai hilang.
 - [x] Menguji bahwa akumulasi negatif dipertahankan dan menghasilkan warning.
 - [x] Menguji penghapusan metadata sumber dari observasi hasil transformasi.
+- [x] Mengisolasi test API key yang hilang dari `CDSAPI_KEY` pada berkas `.env` pengembang.
 - [x] Menjalankan seluruh unit test setelah penghapusan ARCO: `73 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
