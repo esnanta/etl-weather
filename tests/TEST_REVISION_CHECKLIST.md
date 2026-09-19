@@ -46,8 +46,6 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menambahkan range-validation test tanpa menolak missing value atau akumulasi negatif yang memang dipertahankan dengan warning.
 - [x] Menjalankan seluruh unit test setelah range validation ditambahkan: `82 passed`.
 
-## Langkah selanjutnya — prioritas tinggi
-
 ## Langkah selanjutnya — penguatan validasi
 
 - [ ] Tambahkan test lebih dari satu grid untuk rumus akumulasi dan mean harian.
