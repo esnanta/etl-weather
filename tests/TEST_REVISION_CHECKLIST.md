@@ -40,10 +40,11 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menambahkan integration test PostgreSQL dengan database test dan schema unik untuk membuktikan idempotensi pemuatan ulang.
 - [x] Memuat konfigurasi integration test PostgreSQL dari `.env` melalui variabel `TEST_POSTGRES_*`.
 - [x] Menjalankan integration test dengan PostgreSQL test lokal: `1 passed`.
+- [x] Menambahkan integration test kegagalan detail untuk membuktikan rollback metadata dan observasi dalam satu transaksi.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Verifikasi transaksi PostgreSQL ketika pemuatan detail gagal di tengah proses.
+- [ ] Jalankan integration test rollback dengan PostgreSQL test lokal dan catat hasil verifikasinya.
 
 ## Langkah selanjutnya — penguatan validasi
 
