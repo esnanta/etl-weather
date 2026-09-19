@@ -96,7 +96,7 @@ IDEMPOTENT POSTGRESQL LOAD
 climate_data.daily_climate
 climate_data.daily_climate_detail
     ↓
-P15 CONTROLLED MODELLING READ
+CONTROLLED MODELLING READ
     ↓
 in-memory Pandas DataFrame
 ```
@@ -122,7 +122,7 @@ Artifacts live under `data/`, remain source-separated, and are deterministic by 
 
 RAW checkpoints are immutable. Existing RAW/transformed checkpoints are resumed and validated rather than silently overwritten.
 
-P19 minimal provenance:
+Minimal provenance:
 
 ```text
 RAW NetCDF metadata
@@ -203,9 +203,9 @@ daily_climate_id + valid_time + latitude + longitude
 
 ---
 
-## P15 — Controlled Modelling Data Access
+## Controlled Modelling Data Access
 
-P15 provides read-only access from canonical PostgreSQL daily climate observations into an in-memory modelling DataFrame.
+The daily-climate repository provides read-only access from canonical PostgreSQL daily climate observations into an in-memory modelling DataFrame.
 
 Implementation:
 
@@ -245,9 +245,9 @@ swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
 ```
 
-P15 validates selection, required columns, non-empty results, local-midnight semantics, requested period bounds, duplicate local-day/grid observations across partitions, deterministic ordering, and preservation of missing values.
+The repository validates selection, required columns, non-empty results, local-midnight semantics, requested period bounds, duplicate local-day/grid observations across partitions, deterministic ordering, and preservation of missing values.
 
-P15 does **not** create a duplicate physical feature dataset, mutate database state, add wet-day labels, scale values, or choose final clustering features.
+The repository does **not** create a duplicate physical feature dataset, mutate database state, add wet-day labels, scale values, or choose final clustering features.
 
 Verification entrypoint:
 
@@ -266,9 +266,9 @@ grid_cells               249
 
 ---
 
-## P18 — Test Coverage Hardening
+## Test Coverage Hardening
 
-P18 strengthens the existing ERA5-Land test suite before provenance, Airflow orchestration, and long historical backfill.
+The test suite protects ERA5-Land behavior before Airflow orchestration and long historical backfill.
 
 Hardening added in this stage covers:
 
@@ -285,21 +285,21 @@ Hardening added in this stage covers:
 - missing checkpoint failure behavior;
 - transformation rejection of missing requested variables;
 - transformation rejection of incomplete local days;
-- P15 empty result, invalid bbox/dataset, local-midnight, and period-boundary failures.
+- modelling-data access failures for empty results, invalid bbox/dataset, local-midnight, and period boundaries.
 
-P18 is complete and verified locally:
+The current unit-test baseline is:
 
 ```text
-59 passed
+90 passed
 ```
 
 Warnings emitted by third-party `xarray/netCDF4` internals against NumPy 2.5 are not treated as pipeline failures.
 
 ---
 
-## P19 — Minimal Provenance
+## Minimal Provenance
 
-P19 adds practical traceability without transform-version or Git-commit versioning.
+Provenance metadata adds practical traceability without transform-version or Git-commit versioning.
 
 The provenance chain is:
 
@@ -323,20 +323,20 @@ PostgreSQL daily_climate
 
 A transformed checkpoint is rejected on resume when the current RAW SHA-256 differs from the checksum recorded in the Parquet metadata. This prevents stale transformed data from being silently reused after RAW bytes change.
 
-Development artifacts and database schema created before P19 should be recreated for verification rather than migrated.
+Development artifacts and database schema created before this provenance contract should be recreated for verification rather than migrated.
 
 ---
 
-## P16 / P17 Timing
+## Deferred Modelling Decisions
 
-P16 and P17 are intentionally deferred until approximately ten years of historical daily climate data have been collected.
+Wet-day definition and feature-contribution analysis are intentionally deferred until approximately ten years of historical daily climate data have been collected.
 
 ```text
-P16 Wet-Day Definition
-P17 Feature Contribution
+Wet-Day Definition
+Feature-Contribution Analysis
 ```
 
-The five current meteorological variables remain **candidate parameters**. P15 does not assume all five become clustering inputs.
+The five current meteorological variables remain **candidate parameters**. The daily-climate repository does not assume all five become clustering inputs.
 
 ---
 
@@ -355,25 +355,23 @@ Future XCom handoff should contain small identifiers/artifact references, not fu
 ## Verification State
 
 ```text
-[x] P4  retain hourly RAW data
-[x] P5  local day UTC+7
-[x] P6  variable-specific aggregation
-[x] P7  observation schema whitelist
-[x] P8  exclude CDS metadata from observations
-[x] P9  provider variable naming contract
-[x] P10 checkpoint / resume
-[x] P11 idempotent database load
-[x] P12 temporal validation
-[x] P13 spatial validation
-[x] P14 unit conversion
-[x] P15 controlled daily-climate modelling access
-[x] P20 hourly ERA5-Land as primary RAW input
-[~] P18 test coverage hardening — implementation added, verification pending
-[ ] P19 provenance
+[x] retain hourly ERA5-Land RAW data
+[x] local day UTC+7
+[x] variable-specific aggregation
+[x] observation schema whitelist
+[x] exclude CDS metadata from observations
+[x] provider variable naming contract
+[x] checkpoint / resume
+[x] idempotent database load
+[x] temporal and spatial validation
+[x] unit conversion
+[x] controlled daily-climate modelling access
+[x] artifact provenance
+[x] retry and backfill test coverage
 [ ] Airflow DAG / historical backfill orchestration
 [ ] 10-year historical backfill
-[ ] P16 wet-day definition — deferred until 10-year data exists
-[ ] P17 feature contribution — deferred until 10-year data exists
+[ ] wet-day definition — deferred until 10-year data exists
+[ ] feature-contribution analysis — deferred until 10-year data exists
 [ ] wet-day clustering
 ```
 
@@ -382,19 +380,19 @@ Future XCom handoff should contain small identifiers/artifact references, not fu
 ## Current Roadmap
 
 ```text
-P15 Controlled Modelling Access
+Controlled Modelling Access
         ↓
-P18 Test Coverage Hardening
+Test Coverage Hardening
         ↓
-P19 Provenance
+Artifact Provenance
         ↓
 Airflow DAG ETL
         ↓
 10-Year Historical Backfill
         ↓
-P16 Wet-Day Definition
+Wet-Day Definition
         ↓
-P17 Feature Contribution
+Feature-Contribution Analysis
         ↓
 Wet-Day Clustering
 ```
