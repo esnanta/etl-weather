@@ -128,7 +128,9 @@ P19 tests protect minimal artifact provenance:
 
 Do not introduce transform-version or Git-commit provenance tests. RAW checksum/path remain Parquet metadata rather than PostgreSQL columns.
 
----\n\n## Test Structure
+---
+
+## Test Structure
 
 Use:
 
@@ -152,11 +154,25 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
 - `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
-- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume and missing artifacts.
+- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume, missing artifacts, and atomic-write cleanup.
 - `test_database.py`: canonical schema, provenance fields, foreign key, indexes and observation identity.
 - `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT and observation UPSERT.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: P15 selection, SQL contract, validation, ordering and missing values.
+- `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
+
+## Dependency and Warning Policy
+
+The active dependency set supports CDS ERA5-Land NetCDF input, Parquet output, and PostgreSQL persistence. Do not restore ARCO-only Zarr, Google Cloud Storage, Dask, or async HTTP dependencies unless an explicitly approved source path requires them again.
+
+The pinned `numpy==2.5.1` and `netCDF4==1.7.4` combination can emit this upstream runtime warning when the NetCDF backend is imported under pytest:
+
+```text
+numpy.ndarray size changed, may indicate binary incompatibility.
+Expected 16 from C header, got 96 from PyObject
+```
+
+The warning is intentionally left visible. Do not silence all `RuntimeWarning` messages or downgrade dependencies solely to hide it. NetCDF behavior remains protected by extractor and storage tests; investigate again if it becomes an exception, corrupts a round trip, or fails on a supported environment.
 
 ## Airflow Testing
 
@@ -174,8 +190,14 @@ Do not duplicate scientific or P15 tests inside DAG tests.
 [x] P13 spatial validation
 [x] P14 unit conversion
 [x] P15 controlled daily-climate modelling access
-[~] P18 test coverage hardening — implementation added, verification pending
-[ ] P19 provenance
+[x] P18 test coverage hardening
+[x] P19 minimal artifact provenance
+[x] ARCO-only dependency removal
 ```
 
-P18 is complete: the expanded focused suite passed locally with 59 tests.
+Latest verified baseline:
+
+```text
+90 unit tests passed
+2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
+```
