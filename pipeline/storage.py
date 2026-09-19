@@ -253,7 +253,13 @@ def read_parquet_provenance(artifact: DatasetArtifact) -> dict[str, str]:
             + ", ".join(missing)
             + ". Recreate the transformed checkpoint."
         )
-    return {key: decoded[key] for key in PARQUET_PROVENANCE_KEYS}
+    provenance = {key: decoded[key] for key in PARQUET_PROVENANCE_KEYS}
+    for timestamp_field in ("downloaded_at", "transformed_at"):
+        _datetime_from_metadata(
+            provenance[timestamp_field],
+            timestamp_field,
+        )
+    return provenance
 
 
 def save_transformed_parquet(

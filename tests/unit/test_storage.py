@@ -2,6 +2,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 import xarray as xr
 
@@ -80,6 +81,35 @@ def _transformed_dataframe() -> pd.DataFrame:
             "tp": [10.0],
         }
     )
+
+
+def _save_transformed_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    raw_artifact = save_raw_netcdf(_raw_dataset(request))
+    transformed_artifact = save_transformed_parquet(
+        _transformed_dataframe(),
+        request,
+        _downloaded_at(),
+        _transformed_at(),
+        raw_artifact,
+    )
+    return request, raw_artifact, transformed_artifact
+
+
+def _rewrite_parquet_provenance(
+    artifact,
+    *,
+    updates: dict[str, str] | None = None,
+    remove: set[str] | None = None,
+) -> None:
+    table = pq.read_table(artifact.path)
+    metadata = dict(table.schema.metadata or {})
+    for key in remove or set():
+        metadata.pop(key.encode("utf-8"), None)
+    for key, value in (updates or {}).items():
+        metadata[key.encode("utf-8")] = value.encode("utf-8")
+    pq.write_table(table.replace_schema_metadata(metadata), artifact.path)
 
 
 def test_save_raw_netcdf_and_convert_to_dataframe(tmp_path, monkeypatch) -> None:
@@ -271,6 +301,69 @@ def test_transformed_resume_rejects_changed_raw_checksum(
             request,
             raw_artifact,
         )
+
+
+def test_parquet_provenance_rejects_missing_required_metadata(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _, _, transformed_artifact = _save_transformed_checkpoint(
+        tmp_path,
+        monkeypatch,
+    )
+    _rewrite_parquet_provenance(
+        transformed_artifact,
+        remove={"raw_sha256"},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="missing provenance metadata: raw_sha256",
+    ):
+        read_parquet_provenance(transformed_artifact)
+
+
+def test_transformed_resume_rejects_different_raw_artifact_path(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    request, raw_artifact, transformed_artifact = _save_transformed_checkpoint(
+        tmp_path,
+        monkeypatch,
+    )
+    _rewrite_parquet_provenance(
+        transformed_artifact,
+        updates={"raw_artifact_path": "data/other/raw.nc"},
+    )
+
+    with pytest.raises(ValueError, match="path does not match"):
+        load_transformed_parquet(
+            transformed_artifact,
+            request,
+            raw_artifact,
+        )
+
+
+@pytest.mark.parametrize("timestamp_field", ["downloaded_at", "transformed_at"])
+def test_parquet_provenance_rejects_invalid_timestamp(
+    tmp_path,
+    monkeypatch,
+    timestamp_field,
+) -> None:
+    _, _, transformed_artifact = _save_transformed_checkpoint(
+        tmp_path,
+        monkeypatch,
+    )
+    _rewrite_parquet_provenance(
+        transformed_artifact,
+        updates={timestamp_field: "not-an-iso-timestamp"},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"Invalid {timestamp_field} provenance timestamp",
+    ):
+        read_parquet_provenance(transformed_artifact)
 
 
 def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(

@@ -49,10 +49,11 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menjalankan seluruh unit test setelah pengujian multi-grid ditambahkan: `83 passed`.
 - [x] Menguji bahwa satu nilai missing pada satu hari tidak mengubah keanggotaan grid selama baris koordinat tetap ada.
 - [x] Menjalankan seluruh unit test setelah pengujian missing value per hari ditambahkan: `84 passed`.
+- [x] Menguji penolakan metadata provenance Parquet yang hilang, path RAW yang berbeda, dan timestamp yang rusak.
+- [x] Menjalankan seluruh unit test setelah penguatan provenance Parquet: `88 passed`.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Tambahkan test kesalahan metadata provenance Parquet selain perubahan checksum.
 - [ ] Tambahkan test kegagalan penulisan atomik tanpa meninggalkan artefak akhir parsial.
 - [ ] Audit dependensi yang hanya diperlukan jalur ARCO dan hapus jika tidak lagi digunakan.
 
