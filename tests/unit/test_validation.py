@@ -196,6 +196,35 @@ def test_transformed_spatial_validation_rejects_grid_membership_change() -> None
         validate_transformed_dataset(_transformed_dataset(dataframe))
 
 
+def test_transformed_grid_membership_remains_stable_with_one_day_missing_value() -> None:
+    first_grid = _transformed_dataframe()
+    second_grid = _transformed_dataframe().copy()
+    second_grid["latitude"] = 4.6
+    second_grid["longitude"] = 96.9
+    second_grid.loc[
+        second_grid["valid_time_local"].eq(pd.Timestamp("2022-01-02")),
+        "t2m",
+    ] = float("nan")
+    dataframe = pd.concat([first_grid, second_grid], ignore_index=True)
+    request = _request(
+        bbox=BoundingBox(
+            north_lat=4.6,
+            west_lon=96.8,
+            south_lat=4.5,
+            east_lon=96.9,
+        )
+    )
+
+    validate_transformed_dataset(_transformed_dataset(dataframe, request))
+
+    grid_counts = dataframe.groupby("valid_time_local")[[
+        "latitude",
+        "longitude",
+    ]].size()
+    assert grid_counts.tolist() == [2, 2, 2]
+    assert dataframe["t2m"].isna().sum() == 1
+
+
 def test_transformed_spatial_validation_rejects_off_grid_coordinate() -> None:
     dataframe = _transformed_dataframe()
     dataframe.loc[:, "longitude"] = 96.85
