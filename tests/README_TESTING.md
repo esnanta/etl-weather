@@ -38,7 +38,10 @@ Tests must protect:
 - deterministic request identity;
 - idempotent PostgreSQL loading;
 - canonical daily-climate table and foreign-key names;
-- P15 controlled database-to-memory access;\n- P19 artifact provenance and checksum integrity.
+- P15 controlled database-to-memory access;
+- P19 artifact provenance and checksum integrity;
+- atomic NetCDF and Parquet writes;
+- isolated PostgreSQL idempotency and transaction rollback.
 
 Scientific correctness is part of software correctness.
 
@@ -141,9 +144,11 @@ Current modules include:
 ```text
 test_config_requests.py
 test_daily_climate_repository.py
+test_database.py
 test_extract.py
 test_extract_cds_normalization.py
 test_load.py
+test_runtime.py
 test_storage.py
 test_transform.py
 test_utils_request_validation.py
@@ -222,13 +227,9 @@ P17 feature contribution / subset evaluation
 
 ## P18 / P19 Verification
 
-P18 completed with:
+P18 protects the retry, resume, validation, storage, database, and P15 boundaries needed before historical backfill.
 
-```text
-59 passed
-```
-
-P19 adds tests for:
+P19 protects:
 
 - SHA-256 byte-change detection;
 - preservation of RAW `downloaded_at`;
@@ -237,6 +238,51 @@ P19 adds tests for:
 - PostgreSQL provenance columns;
 - metadata UPSERT of transformed artifact path/checksum;
 - runtime artifact handoff into transform/resume and database load.
+
+The current verified baseline is:
+
+```text
+90 unit tests passed
+2 PostgreSQL integration tests passed
+```
+
+The integration result requires an explicitly configured test database. It is not part of the default offline unit-test run.
+
+---
+
+## PostgreSQL Integration Tests
+
+`tests/integration/test_postgresql_idempotency.py` uses the real loader and an isolated schema to verify two database behaviors:
+
+1. loading the same logical partition twice does not create duplicate observations;
+2. a detail-row failure rolls back both the detail rows and the metadata UPSERT in the same transaction.
+
+Configuration is loaded from `.env` through:
+
+```text
+TEST_POSTGRES_HOST
+TEST_POSTGRES_PORT
+TEST_POSTGRES_DATABASE
+TEST_POSTGRES_USER
+TEST_POSTGRES_PASSWORD
+```
+
+If these variables are absent, the integration module is skipped rather than connecting to a development or production database implicitly.
+
+---
+
+## Known NetCDF Runtime Warning
+
+The project retains:
+
+```text
+numpy==2.5.1
+netCDF4==1.7.4
+```
+
+Under pytest, importing the NetCDF backend can emit an upstream `numpy.ndarray size changed` runtime warning. It remains visible by project decision because changing either version did not remove the warning consistently, `pip check` remains clean, and NetCDF tests still pass.
+
+Do not add a broad `RuntimeWarning` filter. Warnings produced by scientific validation, such as negative accumulations, must remain observable.
 
 ---
 
@@ -273,14 +319,14 @@ Do not duplicate scientific transformation or P15 data-access tests inside DAG t
 ## Running Tests
 
 ```bash
-pytest tests/unit
-pytest tests/integration
+python -m pytest tests/unit -q
+python -m pytest tests/integration -v
 ```
 
 Focused ERA5-Land/P9-P19 suite:
 
 ```bash
-pytest \
+python -m pytest \
   tests/unit/test_utils_request_validation.py \
   tests/unit/test_extract_cds_normalization.py \
   tests/unit/test_transform.py \
@@ -292,10 +338,11 @@ pytest \
   tests/unit/test_daily_climate_repository.py -v
 ```
 
-Latest verified pre-P19 baseline:
+Latest verified baseline:
 
 ```text
-59 passed
+90 unit tests passed
+2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
 ```
 
 ---
