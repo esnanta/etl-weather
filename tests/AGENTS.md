@@ -12,7 +12,7 @@ Authoritative references:
 
 ## Scope
 
-Core tests protect the ERA5-Land ETL pipeline and P15 daily-climate repository before Airflow orchestration and long historical backfill.
+Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical backfill.
 
 Current path:
 
@@ -20,7 +20,7 @@ Current path:
 CDS ERA5-Land hourly RAW
 -> UTC+7 daily transformed data
 -> PostgreSQL daily_climate / daily_climate_detail
--> P15 read-only in-memory modelling access
+-> read-only in-memory modelling access
 ```
 
 Core tests must not require Airflow.
@@ -81,7 +81,7 @@ daily_climate_id + valid_time + latitude + longitude
 
 Database writes must remain idempotent UPSERT operations.
 
-## P15 Rules
+## Daily-Climate Repository Rules
 
 Implementation:
 
@@ -90,13 +90,13 @@ pipeline/daily_climate_repository.py
 tests/unit/test_daily_climate_repository.py
 ```
 
-P15 tests must protect explicit source/dataset/period/bbox selection, canonical tables, both time columns, missing values, deterministic ordering, local-midnight semantics, period bounds, duplicate local-day/grid rejection, and read-only behavior.
+Repository tests must protect explicit source/dataset/period/bbox selection, canonical tables, both time columns, missing values, deterministic ordering, local-midnight semantics, period bounds, duplicate local-day/grid rejection, and read-only behavior.
 
-Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to P15 tests.
+Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to repository tests.
 
-## P18 Hardening Rules
+## Retry and Backfill Hardening Rules
 
-P18 must protect the boundaries that become critical during retry/backfill:
+Tests must protect the boundaries that become critical during retry/backfill:
 
 - fresh versus resumed RAW checkpoints;
 - validation after RAW resume;
@@ -109,14 +109,14 @@ P18 must protect the boundaries that become critical during retry/backfill:
 - metadata and observation UPSERT identities;
 - missing-value preservation into database NULL;
 - transformation failure for missing inputs or incomplete local days;
-- P15 negative cases and deterministic handoff.
+- daily-climate repository negative cases and deterministic handoff.
 
 `tests/unit/test_runtime.py` owns orchestration-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
 
-## P19 Provenance Rules
+## Provenance Rules
 
-P19 tests protect minimal artifact provenance:
+Provenance tests protect minimal artifact traceability:
 
 - SHA-256 changes when artifact bytes change;
 - RAW `downloaded_at` survives save/resume;
@@ -158,7 +158,7 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_database.py`: canonical schema, provenance fields, foreign key, indexes and observation identity.
 - `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT and observation UPSERT.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
-- `test_daily_climate_repository.py`: P15 selection, SQL contract, validation, ordering and missing values.
+- `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
 
 ## Dependency and Warning Policy
@@ -178,20 +178,20 @@ The warning is intentionally left visible. Do not silence all `RuntimeWarning` m
 
 When DAGs are added, test orchestration only: DAG parsing, task graph, schedule/data intervals, retries, concurrency/pools, and small metadata/artifact handoff.
 
-Do not duplicate scientific or P15 tests inside DAG tests.
+Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 
-## Current Priority
+## Verified Coverage
 
 ```text
-[x] P9  provider variable naming
-[x] P10 checkpoint / resume
-[x] P11 idempotent database load
-[x] P12 temporal validation
-[x] P13 spatial validation
-[x] P14 unit conversion
-[x] P15 controlled daily-climate modelling access
-[x] P18 test coverage hardening
-[x] P19 minimal artifact provenance
+[x] provider variable naming
+[x] checkpoint / resume
+[x] idempotent database load
+[x] temporal validation
+[x] spatial validation
+[x] unit conversion
+[x] controlled daily-climate modelling access
+[x] retry and backfill boundary coverage
+[x] minimal artifact provenance
 [x] ARCO-only dependency removal
 ```
 
