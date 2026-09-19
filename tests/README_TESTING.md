@@ -13,7 +13,7 @@ CDS ERA5-Land hourly RAW
 → Parquet checkpoint
 → idempotent PostgreSQL load
 → daily_climate / daily_climate_detail
-→ P15 controlled in-memory modelling access
+→ controlled in-memory modelling access
 ```
 
 Core behavior must remain testable without Apache Airflow.
@@ -38,8 +38,8 @@ Tests must protect:
 - deterministic request identity;
 - idempotent PostgreSQL loading;
 - canonical daily-climate table and foreign-key names;
-- P15 controlled database-to-memory access;
-- P19 artifact provenance and checksum integrity;
+- controlled database-to-memory access;
+- artifact provenance and checksum integrity;
 - atomic NetCDF and Parquet writes;
 - isolated PostgreSQL idempotency and transaction rollback.
 
@@ -106,7 +106,7 @@ The development database supports only the current schema. Tests must not preser
 
 `daily_climate.request_key` identifies a logical request partition.
 
-P19 partition provenance stored in `daily_climate`:
+Partition provenance stored in `daily_climate`:
 
 ```text
 downloaded_at
@@ -166,7 +166,7 @@ test_validation.py
 
 `test_daily_climate_repository.py` should protect:
 
-- explicit P15 source/dataset/period/bbox selection;
+- explicit source/dataset/period/bbox selection;
 - canonical table joins;
 - required DataFrame columns;
 - deterministic ordering;
@@ -178,9 +178,9 @@ Routine unit tests must not require a live PostgreSQL server.
 
 ---
 
-## P10/P11 Regression Rules
+## Checkpoint and Idempotency Regression Rules
 
-P10:
+Checkpoint behavior:
 
 ```text
 same logical request → same artifact path
@@ -188,7 +188,7 @@ RAW existing         → resume, never overwrite silently
 Parquet existing     → resume and validate
 ```
 
-P11:
+Database idempotency:
 
 ```text
 same request_key → same logical partition identity
@@ -199,13 +199,13 @@ When an isolated database integration test is used, loading the same partition t
 
 ---
 
-## P15 Testing Contract
+## Modelling-Data Access Contract
 
-P15 is defined as:
+Controlled modelling-data access is defined as:
 
 > controlled and validated access from canonical PostgreSQL daily climate observations to an in-memory modelling dataset, without creating a duplicate physical dataset and without changing meteorological semantics.
 
-P15 tests should verify:
+Repository tests should verify:
 
 - selection is explicit by source/dataset/period/spatial or partition identity as appropriate;
 - returned data preserves both `valid_time` and `valid_time_local`;
@@ -216,20 +216,20 @@ P15 tests should verify:
 
 The five meteorological variables are candidate parameters only. Tests must not assume all five are final clustering inputs.
 
-P15 must remain separate from:
+Modelling-data access must remain separate from:
 
 ```text
-P16 wet-day identification
-P17 feature contribution / subset evaluation
+wet-day identification
+feature contribution / subset evaluation
 ```
 
 ---
 
-## P18 / P19 Verification
+## Retry, Resume, and Provenance Verification
 
-P18 protects the retry, resume, validation, storage, database, and P15 boundaries needed before historical backfill.
+The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical backfill.
 
-P19 protects:
+Provenance coverage protects:
 
 - SHA-256 byte-change detection;
 - preservation of RAW `downloaded_at`;
@@ -312,7 +312,7 @@ They should cover orchestration only:
 - concurrency/pools;
 - small artifact/control metadata handoff.
 
-Do not duplicate scientific transformation or P15 data-access tests inside DAG tests.
+Do not duplicate scientific transformation or modelling-data access tests inside DAG tests.
 
 ---
 
@@ -323,7 +323,7 @@ python -m pytest tests/unit -q
 python -m pytest tests/integration -v
 ```
 
-Focused ERA5-Land/P9-P19 suite:
+Focused ERA5-Land pipeline suite:
 
 ```bash
 python -m pytest \
