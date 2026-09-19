@@ -237,7 +237,7 @@ def _build_parquet_provenance(
 
 
 def read_parquet_provenance(artifact: DatasetArtifact) -> dict[str, str]:
-    """Read required P19 provenance metadata from a transformed Parquet file."""
+    """Read required provenance metadata from a transformed Parquet file."""
     if not artifact_exists(artifact):
         raise FileNotFoundError(f"Transformed artifact not found: {artifact.path}")
 
