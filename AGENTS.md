@@ -2,9 +2,9 @@
 
 This repository contains a weather ETL pipeline that runs independently and is intended to be orchestrated by Apache Airflow later.
 
-Authoritative references:
+Project and coding references:
 
-- `Readme-pipeline.md`
+- `README.md`
 - `docs/AIRFLOW_BEST_PRACTICE.md`
 - `docs/AIRFLOW_CODING_GUIDELINES.md`
 - `tests/AGENTS.md` for test-specific work
@@ -20,8 +20,6 @@ Scientific data contracts documented in code and tests must not be changed impli
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
 - Controlled PostgreSQL-to-DataFrame access is implemented and verified.
-- Retry, resume, provenance, and persistence boundaries are verified by 90 unit tests and 2 isolated PostgreSQL integration tests.
-- Wet-day definition and feature-contribution analysis are deferred until approximately ten years of daily data are available.
 
 Do not add another provider path without an explicit design decision, isolated artifacts, dedicated dependencies, and source-specific tests.
 
@@ -191,6 +189,8 @@ Canonical detail foreign key:
 daily_climate_id
 ```
 
+Logical partition identity is the deterministic `request_key`, derived from the provider, dataset, date range, variable set, and bounding box.
+
 Observation identity for database UPSERT:
 
 ```text
@@ -307,31 +307,6 @@ Scientific validation takes precedence over generic row-count checks.
 Follow `tests/AGENTS.md`.
 
 Tests must be pytest-based, deterministic, offline by default, small, readable, and independent from Airflow for core pipeline behavior.
-
----
-
-## Current Status
-
-```text
-[x] hourly ERA5-Land RAW retained
-[x] local day UTC+7
-[x] variable-specific aggregation
-[x] observation schema whitelist
-[x] CDS metadata excluded from observations
-[x] provider variable naming
-[x] checkpoint / resume
-[x] idempotent database load
-[x] temporal and spatial validation
-[x] unit conversion
-[x] controlled daily-climate modelling access
-[x] artifact provenance
-[x] retry and backfill test coverage
-[ ] Airflow DAG / historical backfill orchestration
-[ ] 10-year historical backfill
-[ ] wet-day definition — deferred until 10-year data exists
-[ ] feature-contribution analysis — deferred until 10-year data exists
-[ ] wet-day clustering
-```
 
 ---
 
