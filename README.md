@@ -58,12 +58,6 @@ Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
 
 This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for `t2m`, `d2m`, and `swvl1` require the complete set of hourly samples for the local day. Missing observations remain missing rather than being converted to zero.
 
-Project guidance:
-
-- [AGENTS.md](./AGENTS.md)
-- [docs/AIRFLOW_BEST_PRACTICE.md](./docs/AIRFLOW_BEST_PRACTICE.md)
-- [docs/AIRFLOW_CODING_GUIDELINES.md](./docs/AIRFLOW_CODING_GUIDELINES.md)
-
 ## Project Structure
 
 ```text
