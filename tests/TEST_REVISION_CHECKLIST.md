@@ -40,18 +40,22 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menambahkan integration test PostgreSQL dengan database test dan schema unik untuk membuktikan idempotensi pemuatan ulang.
 - [x] Memuat konfigurasi integration test PostgreSQL dari `.env` melalui variabel `TEST_POSTGRES_*`.
 - [x] Menjalankan integration test dengan PostgreSQL test lokal: `1 passed`.
-
-## Langkah selanjutnya — prioritas tinggi
-
-- [ ] Verifikasi transaksi PostgreSQL ketika pemuatan detail gagal di tengah proses.
+- [x] Menambahkan integration test kegagalan detail untuk membuktikan rollback metadata dan observasi dalam satu transaksi.
+- [x] Menjalankan seluruh integration test PostgreSQL termasuk rollback: `2 passed`.
+- [x] Menetapkan batas fisik keras transformed data: suhu tidak di bawah nol absolut, `swvl1` dalam 0–1, dan semua nilai non-missing harus finite.
+- [x] Menambahkan range-validation test tanpa menolak missing value atau akumulasi negatif yang memang dipertahankan dengan warning.
+- [x] Menjalankan seluruh unit test setelah range validation ditambahkan: `82 passed`.
+- [x] Menguji rumus akumulasi dan mean harian pada lebih dari satu grid tanpa pencampuran antar-koordinat.
+- [x] Menjalankan seluruh unit test setelah pengujian multi-grid ditambahkan: `83 passed`.
+- [x] Menguji bahwa satu nilai missing pada satu hari tidak mengubah keanggotaan grid selama baris koordinat tetap ada.
+- [x] Menjalankan seluruh unit test setelah pengujian missing value per hari ditambahkan: `84 passed`.
+- [x] Menguji penolakan metadata provenance Parquet yang hilang, path RAW yang berbeda, dan timestamp yang rusak.
+- [x] Menjalankan seluruh unit test setelah penguatan provenance Parquet: `88 passed`.
+- [x] Menguji kegagalan penulisan atomik NetCDF dan Parquet tanpa meninggalkan file final atau sementara parsial.
+- [x] Menjalankan seluruh unit test setelah pengujian atomic-write failure: `90 passed`.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Tentukan rentang fisik yang sah untuk setiap variabel sebelum menambahkan range-validation test.
-- [ ] Tambahkan test lebih dari satu grid untuk rumus akumulasi dan mean harian.
-- [ ] Tambahkan test stabilitas grid ketika nilai hilang muncul hanya pada salah satu hari.
-- [ ] Tambahkan test kesalahan metadata provenance Parquet selain perubahan checksum.
-- [ ] Tambahkan test kegagalan penulisan atomik tanpa meninggalkan artefak akhir parsial.
 - [ ] Audit dependensi yang hanya diperlukan jalur ARCO dan hapus jika tidak lagi digunakan.
 
 ## Sinkronisasi dokumentasi setelah test stabil

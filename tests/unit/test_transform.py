@@ -96,6 +96,78 @@ def test_era5_land_daily_mean_uses_all_24_local_hours() -> None:
     assert transformed.loc[0, "t2m"] == pytest.approx(11.5)
 
 
+def test_era5_land_daily_formulas_remain_independent_across_grid_cells() -> None:
+    request = replace(
+        _create_era5_land_request(),
+        variables=["tp", "ssrd", "t2m"],
+    )
+    valid_time = pd.date_range(
+        "2021-12-31 00:00:00",
+        "2022-01-01 23:00:00",
+        freq="h",
+    )
+    grid_profiles = (
+        {
+            "latitude": 4.5,
+            "longitude": 96.8,
+            "tp_increment": 0.001,
+            "ssrd_increment": 3600.0,
+            "temperature_base_c": 10.0,
+            "temperature_hour_scale": 1.0,
+        },
+        {
+            "latitude": 4.6,
+            "longitude": 96.9,
+            "tp_increment": 0.002,
+            "ssrd_increment": 7200.0,
+            "temperature_base_c": 20.0,
+            "temperature_hour_scale": 2.0,
+        },
+    )
+    rows = []
+    for profile in grid_profiles:
+        for timestamp in valid_time:
+            local_hour = (timestamp + pd.Timedelta(hours=7)).hour
+            rows.append(
+                {
+                    "valid_time": timestamp,
+                    "latitude": profile["latitude"],
+                    "longitude": profile["longitude"],
+                    "tp": _era5_land_cumulative_value(
+                        timestamp,
+                        profile["tp_increment"],
+                    ),
+                    "ssrd": _era5_land_cumulative_value(
+                        timestamp,
+                        profile["ssrd_increment"],
+                    ),
+                    "t2m": (
+                        273.15
+                        + profile["temperature_base_c"]
+                        + profile["temperature_hour_scale"] * local_hour
+                    ),
+                }
+            )
+
+    loaded = LoadedWeatherDataset(
+        request=request,
+        downloaded_at=datetime.now(timezone.utc),
+        raw_data=pd.DataFrame(rows),
+    )
+
+    transformed = transform_data(loaded).dataset.set_index(
+        ["latitude", "longitude"]
+    )
+
+    assert len(transformed) == 2
+    assert transformed.loc[(4.5, 96.8), "tp"] == pytest.approx(24.0)
+    assert transformed.loc[(4.6, 96.9), "tp"] == pytest.approx(48.0)
+    assert transformed.loc[(4.5, 96.8), "ssrd"] == pytest.approx(86_400.0)
+    assert transformed.loc[(4.6, 96.9), "ssrd"] == pytest.approx(172_800.0)
+    assert transformed.loc[(4.5, 96.8), "t2m"] == pytest.approx(21.5)
+    assert transformed.loc[(4.6, 96.9), "t2m"] == pytest.approx(43.0)
+
+
 def test_era5_land_temperature_units_are_celsius() -> None:
     transformed = transform_data(_create_loaded_dataset()).dataset
     assert transformed.loc[0, "t2m"] == pytest.approx(26.85)

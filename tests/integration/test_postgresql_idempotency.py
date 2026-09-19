@@ -9,6 +9,7 @@ import pytest
 import xarray as xr
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 
 from pipeline.database import DatabaseConfig
 from pipeline.load import load_to_postgresql
@@ -88,7 +89,7 @@ def _request() -> WeatherRequest:
     )
 
 
-def _save_test_partition(tmp_path, monkeypatch):
+def _save_test_partition(tmp_path, monkeypatch, *, invalid_detail: bool = False):
     monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
     request = _request()
     downloaded_at = datetime(2022, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -113,26 +114,30 @@ def _save_test_partition(tmp_path, monkeypatch):
             ),
         )
     )
+    dataframe = pd.DataFrame(
+        {
+            "valid_time": pd.to_datetime(
+                ["2021-12-31 17:00:00", "2021-12-31 17:00:00"]
+            ),
+            "valid_time_local": pd.to_datetime(
+                ["2022-01-01 00:00:00", "2022-01-01 00:00:00"]
+            ),
+            "latitude": [4.5, 4.6],
+            "longitude": [96.8, 96.9],
+            "tp": [10.0, 11.0],
+            "t2m": [26.0, 27.0],
+            "swvl1": [0.30, 0.31],
+            "ssrd": [12_000_000.0, 13_000_000.0],
+            "d2m": [22.0, 23.0],
+        }
+    )
+    if invalid_detail:
+        dataframe.loc[0, "valid_time_local"] = pd.NaT
+
     transformed = TransformedWeatherDataset(
         request=request,
         transformed_at=transformed_at,
-        dataset=pd.DataFrame(
-            {
-                "valid_time": pd.to_datetime(
-                    ["2021-12-31 17:00:00", "2021-12-31 17:00:00"]
-                ),
-                "valid_time_local": pd.to_datetime(
-                    ["2022-01-01 00:00:00", "2022-01-01 00:00:00"]
-                ),
-                "latitude": [4.5, 4.6],
-                "longitude": [96.8, 96.9],
-                "tp": [10.0, 11.0],
-                "t2m": [26.0, 27.0],
-                "swvl1": [0.30, 0.31],
-                "ssrd": [12_000_000.0, 13_000_000.0],
-                "d2m": [22.0, 23.0],
-            }
-        ),
+        dataset=dataframe,
     )
     transformed_artifact = save_transformed_parquet(
         transformed.dataset,
@@ -200,3 +205,41 @@ def test_loading_same_partition_twice_does_not_create_duplicates(
     assert metadata_count == 1
     assert detail_count == 2
     assert duplicate_key_count == 0
+
+
+def test_detail_failure_rolls_back_metadata_and_observations(
+    postgres_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    dataset, artifact = _save_test_partition(
+        tmp_path,
+        monkeypatch,
+        invalid_detail=True,
+    )
+
+    with pytest.raises(IntegrityError) as error:
+        load_to_postgresql(dataset, artifact, postgres_config)
+
+    assert "daily_climate_detail" in str(error.value)
+
+    engine = create_engine(postgres_config.url, future=True)
+    try:
+        with engine.connect() as connection:
+            metadata_count = connection.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_table}"
+                )
+            ).scalar_one()
+            detail_count = connection.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_detail_table}"
+                )
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert metadata_count == 0
+    assert detail_count == 0
