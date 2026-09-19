@@ -45,10 +45,11 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menetapkan batas fisik keras transformed data: suhu tidak di bawah nol absolut, `swvl1` dalam 0–1, dan semua nilai non-missing harus finite.
 - [x] Menambahkan range-validation test tanpa menolak missing value atau akumulasi negatif yang memang dipertahankan dengan warning.
 - [x] Menjalankan seluruh unit test setelah range validation ditambahkan: `82 passed`.
+- [x] Menguji rumus akumulasi dan mean harian pada lebih dari satu grid tanpa pencampuran antar-koordinat.
+- [x] Menjalankan seluruh unit test setelah pengujian multi-grid ditambahkan: `83 passed`.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Tambahkan test lebih dari satu grid untuk rumus akumulasi dan mean harian.
 - [ ] Tambahkan test stabilitas grid ketika nilai hilang muncul hanya pada salah satu hari.
 - [ ] Tambahkan test kesalahan metadata provenance Parquet selain perubahan checksum.
 - [ ] Tambahkan test kegagalan penulisan atomik tanpa meninggalkan artefak akhir parsial.
