@@ -57,14 +57,15 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menghapus 35 dependensi langsung dan transitif jalur ARCO, termasuk stack Zarr, Google Cloud Storage, async HTTP, dan Dask.
 - [x] Memvalidasi instalasi dari virtual environment baru: `pip check` bersih dan dependensi ARCO tidak terpasang.
 - [x] Menjalankan seluruh unit test dari virtual environment baru setelah pembersihan dependensi: `90 passed`.
+- [x] Mengaudit warning ABI `numpy`–`netCDF4`; mempertahankan versi, membiarkan warning tetap terlihat, dan tidak menambahkan filter global.
+- [x] Memperbarui `tests/AGENTS.md` dan `tests/README_TESTING.md`; menghapus status lama, baseline lama, dan separator baris yang terescape.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Selaraskan kompatibilitas binary `numpy` dan `netCDF4` agar penggunaan backend NetCDF pada environment baru tidak menghasilkan warning ABI.
+Tidak ada item penguatan validasi yang masih terbuka pada checklist saat ini.
 
 ## Sinkronisasi dokumentasi setelah test stabil
 
-- [ ] Perbarui `tests/AGENTS.md` dan `tests/README_TESTING.md`; hapus status lama, angka baseline lama, dan teks literal `\n`.
 - [ ] Perbarui README proyek dan panduan repository agar hanya menyatakan CDS ERA5-Land sebagai sumber aktif.
 - [ ] Sinkronkan dokumen keputusan desain setelah test prioritas tinggi lulus.
 - [ ] Tempatkan penjelasan test pada bagian ilmiah yang relevan, bukan pada satu bab testing terpisah.
