@@ -15,8 +15,7 @@ Scientific data contracts documented in code and tests must not be changed impli
 
 ## Current Project Scope
 
-- Active development path: CDS ERA5-Land hourly data.
-- ARCO remains a separate source path.
+- The only active provider path is Copernicus CDS ERA5-Land hourly data.
 - RAW hourly data is the scientific source of truth.
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
@@ -24,7 +23,19 @@ Scientific data contracts documented in code and tests must not be changed impli
 - Retry, resume, provenance, and persistence boundaries are verified by 90 unit tests and 2 isolated PostgreSQL integration tests.
 - Wet-day definition and feature-contribution analysis are deferred until approximately ten years of daily data are available.
 
-Do not merge ARCO/CDS artifacts or silently harmonize source-specific behavior.
+Do not add another provider path without an explicit design decision, isolated artifacts, dedicated dependencies, and source-specific tests.
+
+---
+
+## Repository Conventions
+
+- Use English for code, comments, and identifiers.
+- Treat RAW data as immutable.
+- Put Airflow orchestration in `dags/`.
+- Put ETL logic in `pipeline/`.
+- Use `scripts/` only for thin entrypoints and wrappers.
+- Keep the active provider and dataset identity explicit in requests, artifacts, logs, and database metadata.
+- Do not restore ARCO entrypoints, dependencies, artifacts, or runtime branches without an approved design and dedicated tests.
 
 ---
 
@@ -327,7 +338,7 @@ Tests must be pytest-based, deterministic, offline by default, small, readable, 
 ## Forbidden Actions
 
 - Do not overwrite RAW checkpoints.
-- Do not combine ARCO and CDS artifacts.
+- Do not restore or combine inactive provider artifacts with the CDS ERA5-Land pipeline.
 - Do not change provider variable names silently.
 - Do not change unit/time semantics silently.
 - Do not bypass validation on resumed artifacts.
@@ -350,7 +361,7 @@ When in doubt, prefer:
 1. scientific correctness;
 2. immutable RAW source truth;
 3. deterministic partition identity;
-4. explicit source separation;
+4. explicit provider, dataset, and spatial identity;
 5. explicit units and timestamps;
 6. validation before downstream use;
 7. safe retry/resume;
