@@ -51,10 +51,11 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menjalankan seluruh unit test setelah pengujian missing value per hari ditambahkan: `84 passed`.
 - [x] Menguji penolakan metadata provenance Parquet yang hilang, path RAW yang berbeda, dan timestamp yang rusak.
 - [x] Menjalankan seluruh unit test setelah penguatan provenance Parquet: `88 passed`.
+- [x] Menguji kegagalan penulisan atomik NetCDF dan Parquet tanpa meninggalkan file final atau sementara parsial.
+- [x] Menjalankan seluruh unit test setelah pengujian atomic-write failure: `90 passed`.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Tambahkan test kegagalan penulisan atomik tanpa meninggalkan artefak akhir parsial.
 - [ ] Audit dependensi yang hanya diperlukan jalur ARCO dan hapus jika tidak lagi digunakan.
 
 ## Sinkronisasi dokumentasi setelah test stabil

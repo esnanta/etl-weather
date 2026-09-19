@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -233,6 +234,35 @@ def test_save_raw_netcdf_refuses_to_overwrite_existing_checkpoint(
         save_raw_netcdf(raw_dataset)
 
 
+def test_failed_atomic_raw_write_leaves_no_final_or_temporary_artifact(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    expected_artifact = raw_artifact_for_request(
+        request,
+        data_directory=tmp_path,
+    )
+    temporary_path = expected_artifact.path.with_name(
+        f".{expected_artifact.path.name}.tmp"
+    )
+
+    def fail_after_partial_write(dataset, path, *args, **kwargs):
+        del dataset, args, kwargs
+        path = Path(path)
+        path.write_bytes(b"partial-netcdf")
+        raise OSError("simulated NetCDF write failure")
+
+    monkeypatch.setattr(xr.Dataset, "to_netcdf", fail_after_partial_write)
+
+    with pytest.raises(OSError, match="simulated NetCDF write failure"):
+        save_raw_netcdf(_raw_dataset(request))
+
+    assert not expected_artifact.path.exists()
+    assert not temporary_path.exists()
+
+
 def test_load_raw_netcdf_preserves_downloaded_at(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
     request = _request()
@@ -391,6 +421,45 @@ def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(
             _transformed_at(),
             raw_artifact,
         )
+
+
+def test_failed_atomic_parquet_write_leaves_no_final_or_temporary_artifact(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    request = _request()
+    raw_artifact = save_raw_netcdf(_raw_dataset(request))
+    expected_artifact = transformed_artifact_for_request(
+        request,
+        data_directory=tmp_path,
+    )
+    temporary_path = expected_artifact.path.with_name(
+        f".{expected_artifact.path.name}.tmp"
+    )
+
+    def fail_after_partial_write(table, path, *args, **kwargs):
+        del table, args, kwargs
+        path = Path(path)
+        path.write_bytes(b"partial-parquet")
+        raise OSError("simulated Parquet write failure")
+
+    monkeypatch.setattr(
+        "pipeline.storage.pq.write_table",
+        fail_after_partial_write,
+    )
+
+    with pytest.raises(OSError, match="simulated Parquet write failure"):
+        save_transformed_parquet(
+            _transformed_dataframe(),
+            request,
+            _downloaded_at(),
+            _transformed_at(),
+            raw_artifact,
+        )
+
+    assert not expected_artifact.path.exists()
+    assert not temporary_path.exists()
 
 
 def test_load_checkpoint_raises_when_artifact_is_missing(tmp_path) -> None:
