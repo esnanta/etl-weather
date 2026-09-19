@@ -14,15 +14,55 @@ transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
 
+## How It Works
+
+```text
+CDS ERA5-Land hourly data
+        ↓
+RAW NetCDF checkpoint
+        ↓
+RAW validation
+        ↓
+UTC+7 daily transformation
+        ↓
+Transformed Parquet checkpoint
+        ↓
+Transformed validation
+        ↓
+Idempotent PostgreSQL load
+        ↓
+Read-only modelling access
+```
+
+The hourly RAW checkpoint remains the scientific source of truth. Existing checkpoints are resumed and validated rather than silently overwritten, and repeated database loads update the same logical partition instead of appending duplicates.
+
+## Variables and Daily Outputs
+
+| Variable | Meaning | Daily operation | Output unit |
+| --- | --- | --- | --- |
+| `tp` | Total precipitation | Accumulation | mm/day |
+| `ssrd` | Surface solar radiation downwards | Accumulation | J/m²/day |
+| `t2m` | 2 metre temperature | Mean | °C |
+| `d2m` | 2 metre dewpoint temperature | Mean | °C |
+| `swvl1` | Volumetric soil water layer 1 | Mean | m³/m³ |
+
+## Local-Day Time Semantics
+
+ERA5-Land input timestamps use UTC, while this project produces daily observations for `Asia/Jakarta` (UTC+7). The transformed data retains both `valid_time` and `valid_time_local`; neither is replaced with a generic `date` field.
+
+For an accumulated variable and local day `D`, the implemented boundary calculation is:
+
+```text
+Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
+```
+
+This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for `t2m`, `d2m`, and `swvl1` require the complete set of hourly samples for the local day. Missing observations remain missing rather than being converted to zero.
+
 Project guidance:
 
 - [AGENTS.md](./AGENTS.md)
 - [docs/AIRFLOW_BEST_PRACTICE.md](./docs/AIRFLOW_BEST_PRACTICE.md)
 - [docs/AIRFLOW_CODING_GUIDELINES.md](./docs/AIRFLOW_CODING_GUIDELINES.md)
-
-Pipeline behavior and scientific contracts:
-
-- [Readme-pipeline.md](./Readme-pipeline.md)
 
 ## Project Structure
 
@@ -89,6 +129,12 @@ data/
 ```
 
 The bounding-box directory prevents artifacts from different spatial requests from colliding. RAW data uses NetCDF, transformed daily data uses Parquet, and filenames deterministically include the request period and variables. RAW artifacts are immutable checkpoints.
+
+## Persistence and Modelling Access
+
+PostgreSQL stores one metadata row for each logical daily-climate partition and detail rows for daily grid-cell observations. Metadata and observations use deterministic UPSERT identities so rerunning the same partition does not create duplicates.
+
+The modelling read path selects data explicitly by source, dataset, period, and bounding box. It returns an in-memory Pandas DataFrame without mutating the canonical climate tables or creating a second physical feature dataset.
 
 ## Running Tests
 
