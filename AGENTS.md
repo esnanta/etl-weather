@@ -20,9 +20,9 @@ Scientific data contracts documented in code and tests must not be changed impli
 - RAW hourly data is the scientific source of truth.
 - Daily transformed data uses UTC+7 local-day semantics.
 - PostgreSQL stores canonical daily climate observations.
-- P15 controlled PostgreSQL-to-DataFrame access is implemented and verified.
-- P18 test coverage hardening is complete and verified with 59 passing focused tests.\n- P19 minimal artifact provenance is implemented and awaits local verification.
-- P16 wet-day definition and P17 feature contribution are deferred until approximately ten years of daily data are available.
+- Controlled PostgreSQL-to-DataFrame access is implemented and verified.
+- Retry, resume, provenance, and persistence boundaries are verified by 90 unit tests and 2 isolated PostgreSQL integration tests.
+- Wet-day definition and feature-contribution analysis are deferred until approximately ten years of daily data are available.
 
 Do not merge ARCO/CDS artifacts or silently harmonize source-specific behavior.
 
@@ -43,7 +43,7 @@ Keep in `pipeline/`:
 - artifact storage;
 - checkpoint/resume;
 - database persistence/idempotency;
-- P15 PostgreSQL-to-in-memory modelling access.
+- controlled PostgreSQL-to-in-memory modelling access.
 
 Keep in future `dags/`:
 
@@ -200,7 +200,7 @@ The development database supports only the current schema. Prefer recreating dev
 
 ---
 
-## P15 — Daily Climate Repository Contract
+## Daily Climate Repository Contract
 
 Implementation:
 
@@ -214,7 +214,7 @@ Tests:
 tests/unit/test_daily_climate_repository.py
 ```
 
-P15 provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.
+The repository provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.
 
 Selection explicitly defines:
 
@@ -241,15 +241,15 @@ swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
 ```
 
-P15 must remain read-only, preserve missing values, preserve both timestamps, enforce local-midnight and period bounds, reject empty selections and duplicate local-day/grid observations, and return deterministic ordering.
+The repository must remain read-only, preserve missing values, preserve both timestamps, enforce local-midnight and period bounds, reject empty selections and duplicate local-day/grid observations, and return deterministic ordering.
 
-P15 must not add wet-day labels, scaling, anomaly/rolling features, final clustering features, or create duplicate physical modelling datasets.
+The repository must not add wet-day labels, scaling, anomaly/rolling features, final clustering features, or create duplicate physical modelling datasets.
 
 ---
 
-## P18 — Test Coverage Hardening
+## Retry and Backfill Test Coverage
 
-P18 protects the pipeline boundaries needed before provenance and historical backfill.
+Tests protect the pipeline boundaries needed before historical backfill.
 
 Coverage should include:
 
@@ -261,16 +261,16 @@ Coverage should include:
 - canonical database schema and indexes;
 - metadata and observation UPSERT contracts;
 - missing-value preservation into database NULL;
-- P15 negative cases and handoff validation;
+- daily-climate repository negative cases and handoff validation;
 - runtime loader delegation without Airflow.
 
-Do not mark P18 complete until the expanded focused test suite passes locally.
+Keep this coverage verified whenever retry, resume, persistence, or backfill boundaries change.
 
 ---
 
-## P19 — Minimal Provenance Contract
+## Minimal Provenance Contract
 
-P19 tracks artifact identity without introducing transform-version or Git-commit versioning.
+Provenance metadata tracks artifact identity without introducing transform-version or Git-commit versioning.
 
 Rules:
 
@@ -280,9 +280,11 @@ Rules:
 - RAW path/checksum do not belong in PostgreSQL.
 - Provenance values are partition metadata, not repeated observation columns.
 - A resumed transformed checkpoint must reject a changed RAW checksum.
-- Development artifacts/schema created before P19 should be recreated rather than migrated.
+- Development artifacts/schema created before this provenance contract should be recreated rather than migrated.
 
----\n\n## Validation Rules
+---
+
+## Validation Rules
 
 Do not bypass validation because an artifact or database row already exists.
 Scientific validation takes precedence over generic row-count checks.
@@ -300,25 +302,23 @@ Tests must be pytest-based, deterministic, offline by default, small, readable, 
 ## Current Status
 
 ```text
-[x] P4  RAW hourly retained
-[x] P5  local day UTC+7
-[x] P6  variable-specific aggregation
-[x] P7  observation schema whitelist
-[x] P8  CDS metadata excluded
-[x] P9  provider variable naming
-[x] P10 checkpoint / resume
-[x] P11 idempotent database load
-[x] P12 temporal validation
-[x] P13 spatial validation
-[x] P14 unit conversion
-[x] P15 controlled daily-climate modelling access
-[x] P20 hourly ERA5-Land RAW
-[~] P18 test coverage hardening — implementation added, verification pending
-[ ] P19 provenance
+[x] hourly ERA5-Land RAW retained
+[x] local day UTC+7
+[x] variable-specific aggregation
+[x] observation schema whitelist
+[x] CDS metadata excluded from observations
+[x] provider variable naming
+[x] checkpoint / resume
+[x] idempotent database load
+[x] temporal and spatial validation
+[x] unit conversion
+[x] controlled daily-climate modelling access
+[x] artifact provenance
+[x] retry and backfill test coverage
 [ ] Airflow DAG / historical backfill orchestration
 [ ] 10-year historical backfill
-[ ] P16 wet-day definition — deferred until 10-year data exists
-[ ] P17 feature contribution — deferred until 10-year data exists
+[ ] wet-day definition — deferred until 10-year data exists
+[ ] feature-contribution analysis — deferred until 10-year data exists
 [ ] wet-day clustering
 ```
 
@@ -333,11 +333,11 @@ Tests must be pytest-based, deterministic, offline by default, small, readable, 
 - Do not bypass validation on resumed artifacts.
 - Do not return database loading to blind append behavior.
 - Do not use any foreign key other than `daily_climate_id` for canonical daily-climate details.
-- Do not create a duplicate P15 physical dataset without a demonstrated need.
+- Do not create a duplicate daily-climate modelling dataset without a demonstrated need.
 - Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
 - Do not treat missing values as zero.
 - Do not encode wet-day or clustering semantics into canonical daily climate data.
-- Do not make the P15 read path create database objects.
+- Do not make the daily-climate read path create database objects.
 - Do not place scientific transformations in future DAG files.
 - Do not pass full datasets through future XCom.
 
