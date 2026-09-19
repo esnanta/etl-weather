@@ -18,6 +18,12 @@ from pipeline.utils import get_source_dataset_profile
 
 logger = logging.getLogger(__name__)
 
+ERA5_LAND_TRANSFORMED_HARD_RANGES = {
+    "t2m": (-273.15, None),
+    "d2m": (-273.15, None),
+    "swvl1": (0.0, 1.0),
+}
+
 
 class ValidationError(Exception):
     """Raised when dataset validation fails."""
@@ -412,6 +418,40 @@ def _validate_era5_land_transformed_space(
     )
 
 
+def _validate_era5_land_transformed_values(
+    dataframe: pd.DataFrame,
+    request: WeatherRequest,
+) -> None:
+    """Validate finite values and only scientifically hard physical bounds."""
+    for variable in request.variables:
+        values = pd.to_numeric(dataframe[variable], errors="coerce")
+        non_numeric = dataframe[variable].notna() & values.isna()
+        if bool(non_numeric.any()):
+            raise ValidationError(
+                f"ERA5-Land variable '{variable}' must be numeric or missing."
+            )
+
+        observed = values.dropna()
+        if not np.isfinite(observed.to_numpy(dtype=float)).all():
+            raise ValidationError(
+                f"ERA5-Land variable '{variable}' contains non-finite values."
+            )
+
+        bounds = ERA5_LAND_TRANSFORMED_HARD_RANGES.get(variable)
+        if bounds is None:
+            continue
+
+        minimum, maximum = bounds
+        if minimum is not None and bool(observed.lt(minimum).any()):
+            raise ValidationError(
+                f"ERA5-Land variable '{variable}' must be >= {minimum}."
+            )
+        if maximum is not None and bool(observed.gt(maximum).any()):
+            raise ValidationError(
+                f"ERA5-Land variable '{variable}' must be <= {maximum}."
+            )
+
+
 def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[str]) -> None:
     """Log raw dataset validation."""
     required_coords = {"valid_time", "latitude", "longitude"}
@@ -506,6 +546,10 @@ def validate_transformed_dataset(transformed_dataset: TransformedWeatherDataset)
             end_date=transformed_dataset.request.end_date,
         )
         _validate_era5_land_transformed_space(
+            dataframe,
+            transformed_dataset.request,
+        )
+        _validate_era5_land_transformed_values(
             dataframe,
             transformed_dataset.request,
         )

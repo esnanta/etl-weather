@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -18,13 +19,16 @@ from pipeline.validation import (
 )
 
 
-def _request(bbox: BoundingBox | None = None) -> WeatherRequest:
+def _request(
+    bbox: BoundingBox | None = None,
+    variables: list[str] | None = None,
+) -> WeatherRequest:
     return WeatherRequest(
         source=DataSource.CDS,
         dataset="reanalysis-era5-land",
         start_date="2022-01-01",
         end_date="2022-01-03",
-        variables=["tp", "t2m"],
+        variables=variables or ["tp", "t2m"],
         bbox=bbox
         or BoundingBox(
             north_lat=4.5,
@@ -97,9 +101,10 @@ def _transformed_dataframe() -> pd.DataFrame:
 
 def _transformed_dataset(
     dataframe: pd.DataFrame | None = None,
+    request: WeatherRequest | None = None,
 ) -> TransformedWeatherDataset:
     return TransformedWeatherDataset(
-        request=_request(),
+        request=request or _request(),
         transformed_at=datetime.now(timezone.utc),
         dataset=_transformed_dataframe() if dataframe is None else dataframe,
     )
@@ -196,3 +201,41 @@ def test_transformed_spatial_validation_rejects_off_grid_coordinate() -> None:
     dataframe.loc[:, "longitude"] = 96.85
     with pytest.raises(ValidationError):
         validate_transformed_dataset(_transformed_dataset(dataframe))
+
+
+@pytest.mark.parametrize("variable", ["t2m", "d2m"])
+def test_transformed_value_validation_rejects_temperature_below_absolute_zero(
+    variable,
+) -> None:
+    dataframe = _transformed_dataframe()
+    dataframe[variable] = [-273.16, 20.0, 21.0]
+    request = _request(variables=["tp", "t2m", variable])
+    request = replace(request, variables=list(dict.fromkeys(request.variables)))
+
+    with pytest.raises(ValidationError, match=f"'{variable}' must be >= -273.15"):
+        validate_transformed_dataset(_transformed_dataset(dataframe, request))
+
+
+def test_transformed_value_validation_rejects_soil_water_outside_fraction() -> None:
+    dataframe = _transformed_dataframe()
+    dataframe["swvl1"] = [0.30, 1.01, 0.25]
+    request = _request(variables=["tp", "t2m", "swvl1"])
+
+    with pytest.raises(ValidationError, match="'swvl1' must be <= 1.0"):
+        validate_transformed_dataset(_transformed_dataset(dataframe, request))
+
+
+def test_transformed_value_validation_rejects_infinite_value() -> None:
+    dataframe = _transformed_dataframe()
+    dataframe.loc[0, "tp"] = float("inf")
+
+    with pytest.raises(ValidationError, match="'tp' contains non-finite values"):
+        validate_transformed_dataset(_transformed_dataset(dataframe))
+
+
+def test_transformed_value_validation_allows_missing_and_negative_accumulation() -> None:
+    dataframe = _transformed_dataframe()
+    dataframe.loc[0, "tp"] = -1.0
+    dataframe.loc[1, "t2m"] = float("nan")
+
+    validate_transformed_dataset(_transformed_dataset(dataframe))

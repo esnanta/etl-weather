@@ -41,14 +41,15 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Memuat konfigurasi integration test PostgreSQL dari `.env` melalui variabel `TEST_POSTGRES_*`.
 - [x] Menjalankan integration test dengan PostgreSQL test lokal: `1 passed`.
 - [x] Menambahkan integration test kegagalan detail untuk membuktikan rollback metadata dan observasi dalam satu transaksi.
+- [x] Menjalankan seluruh integration test PostgreSQL termasuk rollback: `2 passed`.
+- [x] Menetapkan batas fisik keras transformed data: suhu tidak di bawah nol absolut, `swvl1` dalam 0–1, dan semua nilai non-missing harus finite.
+- [x] Menambahkan range-validation test tanpa menolak missing value atau akumulasi negatif yang memang dipertahankan dengan warning.
+- [x] Menjalankan seluruh unit test setelah range validation ditambahkan: `82 passed`.
 
 ## Langkah selanjutnya — prioritas tinggi
 
-- [ ] Jalankan integration test rollback dengan PostgreSQL test lokal dan catat hasil verifikasinya.
-
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Tentukan rentang fisik yang sah untuk setiap variabel sebelum menambahkan range-validation test.
 - [ ] Tambahkan test lebih dari satu grid untuk rumus akumulasi dan mean harian.
 - [ ] Tambahkan test stabilitas grid ketika nilai hilang muncul hanya pada salah satu hari.
 - [ ] Tambahkan test kesalahan metadata provenance Parquet selain perubahan checksum.
