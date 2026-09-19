@@ -5,7 +5,6 @@ This document defines testing rules for `tests/` and complements `../AGENTS.md`.
 Authoritative references:
 
 - `../AGENTS.md`
-- `../Readme-pipeline.md`
 - `../docs/AIRFLOW_BEST_PRACTICE.md`
 - `../docs/AIRFLOW_CODING_GUIDELINES.md`
 - `README_TESTING.md`
