@@ -67,6 +67,6 @@ Tidak ada item penguatan validasi yang masih terbuka pada checklist saat ini.
 
 ## Sinkronisasi dokumentasi setelah test stabil
 
-- [ ] Perbarui README proyek dan panduan repository agar hanya menyatakan CDS ERA5-Land sebagai sumber aktif.
+- [x] Perbarui README proyek dan panduan repository agar hanya menyatakan CDS ERA5-Land sebagai sumber aktif.
 - [ ] Sinkronkan dokumen keputusan desain setelah test prioritas tinggi lulus.
 - [ ] Tempatkan penjelasan test pada bagian ilmiah yang relevan, bukan pada satu bab testing terpisah.
