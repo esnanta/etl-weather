@@ -59,6 +59,7 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menjalankan seluruh unit test dari virtual environment baru setelah pembersihan dependensi: `90 passed`.
 - [x] Mengaudit warning ABI `numpy`–`netCDF4`; mempertahankan versi, membiarkan warning tetap terlihat, dan tidak menambahkan filter global.
 - [x] Memperbarui `tests/AGENTS.md` dan `tests/README_TESTING.md`; menghapus status lama, baseline lama, dan separator baris yang terescape.
+- [x] Mengganti kode tahap internal dengan istilah teknis yang langsung menjelaskan kontrak, risiko, atau perilaku yang diuji.
 
 ## Langkah selanjutnya — penguatan validasi
 
