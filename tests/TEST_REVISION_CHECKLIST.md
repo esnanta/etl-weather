@@ -60,7 +60,7 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 
 ## Langkah selanjutnya — penguatan validasi
 
-Tidak ada item penguatan validasi yang masih terbuka pada checklist saat ini.
+- [ ] Selaraskan kompatibilitas binary `numpy` dan `netCDF4` agar penggunaan backend NetCDF pada environment baru tidak menghasilkan warning ABI.
 
 ## Sinkronisasi dokumentasi setelah test stabil
 
