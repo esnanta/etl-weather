@@ -53,10 +53,14 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Menjalankan seluruh unit test setelah penguatan provenance Parquet: `88 passed`.
 - [x] Menguji kegagalan penulisan atomik NetCDF dan Parquet tanpa meninggalkan file final atau sementara parsial.
 - [x] Menjalankan seluruh unit test setelah pengujian atomic-write failure: `90 passed`.
+- [x] Mengaudit import aktif dan dependency graph untuk memisahkan dependensi CDS ERA5-Land dari dependensi jalur ARCO.
+- [x] Menghapus 35 dependensi langsung dan transitif jalur ARCO, termasuk stack Zarr, Google Cloud Storage, async HTTP, dan Dask.
+- [x] Memvalidasi instalasi dari virtual environment baru: `pip check` bersih dan dependensi ARCO tidak terpasang.
+- [x] Menjalankan seluruh unit test dari virtual environment baru setelah pembersihan dependensi: `90 passed`.
 
 ## Langkah selanjutnya — penguatan validasi
 
-- [ ] Audit dependensi yang hanya diperlukan jalur ARCO dan hapus jika tidak lagi digunakan.
+Tidak ada item penguatan validasi yang masih terbuka pada checklist saat ini.
 
 ## Sinkronisasi dokumentasi setelah test stabil
 
