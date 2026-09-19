@@ -60,6 +60,7 @@ ARCO dan ERA5 single-levels tidak termasuk dalam ruang lingkup pipeline aktif.
 - [x] Mengaudit warning ABI `numpy`–`netCDF4`; mempertahankan versi, membiarkan warning tetap terlihat, dan tidak menambahkan filter global.
 - [x] Memperbarui `tests/AGENTS.md` dan `tests/README_TESTING.md`; menghapus status lama, baseline lama, dan separator baris yang terescape.
 - [x] Mengganti kode tahap internal dengan istilah teknis yang langsung menjelaskan kontrak, risiko, atau perilaku yang diuji.
+- [x] Memindahkan penjelasan proyek ke `README.md`, mempertahankan aturan coding di `AGENTS.md`, dan menghapus dokumen pipeline yang redundan.
 
 ## Langkah selanjutnya — penguatan validasi
 
