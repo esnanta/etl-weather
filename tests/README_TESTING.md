@@ -37,6 +37,7 @@ Tests must protect:
 - checkpoint/resume;
 - deterministic request identity;
 - idempotent PostgreSQL loading;
+- unchanged-partition database-write skipping with safe UPSERT fallback;
 - canonical daily-climate table and foreign-key names;
 - controlled database-to-memory access;
 - artifact provenance and checksum integrity;
@@ -124,6 +125,9 @@ daily_climate_id + valid_time + latitude + longitude
 ```
 
 Retry behavior must use UPSERT semantics rather than duplicate append.
+Before skipping a database write, the loader must match the `request_key`,
+transformed artifact path, transformed checksum, and expected observation count.
+Any mismatch must use the normal transactional UPSERT path.
 
 Provider-to-database mapping:
 
@@ -163,6 +167,8 @@ test_validation.py
 - deterministic request-key UPSERT;
 - idempotent metadata behavior;
 - UPSERT-oriented observation persistence.
+- unchanged-partition detection and zero-write return behavior;
+- UPSERT fallback when checksum, path, or observation count differs.
 
 `test_daily_climate_repository.py` should protect:
 
@@ -193,6 +199,8 @@ Database idempotency:
 ```text
 same request_key → same logical partition identity
 same observation key → UPSERT, not duplicate append
+same request_key + artifact identity + row count → skip unchanged database write
+any identity/count mismatch → execute transactional UPSERT
 ```
 
 When an isolated database integration test is used, loading the same partition twice should leave zero duplicate observation keys.
@@ -242,8 +250,8 @@ Provenance coverage protects:
 The current verified baseline is:
 
 ```text
-95 unit tests passed
-2 PostgreSQL integration tests passed
+99 unit tests passed
+2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
 ```
 
 The integration result requires an explicitly configured test database. It is not part of the default offline unit-test run.
@@ -254,7 +262,7 @@ The integration result requires an explicitly configured test database. It is no
 
 `tests/integration/test_postgresql_idempotency.py` uses the real loader and an isolated schema to verify two database behaviors:
 
-1. loading the same logical partition twice does not create duplicate observations;
+1. loading the same unchanged logical partition twice skips the second database write and does not create duplicate observations;
 2. a detail-row failure rolls back both the detail rows and the metadata UPSERT in the same transaction.
 
 Configuration is loaded from `.env` through:
@@ -341,8 +349,8 @@ python -m pytest \
 Latest verified baseline:
 
 ```text
-95 unit tests passed
-2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
+99 unit tests passed
+2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
 ```
 
 ---
