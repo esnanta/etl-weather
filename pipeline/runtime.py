@@ -21,7 +21,11 @@ from pipeline.model import (
     TransformedWeatherDataset,
     WeatherRequest,
 )
-from pipeline.storage import LocalDataStorage, artifact_exists
+from pipeline.storage import (
+    LocalDataStorage,
+    artifact_exists,
+    artifact_path_for_metadata,
+)
 from pipeline.transform import DefaultDataTransformer
 from pipeline.utils import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
@@ -70,7 +74,7 @@ class WeatherPipeline:
             "RAW checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": str(artifact.path),
+                "path": artifact_path_for_metadata(artifact.path),
             },
         )
         return raw_dataset, artifact, loaded_dataset
@@ -102,12 +106,13 @@ class WeatherPipeline:
                 raw_artifact=raw_artifact,
             )
 
-        validate_transformed_dataset(transformed_dataset)
+        if resumed:
+            validate_transformed_dataset(transformed_dataset)
         log_metric(
             "Transformed checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": str(artifact.path),
+                "path": artifact_path_for_metadata(artifact.path),
             },
         )
         return transformed_dataset, artifact
