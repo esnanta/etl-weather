@@ -242,7 +242,7 @@ Provenance coverage protects:
 The current verified baseline is:
 
 ```text
-90 unit tests passed
+95 unit tests passed
 2 PostgreSQL integration tests passed
 ```
 
@@ -341,7 +341,7 @@ python -m pytest \
 Latest verified baseline:
 
 ```text
-90 unit tests passed
+95 unit tests passed
 2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
 ```
 
