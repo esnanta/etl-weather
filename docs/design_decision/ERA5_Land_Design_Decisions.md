@@ -119,6 +119,8 @@ timur  : 97,6°
 
 Pada batas yang sejajar dengan grid 0,1°, rentang tersebut mempunyai 19 posisi latitude dan 16 posisi longitude, sehingga grid geometris maksimum berjumlah 304 titik. Tidak semua titik harus mempunyai nilai daratan yang dapat digunakan karena ERA5-Land memasker wilayah laut.
 
+ERA5-Land mempunyai resolusi native sekitar 9 km, sedangkan data melalui CDS didistribusikan pada grid latitude-longitude reguler 0,1° × 0,1°. Di wilayah Aceh pada sekitar 4,3° LU, satu sel grid tersebut berukuran kurang lebih 11,1 km × 11,1 km atau sekitar 123 km². Nilai ini merupakan pendekatan karena lebar satu derajat longitude berubah menurut latitude.
+
 **Keputusan proyek.** Perhitungan selalu dilakukan secara terpisah untuk setiap pasangan latitude dan longitude. Identitas wilayah juga dimasukkan ke nama direktori artefak dan identitas permintaan database.
 
 **Alasan.** Dua lokasi dapat memiliki hujan, radiasi, atau temperatur yang berbeda. Menggabungkan nilai sebelum mengelompokkan koordinat akan menghasilkan nilai harian yang tidak mewakili lokasi mana pun. Memasukkan bounding box ke identitas penyimpanan juga mencegah dua wilayah dengan tanggal dan variabel sama memakai file yang sama.
