@@ -152,7 +152,7 @@ def upsert_daily_climate_observations(
     config: DatabaseConfig,
 ) -> int:
     """UPSERT daily observations using partition/time/grid identity."""
-    dataframe, rename_map = _prepare_observation_dataframe(dataset, daily_climate_id)
+    dataframe, _ = _prepare_observation_dataframe(dataset, daily_climate_id)
     if dataframe.empty:
         return 0
 
@@ -186,10 +186,11 @@ def upsert_daily_climate_observations(
     log_metric(
         "Daily climate observations upserted",
         {
+            "daily_climate_id": daily_climate_id,
             "rows_processed": len(dataframe),
-            "columns": columns,
-            "provider_to_database_columns": rename_map,
+            "variables": ", ".join(dataset.request.variables),
             "conflict_key": "daily_climate_id + valid_time + latitude + longitude",
+            "mode": "idempotent upsert",
         },
     )
     return len(dataframe)
