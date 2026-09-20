@@ -106,24 +106,85 @@ Sebagai contoh, `tp = 0,024 m` menjadi `24 mm`, sedangkan `t2m = 300 K` menjadi 
 
 ## 5. Wilayah, grid, dan identitas lokasi
 
-ERA5-Land pada CDS menggunakan grid reguler 0,1° × 0,1°. Pengguna menentukan wilayah dengan bounding box: batas utara, barat, selatan, dan timur.
+ERA5-Land mempunyai resolusi native sekitar 9 km. Data yang tersedia melalui CDS didistribusikan pada grid latitude–longitude reguler 0,1° × 0,1°. Wilayah yang diminta tidak dinyatakan sebagai poligon administratif Aceh, melainkan sebagai *bounding box* (bbox): sebuah persegi panjang yang ditentukan oleh batas utara, barat, selatan, dan timur.
 
-Contoh wilayah konfigurasi saat ini:
+### Bounding box Aceh
 
-```text
-utara  : 5,2°
-barat  : 96,1°
-selatan: 3,4°
-timur  : 97,6°
+Bbox yang digunakan proyek adalah:
+
+```python
+ACEH_BBOX = BoundingBox(
+    north_lat=6.1,
+    south_lat=1.9,
+    east_lon=98.3,
+    west_lon=94.9,
+)
 ```
 
-Pada batas yang sejajar dengan grid 0,1°, rentang tersebut mempunyai 19 posisi latitude dan 16 posisi longitude, sehingga grid geometris maksimum berjumlah 304 titik. Tidak semua titik harus mempunyai nilai daratan yang dapat digunakan karena ERA5-Land memasker wilayah laut.
+Dalam urutan parameter area CDS, bbox tersebut dapat dibaca sebagai:
 
-ERA5-Land mempunyai resolusi native sekitar 9 km, sedangkan data melalui CDS didistribusikan pada grid latitude-longitude reguler 0,1° × 0,1°. Di wilayah Aceh pada sekitar 4,3° LU, satu sel grid tersebut berukuran kurang lebih 11,1 km × 11,1 km atau sekitar 123 km². Nilai ini merupakan pendekatan karena lebar satu derajat longitude berubah menurut latitude.
+```text
+utara  : 6,1° LU
+barat  : 94,9° BT
+selatan: 1,9° LU
+timur  : 98,3° BT
+```
 
-**Keputusan proyek.** Perhitungan selalu dilakukan secara terpisah untuk setiap pasangan latitude dan longitude. Identitas wilayah juga dimasukkan ke nama direktori artefak dan identitas permintaan database.
+Bbox berfungsi sebagai **jendela seleksi koordinat grid**. Pada peta, garis merah menunjukkan batas persegi panjang yang diminta ke CDS, kontur hijau menunjukkan wilayah Aceh sebagai konteks geografis, dan garis-garis berjarak 0,1° menunjukkan susunan grid. Bbox sengaja lebih luas daripada kontur daratan agar seluruh Aceh, termasuk pulau-pulaunya, tercakup. Konsekuensinya, bbox juga mencakup laut. Hal tersebut normal karena bbox bukan bentuk wilayah administratif dan ERA5-Land memasker nilai pada laut.
 
-**Alasan.** Dua lokasi dapat memiliki hujan, radiasi, atau temperatur yang berbeda. Menggabungkan nilai sebelum mengelompokkan koordinat akan menghasilkan nilai harian yang tidak mewakili lokasi mana pun. Memasukkan bounding box ke identitas penyimpanan juga mencegah dua wilayah dengan tanggal dan variabel sama memakai file yang sama.
+Karena keempat batas sejajar dengan lattice 0,1°, jumlah posisi koordinat dapat dihitung secara inklusif:
+
+| Unsur grid | Perhitungan | Jumlah |
+|---|---:|---:|
+| posisi latitude | `(6,1 − 1,9) / 0,1 + 1` | 43 |
+| posisi longitude | `(98,3 − 94,9) / 0,1 + 1` | 35 |
+| pasangan koordinat/grid point maksimum | `43 × 35` | 1.505 |
+| persegi panjang di antara garis koordinat yang bersebelahan | `42 × 34` | 1.428 |
+
+Angka 1.505 adalah jumlah maksimum **grid point** yang dapat dipilih pada satu timestamp sebelum mask laut dan pemeriksaan kelengkapan diterapkan. Angka 1.428 mempunyai arti geometris yang berbeda: jumlah persegi panjang yang terbentuk *di antara* garis koordinat yang bersebelahan pada ilustrasi. Angka tersebut bukan jumlah maksimum baris observasi ERA5-Land. Untuk identitas dan pengolahan data, proyek menggunakan 1.505 kemungkinan pasangan `(latitude, longitude)`, bukan 1.428 persegi panjang antargaris.
+
+
+![Aceh BBOX](https://raw.githubusercontent.com/esnanta/etl-weather/dev/docs/images/map_bbox_grid_era5_land_aceh.png)
+
+### Arti latitude dan longitude pada data transformed
+
+Kolom `latitude` dan `longitude` pada Parquet menyatakan koordinat sebuah **grid point**. Setiap baris hasil harian diidentifikasi oleh:
+
+```text
+valid_time + valid_time_local + latitude + longitude
+```
+
+Nilai `tp`, `t2m`, `d2m`, `swvl1`, dan `ssrd` pada baris tersebut adalah hasil harian yang terkait dengan pasangan koordinat itu. Sebagai contoh, pasangan:
+
+```text
+latitude  = 3,4
+longitude = 97,2
+```
+
+berarti nilai cuaca pada grid point 3,4° LU dan 97,2° BT. Koordinat itu bukan lokasi stasiun pengamatan dan bukan titik yang berada secara acak di dalam sebuah sel. Koordinat tersebut adalah titik acuan grid tempat nilai hasil model—setelah interpolasi ke grid reguler CDS—diberikan.
+
+Untuk visualisasi raster, sebuah grid point biasanya diperlakukan sebagai pusat jejak area representatif. Karena jarak antartitik 0,1°, grid point `(3,4; 97,2)` dapat digambarkan secara nominal sebagai pusat area:
+
+```text
+latitude  : 3,35° sampai 3,45° LU
+longitude : 97,15° sampai 97,25° BT
+```
+
+Batas ±0,05° tersebut adalah batas turunan untuk visualisasi atau operasi raster, bukan kolom batas sel yang disediakan langsung pada Parquet. Nilai ERA5-Land juga tidak boleh ditafsirkan sebagai nilai yang seragam sempurna pada seluruh persegi tersebut atau sebagai pengamatan tepat pada satu lokasi di lapangan.
+
+Di sekitar Aceh, jarak 0,1° setara dengan sekitar 11,1 km dari utara ke selatan dan sekitar 11,1 km dari barat ke timur, atau kurang lebih 123 km². Ukuran ini merupakan pendekatan: jarak satu derajat longitude berubah menurut latitude.
+
+### Mengapa baris Parquet tidak selalu berjumlah 1.505 per hari
+
+Bbox menentukan himpunan kandidat grid point, tetapi tidak menjamin bahwa seluruh kandidat menjadi baris pada hasil transformed. ERA5-Land memasker laut. Untuk variabel keadaan seperti `t2m`, `d2m`, dan `swvl1`, pipeline hanya menerbitkan rata-rata harian apabila tersedia 24 sampel bukan-hilang pada grid point tersebut. Ketika beberapa variabel digabungkan, pipeline mempertahankan hanya pasangan hari dan koordinat yang lengkap untuk seluruh variabel yang diminta. Karena itu, hasil transformed umumnya didominasi grid point daratan dan jumlah baris per hari dapat lebih kecil daripada 1.505.
+
+Urutan baris Parquet mengikuti `valid_time_local`, kemudian latitude, lalu longitude. Baris pertama yang terlihat tidak harus berimpit dengan sudut bbox karena grid point laut atau grid point yang tidak lengkap dapat tidak diterbitkan.
+
+Tampilan angka seperti `97.19999999999993` atau `3.5000000000000004` merupakan efek representasi bilangan pecahan biner pada komputer. Secara logis keduanya tetap berada pada lattice 0,1° dan dibaca sebagai `97,2` serta `3,5`. Untuk tampilan, koordinat dapat dibulatkan ke satu angka desimal; identitas grid tetap harus divalidasi terhadap lattice 0,1° dengan toleransi numerik.
+
+**Keputusan proyek.** Perhitungan dilakukan secara terpisah untuk setiap pasangan latitude dan longitude. Pasangan koordinat dipertahankan sebagai identitas lokasi pada Parquet dan observasi database. Identitas bbox juga dimasukkan ke nama direktori artefak dan identitas permintaan database.
+
+**Alasan.** Dua grid point dapat mempunyai hujan, radiasi, temperatur, atau kelembapan tanah yang berbeda. Menggabungkan nilai sebelum mengelompokkan koordinat akan menghasilkan nilai harian yang tidak mewakili lokasi grid mana pun. Memasukkan bbox ke identitas penyimpanan juga mencegah dua wilayah dengan periode dan variabel yang sama memakai artefak yang sama.
 
 **Contoh hasil test dua grid.** Untuk data sintetis yang sengaja dibuat berbeda, grid pertama menghasilkan presipitasi 24 mm dan grid kedua 48 mm. Radiasi masing-masing tetap 86.400 dan 172.800 J/m², sehingga tidak ada pencampuran antarkoordinat.
 
