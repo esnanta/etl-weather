@@ -197,6 +197,6 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 Latest verified baseline:
 
 ```text
-90 unit tests passed
+95 unit tests passed
 2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
 ```
