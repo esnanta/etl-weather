@@ -161,6 +161,10 @@ latitude  = 3,4
 longitude = 97,2
 ```
 
+![Contoh Data ParquetX](https://github.com/esnanta/etl-weather/blob/c49d43facbb93f6cd0732d1debf9db3701105e40/docs/images/grid_point_transformed_data_parquet.jpg)
+
+
+
 berarti nilai cuaca pada grid point 3,4° LU dan 97,2° BT. Koordinat itu bukan lokasi stasiun pengamatan dan bukan titik yang berada secara acak di dalam sebuah sel. Koordinat tersebut adalah titik acuan grid tempat nilai hasil model—setelah interpolasi ke grid reguler CDS—diberikan.
 
 Untuk visualisasi raster, sebuah grid point biasanya diperlakukan sebagai pusat jejak area representatif. Karena jarak antartitik 0,1°, grid point `(3,4; 97,2)` dapat digambarkan secara nominal sebagai pusat area:
