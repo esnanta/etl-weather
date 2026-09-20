@@ -113,7 +113,7 @@ Artifacts are stored by dataset, bounding box, layer, and year:
 ```text
 data/
 └── cds_reanalysis-era5-land/
-    └── bbox_n5p2_w96p1_s3p4_e97p6/
+    └── bbox_n6p1_w94p9_s1p9_e98p3/
         ├── raw/
         │   └── 2022/
         │       └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
