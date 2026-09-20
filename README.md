@@ -126,7 +126,7 @@ The bounding-box directory prevents artifacts from different spatial requests fr
 
 ## Persistence and Modelling Access
 
-PostgreSQL stores one metadata row for each logical daily-climate partition and detail rows for daily grid-cell observations. Metadata and observations use deterministic UPSERT identities, so rerunning the same request partition does not create duplicates. Idempotency is scoped to the `request_key` (provider, dataset, period, variable set, and bounding box), not globally to grid points: overlapping bounding boxes are separate partitions and may store the same time/latitude/longitude observation under different `daily_climate_id` values.
+PostgreSQL stores one metadata row for each logical daily-climate partition and detail rows for daily grid-cell observations. Metadata and observations use deterministic UPSERT identities, so rerunning the same request partition does not create duplicates. Before writing, the loader compares the `request_key`, transformed artifact path/checksum, and observation count; an unchanged partition skips metadata/detail writes and reports zero processed rows, while any mismatch falls back to the transactional UPSERT path. Idempotency is scoped to the `request_key` (provider, dataset, period, variable set, and bounding box), not globally to grid points: overlapping bounding boxes are separate partitions and may store the same time/latitude/longitude observation under different `daily_climate_id` values.
 
 The modelling read path selects data explicitly by source, dataset, period, and bounding box. It returns an in-memory Pandas DataFrame without mutating the canonical climate tables or creating a second physical feature dataset.
 
