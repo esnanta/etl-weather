@@ -144,7 +144,7 @@ Karena keempat batas sejajar dengan lattice 0,1°, jumlah posisi koordinat dapat
 Angka 1.505 adalah jumlah maksimum **grid point** yang dapat dipilih pada satu timestamp sebelum mask laut dan pemeriksaan kelengkapan diterapkan. Angka 1.428 mempunyai arti geometris yang berbeda: jumlah persegi panjang yang terbentuk *di antara* garis koordinat yang bersebelahan pada ilustrasi. Angka tersebut bukan jumlah maksimum baris observasi ERA5-Land. Untuk identitas dan pengolahan data, proyek menggunakan 1.505 kemungkinan pasangan `(latitude, longitude)`, bukan 1.428 persegi panjang antargaris.
 
 
-![Aceh BBOX]https://github.com/esnanta/etl-weather/blob/dev/docs/images/map_bbox_grid_era5_land_aceh.png?raw=true)
+![Aceh BBOX](https://github.com/esnanta/etl-weather/blob/dev/docs/images/map_bbox_grid_era5_land_aceh.png)
 
 ### Arti latitude dan longitude pada data transformed
 
