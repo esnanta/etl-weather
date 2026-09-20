@@ -5,14 +5,13 @@ This document defines testing rules for `tests/` and complements `../AGENTS.md`.
 Authoritative references:
 
 - `../AGENTS.md`
-- `../Readme-pipeline.md`
 - `../docs/AIRFLOW_BEST_PRACTICE.md`
 - `../docs/AIRFLOW_CODING_GUIDELINES.md`
 - `README_TESTING.md`
 
 ## Scope
 
-Core tests protect the ERA5-Land ETL pipeline and P15 daily-climate repository before Airflow orchestration and long historical backfill.
+Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical backfill.
 
 Current path:
 
@@ -20,7 +19,7 @@ Current path:
 CDS ERA5-Land hourly RAW
 -> UTC+7 daily transformed data
 -> PostgreSQL daily_climate / daily_climate_detail
--> P15 read-only in-memory modelling access
+-> read-only in-memory modelling access
 ```
 
 Core tests must not require Airflow.
@@ -81,7 +80,7 @@ daily_climate_id + valid_time + latitude + longitude
 
 Database writes must remain idempotent UPSERT operations.
 
-## P15 Rules
+## Daily-Climate Repository Rules
 
 Implementation:
 
@@ -90,13 +89,13 @@ pipeline/daily_climate_repository.py
 tests/unit/test_daily_climate_repository.py
 ```
 
-P15 tests must protect explicit source/dataset/period/bbox selection, canonical tables, both time columns, missing values, deterministic ordering, local-midnight semantics, period bounds, duplicate local-day/grid rejection, and read-only behavior.
+Repository tests must protect explicit source/dataset/period/bbox selection, canonical tables, both time columns, missing values, deterministic ordering, local-midnight semantics, period bounds, duplicate local-day/grid rejection, and read-only behavior.
 
-Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to P15 tests.
+Do not add wet-day labels, scaling, anomaly features, rolling features, or clustering semantics to repository tests.
 
-## P18 Hardening Rules
+## Retry and Backfill Hardening Rules
 
-P18 must protect the boundaries that become critical during retry/backfill:
+Tests must protect the boundaries that become critical during retry/backfill:
 
 - fresh versus resumed RAW checkpoints;
 - validation after RAW resume;
@@ -109,14 +108,14 @@ P18 must protect the boundaries that become critical during retry/backfill:
 - metadata and observation UPSERT identities;
 - missing-value preservation into database NULL;
 - transformation failure for missing inputs or incomplete local days;
-- P15 negative cases and deterministic handoff.
+- daily-climate repository negative cases and deterministic handoff.
 
 `tests/unit/test_runtime.py` owns orchestration-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
 
-## P19 Provenance Rules
+## Provenance Rules
 
-P19 tests protect minimal artifact provenance:
+Provenance tests protect minimal artifact traceability:
 
 - SHA-256 changes when artifact bytes change;
 - RAW `downloaded_at` survives save/resume;
@@ -128,7 +127,9 @@ P19 tests protect minimal artifact provenance:
 
 Do not introduce transform-version or Git-commit provenance tests. RAW checksum/path remain Parquet metadata rather than PostgreSQL columns.
 
----\n\n## Test Structure
+---
+
+## Test Structure
 
 Use:
 
@@ -152,30 +153,50 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
 - `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
-- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume and missing artifacts.
+- `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume, missing artifacts, and atomic-write cleanup.
 - `test_database.py`: canonical schema, provenance fields, foreign key, indexes and observation identity.
 - `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT and observation UPSERT.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
-- `test_daily_climate_repository.py`: P15 selection, SQL contract, validation, ordering and missing values.
+- `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
+- `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
+
+## Dependency and Warning Policy
+
+The active dependency set supports CDS ERA5-Land NetCDF input, Parquet output, and PostgreSQL persistence. Do not restore ARCO-only Zarr, Google Cloud Storage, Dask, or async HTTP dependencies unless an explicitly approved source path requires them again.
+
+The pinned `numpy==2.5.1` and `netCDF4==1.7.4` combination can emit this upstream runtime warning when the NetCDF backend is imported under pytest:
+
+```text
+numpy.ndarray size changed, may indicate binary incompatibility.
+Expected 16 from C header, got 96 from PyObject
+```
+
+The warning is intentionally left visible. Do not silence all `RuntimeWarning` messages or downgrade dependencies solely to hide it. NetCDF behavior remains protected by extractor and storage tests; investigate again if it becomes an exception, corrupts a round trip, or fails on a supported environment.
 
 ## Airflow Testing
 
 When DAGs are added, test orchestration only: DAG parsing, task graph, schedule/data intervals, retries, concurrency/pools, and small metadata/artifact handoff.
 
-Do not duplicate scientific or P15 tests inside DAG tests.
+Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 
-## Current Priority
+## Verified Coverage
 
 ```text
-[x] P9  provider variable naming
-[x] P10 checkpoint / resume
-[x] P11 idempotent database load
-[x] P12 temporal validation
-[x] P13 spatial validation
-[x] P14 unit conversion
-[x] P15 controlled daily-climate modelling access
-[~] P18 test coverage hardening — implementation added, verification pending
-[ ] P19 provenance
+[x] provider variable naming
+[x] checkpoint / resume
+[x] idempotent database load
+[x] temporal validation
+[x] spatial validation
+[x] unit conversion
+[x] controlled daily-climate modelling access
+[x] retry and backfill boundary coverage
+[x] minimal artifact provenance
+[x] ARCO-only dependency removal
 ```
 
-P18 is complete: the expanded focused suite passed locally with 59 tests.
+Latest verified baseline:
+
+```text
+90 unit tests passed
+2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
+```

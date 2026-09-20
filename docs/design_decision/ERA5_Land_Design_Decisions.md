@@ -1,606 +1,495 @@
-# Keputusan Desain Pipeline ERA5-Land
+# Keputusan Desain Pengolahan CDS ERA5-Land
 
-## 1. Tujuan dan ruang lingkup
+## 1. Tujuan dan pembaca dokumen
 
-Dokumen ini menjelaskan keputusan ilmiah dan teknis yang benar-benar diterapkan oleh `pipeline/` dan `scripts/` untuk mengolah **ERA5-Land hourly data** dari Copernicus Climate Data Store (CDS) menjadi observasi harian. Penjelasan ditujukan untuk developer lintas bidang: pembaca tidak harus memahami seluruh detail ERA5-Land atau struktur internal kode sebelum membaca dokumen ini.
+Dokumen ini menjelaskan keputusan yang digunakan untuk mengubah data **CDS ERA5-Land per jam** menjadi data harian yang siap disimpan dan dianalisis. Pembacanya tidak harus memahami pemrograman. Istilah teknis hanya digunakan ketika diperlukan dan dijelaskan bersama maknanya.
 
-Ruang lingkup dokumen adalah jalur:
+Ruang lingkup aktif proyek adalah:
 
 ```text
 CDS ERA5-Land per jam
-    -> NetCDF mentah
-    -> agregasi hari lokal UTC+7
-    -> Parquet harian
-    -> PostgreSQL
-    -> DataFrame hanya-baca untuk analisis
+    → NetCDF mentah
+    → pemeriksaan data mentah
+    → perhitungan hari lokal UTC+7
+    → Parquet harian
+    → PostgreSQL
+    → akses hanya-baca untuk analisis
 ```
 
-Repository juga memiliki jalur ARCO ERA5. Jalur tersebut memakai beberapa komponen umum, tetapi tidak boleh dianggap memiliki kontrak ilmiah yang sama dengan ERA5-Land. Pada implementasi saat ini, transformasi harian khusus hanya dijalankan ketika nama dataset adalah `reanalysis-era5-land`. Dataset lain hanya melalui pemilihan kolom observasi.
+Setiap bagian membedakan empat hal:
 
-Dokumen ini tidak menyatakan hasil pengujian dan belum menyelaraskan isi dengan `tests/`. Pembahasan pengujian dilakukan secara terpisah.
+- **fakta ERA5-Land**, yaitu karakteristik data menurut Copernicus/ECMWF;
+- **keputusan proyek**, yaitu cara proyek menafsirkan dan mengolah data;
+- **evaluasi melalui test**, yaitu pemeriksaan bahwa program menerapkan keputusan tersebut;
+- **batasan**, yaitu hal yang belum dijamin oleh sistem.
+
+Test tidak menggantikan dasar ilmiah. Dokumentasi Copernicus/ECMWF menjelaskan bagaimana ERA5-Land harus ditafsirkan, sedangkan test membuktikan bahwa program mengikuti penafsiran yang telah ditetapkan.
 
 ---
 
-## 2. Dasar ilmiah pemilihan data
+## 2. Data yang digunakan: CDS ERA5-Land
 
-ERA5-Land adalah hasil reanalysis permukaan daratan yang dibuat dengan menjalankan ulang komponen daratan ERA5 pada resolusi yang lebih tinggi. Produk pada CDS tersedia pada grid latitude-longitude reguler 0,1° × 0,1°, sementara resolusi native-nya sekitar 9 km. Data hourly dipilih sebagai sumber utama karena pipeline perlu membentuk hari menurut waktu lokal Aceh, bukan hanya menurut hari UTC.
+ERA5-Land adalah dataset reanalysis yang menggambarkan perkembangan kondisi permukaan daratan selama beberapa dekade. Dataset ini menjalankan kembali komponen daratan ERA5 pada resolusi yang lebih tinggi, dengan masukan atmosfer dari ERA5. Menurut dokumentasi resmi, resolusi asli ERA5-Land sekitar 9 km dan data pada CDS disediakan pada grid latitude-longitude reguler 0,1° × 0,1°. Data tersedia per jam sejak Januari 1950.
 
-Keputusan menggunakan data hourly mempunyai dua alasan:
+**Keputusan proyek.** Sumber aktif pipeline hanya `reanalysis-era5-land` dari Copernicus Climate Data Store (CDS). Pipeline menggunakan produk per jam, bukan produk daily statistics yang sudah dihitung oleh CDS.
 
-1. rata-rata temperatur, titik embun, dan kelembapan tanah harus dihitung dari seluruh keadaan per jam dalam hari lokal; dan
-2. total presipitasi serta radiasi harus dibentuk ulang pada batas hari UTC+7 sesuai konvensi akumulasi ERA5-Land.
+**Alasan ilmiah dan praktis.** Produk per jam memungkinkan proyek membentuk hari berdasarkan UTC+7, memeriksa apakah seluruh jam tersedia, dan menerapkan aturan yang berbeda untuk variabel keadaan dan variabel akumulasi. Produk daily statistics CDS dapat menghitung statistik harian pada zona waktu lokal, tetapi katalog tersebut tidak menyediakan parameter akumulasi ERA5-Land seperti total presipitasi. Karena proyek memerlukan variabel keadaan dan akumulasi dalam satu kontrak data, data per jam dipertahankan sebagai sumber utama.
 
-Produk daily statistics dari CDS memang dapat menghasilkan statistik harian pada zona waktu tertentu, tetapi pipeline mempertahankan data hourly sebagai sumber kebenaran ilmiah. Dengan demikian, batas hari, kelengkapan sampel, konversi satuan, dan keterlacakan hasil tetap dapat diperiksa di dalam sistem ini.
+Data ini tetap merupakan keluaran model pada suatu sel grid. Sebuah nilai tidak boleh dianggap sama dengan pengamatan alat pada satu titik. Dokumentasi CDS juga mengingatkan bahwa pengamatan lapangan dapat mewakili ruang dan waktu yang lebih lokal daripada rata-rata suatu sel model.
 
-### 2.1 Variabel yang didukung
+**Evaluasi melalui test.** Test permintaan memastikan bahwa program hanya menerima dataset ERA5-Land, menggunakan nama variabel yang disepakati, meminta 24 waktu UTC setiap hari, dan menolak interval unduhan langsung yang melintasi bulan kalender (`tests/unit/test_config_requests.py`, `tests/unit/test_extract.py`, dan `tests/unit/test_utils_request_validation.py`).
 
-Jalur CDS ERA5-Land saat ini menerima lima kode variabel dari penyedia:
+Sumber utama bagian ini:
 
-| Kode | Nama ERA5-Land | Sifat temporal | Statistik keluaran |
-|---|---|---|---|
-| `tp` | total precipitation | akumulasi sejak 00:00 UTC | total hari lokal |
-| `ssrd` | surface solar radiation downwards | akumulasi sejak 00:00 UTC | total hari lokal |
-| `t2m` | 2 metre temperature | keadaan sesaat | rata-rata hari lokal |
-| `d2m` | 2 metre dewpoint temperature | keadaan sesaat | rata-rata hari lokal |
-| `swvl1` | volumetric soil water layer 1 | keadaan sesaat | rata-rata hari lokal |
-
-Kode pendek asli dipertahankan pada NetCDF, DataFrame transformasi, dan Parquet. Nama panjang seperti `total_precipitation` hanya digunakan ketika membentuk permintaan CDS, kemudian dinormalisasi kembali menjadi `tp` setelah data dibuka.
-
-Alasan keputusan ini adalah keterlacakan. Developer dapat membandingkan variabel dengan metadata ERA5-Land tanpa menghadapi nama internal baru yang maknanya mungkin berbeda. Nama kolom yang lebih deskriptif baru digunakan pada PostgreSQL, setelah statistik dan satuannya sudah pasti.
+- [ERA5-Land hourly data from 1950 to present](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land)
+- [ERA5-Land: data documentation](https://confluence.ecmwf.int/display/CKB/ERA5-Land%3A+data+documentation)
+- [ERA5 family post-processed daily statistics documentation](https://confluence.ecmwf.int/display/CKB/ERA5+family+post-processed+daily+statistics+documentation)
 
 ---
 
-## 3. Peta implementasi
+## 3. Gambaran perjalanan data
 
-| Bagian | Tanggung jawab saat ini |
-|---|---|
-| `pipeline/utils.py` | validasi dan normalisasi permintaan, profil dataset, pembagian bulanan, `request_key` |
-| `pipeline/extract.py` | permintaan CDS, konteks hari sebelumnya, normalisasi nama, ekstraksi spasial dan temporal |
-| `pipeline/validation.py` | validasi struktur, waktu, grid mentah, serta keluaran harian |
-| `pipeline/transform.py` | pembentukan hari UTC+7, agregasi per jenis variabel, konversi satuan |
-| `pipeline/storage.py` | jalur artefak, NetCDF, Parquet, checksum, dan resume |
-| `pipeline/load.py` | pemetaan kolom dan pemuatan idempoten ke PostgreSQL |
-| `pipeline/database.py` | schema, tabel, indeks unik, dan hubungan antartabel |
-| `pipeline/daily_climate_repository.py` | pembacaan observasi harian dari PostgreSQL untuk analisis |
-| `pipeline/runtime.py` | urutan extract, transform, dan load tanpa ketergantungan pada Airflow |
-| `scripts/config.py` | contoh konfigurasi periode, variabel, dan bounding box |
-| `scripts/run_pipeline_cds.py` | entry point lokal jalur CDS |
-| `scripts/read_daily_climate.py` | contoh pembacaan hasil PostgreSQL ke DataFrame |
+Pipeline mempertahankan dua bentuk file sebelum data dimuat ke database:
 
-`pipeline/model.py`, `pipeline/interfaces.py`, dan `pipeline/logging.py` menyediakan struktur data, batas antarkomponen, serta pencatatan metrik. Log membantu pemeriksaan operasional, tetapi bukan pengganti validasi ilmiah.
+| Tahap | Bentuk | Makna |
+|---|---|---|
+| RAW | NetCDF | Salinan lokal data per jam dari CDS, termasuk konteks waktu yang diperlukan untuk perhitungan |
+| Transformed | Parquet | Hasil harian UTC+7 setelah agregasi, konversi satuan, dan validasi |
+
+**Keputusan proyek.** NetCDF RAW dipertahankan sebagai sumber ilmiah lokal dan tidak ditimpa. Parquet diperlakukan sebagai hasil yang dapat dibentuk kembali dari RAW menggunakan aturan transformasi yang sama.
+
+**Alasan.** Pemisahan ini memungkinkan pemeriksaan ulang ketika rumus atau kode berubah. Tanpa RAW, hasil harian akan sulit ditelusuri kembali ke nilai per jam yang digunakan.
+
+Contoh sederhana:
+
+```text
+Permintaan 1–3 Januari 2022
+    → RAW berisi data per jam dan konteks 31 Desember
+    → transformed hanya berisi hari lokal 1–3 Januari
+    → PostgreSQL menyimpan metadata partisi dan observasi grid-hari
+```
+
+**Evaluasi melalui test.** Test runtime memeriksa urutan unduh atau resume, validasi RAW, transformasi atau resume, validasi hasil harian, dan penyerahan artefak yang benar ke pemuat database (`tests/unit/test_runtime.py`).
 
 ---
 
-## 4. Permintaan data dan partisi bulanan
+## 4. Pemilihan variabel dan satuan
 
-Satu permintaan dinyatakan oleh:
+Pipeline menerima lima variabel ERA5-Land:
 
-```text
-source, dataset, start_date, end_date, variables, bounding box
-```
+| Kode | Makna | Sifat nilai per jam | Hasil harian | Satuan hasil |
+|---|---|---|---|---|
+| `tp` | total precipitation | akumulasi sejak awal forecast 00:00 UTC | total | mm/hari |
+| `ssrd` | surface solar radiation downwards | akumulasi sejak awal forecast 00:00 UTC | total | J/m²/hari |
+| `t2m` | temperatur udara 2 meter | keadaan pada waktu tertentu | rata-rata | °C |
+| `d2m` | temperatur titik embun 2 meter | keadaan pada waktu tertentu | rata-rata | °C |
+| `swvl1` | kandungan air volumetrik tanah lapisan 1, kedalaman 0–7 cm | keadaan pada waktu tertentu | rata-rata | m³/m³ |
 
-Contoh yang saat ini terdapat di `scripts/config.py`:
+**Keputusan proyek.** Kode pendek resmi (`tp`, `ssrd`, `t2m`, `d2m`, dan `swvl1`) dipertahankan pada RAW dan Parquet. Nama panjang yang diwajibkan API hanya digunakan saat mengirim permintaan CDS. Di PostgreSQL, nama kolom dibuat lebih deskriptif dan menyebutkan statistik serta satuannya.
 
-```python
-WeatherRequest(
-    source=DataSource.CDS,
-    dataset="reanalysis-era5-land",
-    start_date="2022-01-01",
-    end_date="2022-01-03",
-    variables=["tp", "t2m", "swvl1", "ssrd", "d2m"],
-    bbox=BoundingBox(
-        north_lat=5.2,
-        south_lat=3.4,
-        east_lon=97.6,
-        west_lon=96.1,
-    ),
-)
-```
+**Alasan.** Kode resmi memudahkan penelusuran kembali ke metadata ERA5-Land. Nama database yang lebih panjang mengurangi risiko pengguna salah mengartikan total harian sebagai nilai per jam atau rata-rata sebagai nilai sesaat.
 
-Permintaan dinormalisasi sebelum diproses: nama dataset dan variabel diubah ke huruf kecil, kode variabel diperiksa terhadap daftar yang didukung, variabel duplikat ditolak, tanggal harus berformat `YYYY-MM-DD`, dan bounding box harus mempunyai urutan koordinat yang valid.
+Konversi dilakukan setelah nilai harian terbentuk:
 
-Periode panjang dibagi menurut **bulan kalender** oleh `run_monthly_batch()`. Misalnya, 20 Januari–10 Maret menjadi tiga partisi:
+- `tp`: meter × 1.000 menjadi milimeter;
+- `t2m` dan `d2m`: Kelvin − 273,15 menjadi Celsius;
+- `swvl1`: tetap m³/m³;
+- `ssrd`: tetap sebagai energi total J/m² untuk satu hari lokal.
 
-```text
-20–31 Januari
-1–28/29 Februari
-1–10 Maret
-```
+Sebagai contoh, `tp = 0,024 m` menjadi `24 mm`, sedangkan `t2m = 300 K` menjadi `26,85 °C`.
 
-Pembagian bulanan dipilih karena CDS menerima permintaan yang lebih mudah dikendalikan per bulan dan karena kegagalan satu partisi tidak memaksa seluruh periode historis dihitung ulang. Fungsi bernama `run_weekly_batch()` masih tersedia untuk kompatibilitas, tetapi pada kode saat ini fungsi tersebut hanya meneruskan pemrosesan ke strategi bulanan.
+**Dasar ilmiah.** CDS mendefinisikan total presipitasi sebagai kedalaman air dalam meter jika air diratakan pada sel grid. Temperatur disediakan dalam Kelvin, dan dokumentasi menyatakan konversi ke Celsius dilakukan dengan mengurangi 273,15. `ssrd` disediakan dalam J/m², sedangkan `swvl1` merupakan fraksi volume air per volume tanah.
+
+**Evaluasi melalui test.** Test memeriksa hasil 24 mm dari presipitasi, konversi temperatur menjadi 26,85 °C dan 21,85 °C, serta mempertahankan `swvl1 = 0,30` tanpa perubahan satuan (`tests/unit/test_transform.py`). Test juga memastikan metadata CDS seperti `number`, `surface`, dan `expver` tidak masuk sebagai variabel cuaca.
 
 ---
 
-## 5. Ekstraksi hourly dari CDS
+## 5. Wilayah, grid, dan identitas lokasi
 
-Untuk setiap partisi, pipeline meminta:
+ERA5-Land pada CDS menggunakan grid reguler 0,1° × 0,1°. Pengguna menentukan wilayah dengan bounding box: batas utara, barat, selatan, dan timur.
 
-- seluruh jam `00:00` sampai `23:00` UTC;
-- semua variabel yang dipilih;
-- area `[north, west, south, east]`;
-- format NetCDF tanpa arsip tambahan.
-
-Walaupun perhitungan `tp` dan `ssrd` hanya memerlukan nilai pada batas akumulasi tertentu, semua jam tetap diunduh. Keputusan ini menghasilkan satu artefak hourly yang juga dapat digunakan untuk variabel keadaan, memungkinkan validasi kontinuitas setiap jam, dan menjaga bentuk sumber yang seragam jika daftar variabel berubah.
-
-### 5.1 Konteks satu hari sebelum periode
-
-Untuk ERA5-Land, tanggal awal pengambilan dimundurkan satu hari:
+Contoh wilayah konfigurasi saat ini:
 
 ```text
-periode logis       : 2022-01-01 sampai 2022-01-03
-periode yang diambil: 2021-12-31 sampai 2022-01-03
+utara  : 5,2°
+barat  : 96,1°
+selatan: 3,4°
+timur  : 97,6°
 ```
 
-Hari tambahan diperlukan karena 1 Januari pukul 00:00 UTC+7 sama dengan 31 Desember pukul 17:00 UTC. Selain itu, akumulasi `tp` dan `ssrd` pada awal hari lokal memerlukan nilai akumulasi dari hari UTC sebelumnya.
+Pada batas yang sejajar dengan grid 0,1°, rentang tersebut mempunyai 19 posisi latitude dan 16 posisi longitude, sehingga grid geometris maksimum berjumlah 304 titik. Tidak semua titik harus mempunyai nilai daratan yang dapat digunakan karena ERA5-Land memasker wilayah laut.
 
-NetCDF tetap dinamai menurut periode logis 1–3 Januari, tetapi isinya mencakup 31 Desember sebagai konteks perhitungan. Setelah transformasi, hasil difilter kembali agar hanya memuat 1–3 Januari waktu lokal.
+ERA5-Land mempunyai resolusi native sekitar 9 km, sedangkan data melalui CDS didistribusikan pada grid latitude-longitude reguler 0,1° × 0,1°. Di wilayah Aceh pada sekitar 4,3° LU, satu sel grid tersebut berukuran kurang lebih 11,1 km × 11,1 km atau sekitar 123 km². Nilai ini merupakan pendekatan karena lebar satu derajat longitude berubah menurut latitude.
 
-ERA5-Land dimulai pada 1 Januari 1950. Kode tidak akan meminta tanggal lebih awal dari batas tersebut. Konsekuensinya, hari lokal 1 Januari 1950 pada UTC+7 tidak memiliki konteks hari sebelumnya yang cukup dan tidak dapat dibentuk lengkap oleh aturan ini.
+**Keputusan proyek.** Perhitungan selalu dilakukan secara terpisah untuk setiap pasangan latitude dan longitude. Identitas wilayah juga dimasukkan ke nama direktori artefak dan identitas permintaan database.
+
+**Alasan.** Dua lokasi dapat memiliki hujan, radiasi, atau temperatur yang berbeda. Menggabungkan nilai sebelum mengelompokkan koordinat akan menghasilkan nilai harian yang tidak mewakili lokasi mana pun. Memasukkan bounding box ke identitas penyimpanan juga mencegah dua wilayah dengan tanggal dan variabel sama memakai file yang sama.
+
+**Contoh hasil test dua grid.** Untuk data sintetis yang sengaja dibuat berbeda, grid pertama menghasilkan presipitasi 24 mm dan grid kedua 48 mm. Radiasi masing-masing tetap 86.400 dan 172.800 J/m², sehingga tidak ada pencampuran antarkoordinat.
+
+**Evaluasi melalui test.** Test memeriksa resolusi 0,1°, menolak koordinat di luar lattice grid, memastikan rumus harian tetap independen pada beberapa grid, dan membuktikan bahwa dua bounding box menghasilkan jalur artefak berbeda (`tests/unit/test_transform.py`, `tests/unit/test_validation.py`, dan `tests/unit/test_storage.py`).
 
 ---
 
-## 6. Representasi waktu
+## 6. Permintaan data dan pembagian periode
 
-### 6.1 Waktu pada data mentah
+Satu permintaan ditentukan oleh sumber, dataset, tanggal awal, tanggal akhir, daftar variabel, dan bounding box.
 
-`valid_time` pada NetCDF adalah waktu valid dari CDS dalam UTC. Dokumentasi ERA5-Land menjelaskan bahwa parameter keadaan berlaku pada timestamp tersebut, sedangkan parameter akumulasi berasal dari short forecast yang dimulai setiap hari pada 00:00 UTC.
+**Keputusan proyek.** Periode panjang dibagi menurut bulan kalender sebelum dikirim ke CDS.
 
-Pipeline tidak mengganti `valid_time` mentah dengan tanggal lokal karena timestamp UTC diperlukan untuk memahami tepatnya nilai dari penyedia.
-
-### 6.2 Waktu pada data harian
-
-Keluaran harian mempunyai dua kolom:
+Contoh:
 
 ```text
-valid_time
-valid_time_local
+20 Januari–10 Maret 2024
+    → 20–31 Januari
+    → 1–29 Februari
+    → 1–10 Maret
 ```
 
-Keduanya menyatakan awal hari lokal yang sama:
+**Alasan.** Partisi bulanan membatasi ukuran satu pekerjaan, sesuai dengan bentuk permintaan CDS yang memakai tahun, bulan, dan daftar hari, serta memungkinkan satu bulan yang gagal diulang tanpa mengambil ulang seluruh periode.
+
+Urutan variabel tidak mengubah identitas logis permintaan. Permintaan `tp, t2m` dianggap sama dengan `t2m, tp`, tetapi perubahan periode atau bounding box menghasilkan identitas berbeda.
+
+**Evaluasi melalui test.** Test membuktikan pembagian parsial lintas bulan, kestabilan identitas terhadap urutan variabel, serta perubahan identitas ketika periode atau wilayah berubah (`tests/unit/test_utils_request_validation.py`).
+
+---
+
+## 7. Waktu UTC dan hari lokal UTC+7
+
+CDS menyatakan waktu data dalam UTC, sedangkan proyek memerlukan hari kalender Aceh/Indonesia Barat, yaitu UTC+7.
+
+**Keputusan proyek.** Hasil harian menyimpan dua kolom waktu:
 
 ```text
-valid_time       = waktu UTC awal hari lokal
-valid_time_local = tanggal lokal pada pukul 00:00
-```
-
-Hubungannya:
-
-```text
-valid_time_local = valid_time + 7 jam
+valid_time       = awal hari lokal dalam UTC
+valid_time_local = awal hari kalender UTC+7
 ```
 
 Contoh:
 
 ```text
-valid_time       : 2021-12-31 17:00:00
-valid_time_local : 2022-01-01 00:00:00
+valid_time       : 31 Desember 2021 17:00 UTC
+valid_time_local : 1 Januari 2022 00:00 UTC+7
 ```
 
-Kolom tersebut sengaja disimpan sebagai dua timestamp tanpa informasi zona waktu pada DataFrame dan tabel saat ini. Makna zonanya ditetapkan oleh kontrak: `valid_time` dibaca sebagai UTC dan `valid_time_local` sebagai Asia/Jakarta (UTC+7). Karena itu, nama kolom tidak boleh diganti menjadi `date` yang ambigu.
+Keduanya menunjuk saat yang sama. Dua kolom dipertahankan agar hasil dapat dibandingkan dengan data sumber dalam UTC sekaligus digunakan sebagai kalender lokal tanpa menebak arti sebuah kolom `date`.
 
-Hari lokal berlabel `D` mencakup interval:
+Hari lokal `D` mencakup:
 
 ```text
-[D-1 17:00 UTC, D 17:00 UTC)
+D-1 pukul 17:00 UTC sampai D pukul 17:00 UTC
 ```
 
-Untuk sampel keadaan hourly, timestamp yang masuk adalah `D-1 17:00` sampai `D 16:00` UTC, setara dengan pukul 00:00 sampai 23:00 waktu lokal.
+Untuk nilai keadaan per jam, sampel yang masuk adalah pukul 17:00 UTC pada hari sebelumnya sampai pukul 16:00 UTC pada hari `D`, setara dengan pukul 00:00–23:00 UTC+7.
+
+Implementasi saat ini menyimpan kedua kolom sebagai timestamp tanpa penanda zona waktu. Maknanya ditetapkan oleh kontrak di atas; karena itu pengguna tidak boleh menafsirkannya sebagai dua waktu lokal yang berbeda.
+
+**Evaluasi melalui test.** Test memastikan selisih selalu tujuh jam, `valid_time_local` selalu tengah malam, `valid_time` selalu pukul 17:00 UTC secara semantik, seluruh hari yang diminta tersedia, dan tidak ada observasi grid-hari ganda (`tests/unit/test_transform.py` dan `tests/unit/test_validation.py`).
 
 ---
 
-## 7. Agregasi variabel keadaan
+## 8. Rata-rata harian variabel keadaan
 
-Untuk `t2m`, `d2m`, dan `swvl1`, pipeline menambahkan offset tujuh jam pada setiap timestamp, membulatkannya ke awal tanggal lokal, lalu menghitung mean per kombinasi:
+`t2m`, `d2m`, dan `swvl1` menggambarkan keadaan pada timestamp tertentu, bukan jumlah sejak awal hari.
 
-```text
-hari lokal + latitude + longitude
-```
+**Keputusan proyek.** Rata-rata dihitung dari tepat 24 sampel per jam untuk setiap kombinasi hari lokal, latitude, longitude, dan variabel.
 
-Secara matematis:
+Secara ringkas:
 
 ```text
-x_mean(D, i, j) = (1 / 24) * sum(x_h(i, j)), h = 0..23 waktu lokal
+rata-rata harian = jumlah 24 nilai per jam / 24
 ```
 
-Mean hanya diterbitkan jika tepat 24 nilai non-null tersedia untuk variabel, hari, dan grid tersebut. `groupby.count()` tidak menghitung `NaN`; akibatnya, satu nilai keadaan yang hilang membuat hasil variabel itu untuk grid-hari tersebut tidak dibentuk.
+**Alasan ilmiah.** Rata-rata dari hari yang tidak lengkap dapat bias. Misalnya, apabila enam jam siang hilang, rata-rata temperatur dari sisa jam akan terlalu banyak dipengaruhi kondisi malam.
 
-Alasan aturan 24 sampel adalah mencegah rata-rata parsial dianggap mewakili satu hari penuh. Misalnya, mean temperatur dari 18 jam yang kebetulan lebih banyak berasal dari malam hari dapat menghasilkan bias terhadap mean harian sebenarnya.
+**Contoh.** Nilai temperatur lokal 0 °C, 1 °C, sampai 23 °C mempunyai rata-rata 11,5 °C. Test menggunakan rangkaian sederhana ini agar hasil dapat diperiksa secara manual.
 
-Jika beberapa variabel diminta sekaligus, hasil harian setiap variabel digabung dengan irisan yang sama. Sebuah grid-hari hanya masuk ke keluaran akhir jika tersedia pada seluruh hasil variabel yang digabungkan.
+Jika satu dari 24 nilai suatu variabel keadaan hilang, rata-rata grid-hari tersebut tidak diterbitkan. Jika beberapa variabel diminta bersama, hasil akhirnya hanya mempertahankan grid-hari yang lengkap untuk seluruh variabel keadaan yang digabungkan.
+
+**Evaluasi melalui test.** Test memeriksa rata-rata 11,5 °C, menolak satu jam yang hilang, menolak satu sampel keadaan bernilai `NaN`, dan memastikan rata-rata dua grid dihitung secara independen (`tests/unit/test_transform.py`).
 
 ---
 
-## 8. Agregasi `tp` dan `ssrd`
+## 9. Total harian presipitasi dan radiasi
 
-### 8.1 Mengapa nilai hourly tidak dijumlahkan
+`tp` dan `ssrd` tidak boleh diperlakukan seperti variabel keadaan. Dokumentasi ERA5-Land menjelaskan bahwa parameter akumulasi berasal dari forecast yang dimulai sekali sehari pada 00:00 UTC, dengan langkah 1 sampai 24 jam. Nilainya terakumulasi dari awal forecast sampai akhir langkah tersebut. Nilai bertimestamp 00:00 UTC mewakili akumulasi 24 jam yang berakhir saat itu, yaitu hari UTC sebelumnya.
 
-Menurut dokumentasi ERA5-Land, parameter akumulasi berasal dari short forecast harian yang dimulai pada 00:00 UTC. Nilai pada suatu jam adalah akumulasi dari 00:00 UTC sampai jam tersebut. Nilai pada `00:00 UTC` merupakan akumulasi 24 jam yang berakhir pada timestamp itu, sehingga sebenarnya mewakili hari UTC sebelumnya.
+**Keputusan proyek.** Nilai per jam yang kumulatif tidak dijumlahkan. Total hari lokal dibentuk dari nilai pada batas akumulasi.
 
-Karena sifat kumulatif tersebut, menjumlahkan 24 nilai akan menghitung periode awal hari berulang kali. Pipeline menggunakan selisih antar-batas akumulasi, sesuai panduan ECMWF untuk daily accumulation pada zona waktu non-UTC.
-
-### 8.2 Rumus hari lokal UTC+7
-
-Midnight lokal terjadi pada 17:00 UTC. Untuk hari lokal `D`, kode menerapkan:
+Untuk hari lokal `D` di UTC+7:
 
 ```text
-Total(D) = A(D 17:00) + A(D 00:00) - A(D-1 17:00)
+Total(D) = A(D 17:00) + A(D 00:00) − A(D−1 17:00)
 ```
 
-dengan `A(t)` adalah nilai akumulasi ERA5-Land pada timestamp `t`.
+`A(t)` adalah nilai akumulasi ERA5-Land pada waktu `t`.
 
-Makna setiap bagian:
+Penjelasan sederhananya:
 
-- `A(D 00:00) - A(D-1 17:00)` memberikan akumulasi dari pukul 17:00 sampai 24:00 UTC pada hari sebelumnya;
-- `A(D 17:00)` memberikan akumulasi dari 00:00 sampai 17:00 UTC pada hari `D`;
-- penjumlahan keduanya menghasilkan interval 24 jam dari tengah malam lokal sampai tengah malam lokal berikutnya.
+- `A(D 00:00) − A(D−1 17:00)` mengambil bagian 17:00–24:00 UTC;
+- `A(D 17:00)` mengambil bagian 00:00–17:00 UTC;
+- keduanya membentuk 24 jam dari tengah malam UTC+7 sampai tengah malam berikutnya.
 
-Contoh numerik untuk 2 Januari waktu lokal:
+Contoh numerik:
 
 ```text
 A(1 Jan 17:00) = 8 mm
 A(2 Jan 00:00) = 10 mm
 A(2 Jan 17:00) = 6 mm
 
-Total(2 Jan lokal) = 6 + 10 - 8 = 8 mm
+Total 2 Jan lokal = 6 + 10 − 8 = 8 mm
 ```
 
-Nilai 8 mm tersebut mencakup 1 Januari 17:00 UTC sampai 2 Januari 17:00 UTC, yaitu 2 Januari 00:00–24:00 UTC+7.
+**Alasan ilmiah.** Menjumlahkan 24 nilai kumulatif akan menghitung jam-jam awal berulang kali. Rumus batas mengikuti penjelasan ECMWF untuk membentuk akumulasi ERA5-Land pada zona waktu non-UTC.
 
-Rumus yang sama digunakan untuk `ssrd`, karena kedua variabel memiliki konvensi akumulasi ERA5-Land yang sama. Kode hanya membentuk baris jika tiga nilai batas yang diperlukan dapat dipasangkan pada grid yang sama.
+Rumus yang sama diterapkan pada `ssrd` karena keduanya merupakan parameter akumulasi ERA5-Land. Jika salah satu nilai batas hilang, hasil variabel tersebut tetap hilang dan tidak diganti nol.
 
-Nilai hasil yang lebih kecil dari `-1e-10` dicatat sebagai peringatan tetapi tetap dipertahankan. Keputusan ini mencegah koreksi diam-diam terhadap data sumber. Pipeline saat ini belum menerapkan clipping ke nol atau aturan kualitas berbasis rentang fisik.
+Nilai total negatif yang lebih kecil dari toleransi `−1×10⁻¹⁰` menghasilkan peringatan tetapi tetap dipertahankan. Sistem tidak mengubahnya diam-diam menjadi nol karena nilai negatif dapat menunjukkan persoalan pada data atau batas akumulasi yang perlu ditinjau, bukan otomatis berarti “tidak terjadi hujan/radiasi”.
+
+**Evaluasi melalui test.** Data sintetis dengan kenaikan presipitasi 1 mm per jam menghasilkan tepat 24 mm/hari; radiasi 3.600 J/m² per jam menghasilkan 86.400 J/m²/hari. Test juga memeriksa beberapa grid, nilai batas yang hilang, serta nilai negatif yang dipertahankan bersama peringatan (`tests/unit/test_transform.py`).
+
+Sumber utama keputusan ini:
+
+- [ERA5-Land: data documentation—Accumulations](https://confluence.ecmwf.int/display/CKB/ERA5-Land%3A+data+documentation#ERA5Land:datadocumentation-accumulationsAccumulations)
+- [ERA5 family daily statistics—daily accumulation for non-UTC time zones](https://confluence.ecmwf.int/display/CKB/ERA5+family+post-processed+daily+statistics+documentation)
 
 ---
 
-## 9. Konversi satuan
+## 10. Konteks satu hari sebelum tanggal awal
 
-Konversi dilakukan setelah agregasi. NetCDF mentah tetap memakai nilai dan satuan dari penyedia, sedangkan Parquet dan PostgreSQL memakai satuan analisis berikut:
+**Keputusan proyek.** Untuk setiap partisi, pengambilan ERA5-Land dimulai satu hari sebelum tanggal awal yang diminta, selama tanggal tersebut tidak mendahului 1 Januari 1950.
 
-| Variabel | Operasi | Satuan keluaran |
-|---|---|---|
-| `tp` | nilai harian × 1000 | mm/day |
-| `t2m` | mean harian − 273,15 | °C |
-| `d2m` | mean harian − 273,15 | °C |
-| `swvl1` | tidak diubah | m³/m³ |
-| `ssrd` | tidak diubah | J/m²/day |
+Contoh:
 
-Konversi presipitasi dari meter ke milimeter mengikuti definisi hydrological accumulation ERA5-Land. Temperatur dikonversi dari Kelvin ke Celsius agar mudah digunakan pada analisis pertanian. `ssrd` sengaja tidak diubah menjadi W/m² atau MJ/m²/day karena kolom database menyatakan total energi harian; konversi tambahan harus dilakukan secara eksplisit oleh analisis yang memerlukannya.
+```text
+periode hasil             : 1–3 Januari 2022
+periode data yang diambil : 31 Desember 2021–3 Januari 2022
+```
+
+**Alasan.** Hari lokal 1 Januari dimulai pada 31 Desember pukul 17:00 UTC. Nilai akumulasi juga memerlukan batas pada hari UTC sebelumnya. Hari tambahan adalah konteks perhitungan, bukan tambahan hari pada hasil akhir.
+
+ERA5-Land dimulai pada 1 Januari 1950. Hari lokal 1 Januari 1950 di UTC+7 memerlukan konteks mulai 31 Desember 1949 pukul 17:00 UTC, yang tidak tersedia. Pipeline menolak transformasi hari tersebut secara eksplisit agar tidak menerbitkan hari yang tidak lengkap.
+
+**Evaluasi melalui test.** Test memastikan tanggal pengambilan dimundurkan satu hari, tidak pernah meminta tanggal sebelum awal ERA5-Land, memfilter hasil kembali ke periode target, dan menolak hari lokal 1 Januari 1950 dengan pesan yang menjelaskan konteks yang hilang (`tests/unit/test_extract.py` dan `tests/unit/test_transform.py`). Dokumentasi resmi juga mencatat bahwa parameter forecast tidak tersedia untuk valid time 1 Januari 1950 pukul 00:00 UTC.
 
 ---
 
-## 10. Bentuk data hasil transformasi
+## 11. Nilai hilang dan kelengkapan data
 
-Kolom hasil transformasi adalah:
-
-```text
-valid_time
-valid_time_local
-latitude
-longitude
-<variabel yang diminta>
-```
-
-Urutan variabel mengikuti urutan pada permintaan. Untuk konfigurasi CDS di `scripts/config.py`, bentuknya adalah:
+**Keputusan proyek.** Nilai hilang tidak pernah diubah menjadi nol.
 
 ```text
-valid_time, valid_time_local, latitude, longitude,
-tp, t2m, swvl1, ssrd, d2m
+0    = nilai yang benar-benar teramati/dihasilkan sebagai nol
+NULL = nilai tidak tersedia
 ```
 
-Kolom metadata CDS seperti `number` atau `expver` tidak disertakan sebagai observasi cuaca. Pemilihan kolom secara eksplisit mencegah perubahan metadata dari penyedia masuk tanpa sengaja ke kontrak data hilir.
+Perbedaan ini penting. Presipitasi 0 mm berarti tidak ada presipitasi pada periode tersebut, sedangkan nilai hilang berarti sistem tidak mempunyai informasi yang cukup untuk menyatakan kondisi.
 
-Baris diurutkan berdasarkan `valid_time_local`, `latitude`, lalu `longitude`. Urutan deterministik memudahkan perbandingan hasil dan pembacaan ulang, tetapi identitas ilmiah baris tetap ditentukan oleh waktu dan koordinat, bukan oleh nomor urut DataFrame.
+Perlakuannya bergantung pada jenis variabel:
+
+- satu sampel hilang pada variabel keadaan membuat rata-rata 24 jam tidak diterbitkan;
+- satu nilai batas hilang pada `tp` atau `ssrd` membuat totalnya tetap hilang;
+- ketika ditulis ke PostgreSQL, `NaN` disimpan sebagai `NULL`.
+
+Identitas sebuah grid ditentukan oleh koordinat, bukan oleh ada atau tidaknya nilai pada satu kolom. Karena itu, baris yang masih mempunyai koordinat tetapi salah satu variabelnya hilang tetap dapat menjadi anggota grid. Namun, apabila transformasi variabel keadaan membuang seluruh grid-hari karena tidak memiliki 24 sampel, pemeriksaan kestabilan grid akan mendeteksi perubahan keanggotaan antartanggal.
+
+**Evaluasi melalui test.** Test membedakan nilai hilang dari nol, memeriksa nilai batas akumulasi yang hilang, menolak mean keadaan yang tidak lengkap, memastikan `NaN` menjadi `NULL`, dan memastikan satu nilai hilang tidak mengubah keanggotaan grid selama baris koordinatnya tetap ada (`tests/unit/test_transform.py`, `tests/unit/test_validation.py`, `tests/unit/test_load.py`, dan `tests/unit/test_daily_climate_repository.py`).
 
 ---
 
-## 11. Validasi yang diterapkan
+## 12. Pemeriksaan kewajaran dan konsistensi hasil
 
-### 11.1 Validasi data mentah
+Validasi bertujuan mencegah data yang strukturnya rusak atau secara fisik mustahil diteruskan sebagai data harian yang sah.
 
-Setelah unduhan baru maupun resume, NetCDF harus memenuhi kondisi berikut:
+### Data mentah
 
-- berupa `xarray.Dataset`;
-- mempunyai koordinat `valid_time`, `latitude`, dan `longitude`;
-- memuat seluruh variabel yang diminta;
-- `valid_time` bertipe datetime, unik, menaik, dan berinterval tepat satu jam;
-- latitude dan longitude tidak duplikat, monoton, dan berjarak 0,1°;
-- semua koordinat berada di dalam bounding box;
-- jumlah koordinat pada setiap sumbu sesuai rentang inklusif bounding box dan resolusi 0,1°.
+NetCDF diperiksa agar:
 
-Validasi jumlah sumbu mengasumsikan batas permintaan sejajar dengan grid 0,1°. Sebagai contoh, rentang latitude 3,4–5,2 menghasilkan 19 posisi, sedangkan longitude 96,1–97,6 menghasilkan 16 posisi; grid geometrisnya berjumlah `19 × 16 = 304`.
+- memiliki waktu, latitude, longitude, dan seluruh variabel yang diminta;
+- waktu unik, berurutan, dan berjarak tepat satu jam;
+- koordinat unik, teratur, dan berjarak 0,1°;
+- koordinat berada di dalam bounding box;
+- jumlah posisi sesuai dengan rentang wilayah dan resolusi.
 
-Pemeriksaan ini memastikan struktur ruang-waktu sumber utuh sebelum transformasi. Kode saat ini belum memvalidasi rentang fisik setiap variabel, misalnya batas temperatur atau presipitasi maksimum.
+### Data harian
 
-### 11.2 Validasi data harian
+Hasil harian diperiksa agar:
 
-Keluaran ERA5-Land harus memenuhi:
+- memiliki seluruh kolom waktu, koordinat, dan variabel;
+- mencakup setiap tanggal lokal yang diminta;
+- tidak mempunyai observasi ganda untuk tanggal dan grid yang sama;
+- memakai hubungan UTC dan UTC+7 yang benar;
+- mempunyai himpunan pasangan koordinat yang sama pada setiap hari;
+- semua nilai bukan-hilang berupa angka terbatas, bukan tak hingga;
+- temperatur tidak lebih rendah dari nol absolut, yaitu −273,15 °C;
+- `swvl1` berada pada rentang fraksi 0 sampai 1.
 
-- kolom waktu, koordinat, dan seluruh variabel permintaan tersedia;
-- `valid_time_local - valid_time` selalu tujuh jam;
-- `valid_time_local` selalu pukul 00:00:00;
-- `valid_time` selalu pukul 17:00:00 UTC secara semantik;
-- tidak ada duplikat `valid_time_local + latitude + longitude`;
-- setiap tanggal lokal dari awal sampai akhir periode tersedia;
-- koordinat berada dalam bounding box dan sejajar dengan grid 0,1°;
-- himpunan pasangan latitude-longitude identik pada setiap hari.
+**Alasan pemilihan batas.** Batas tersebut merupakan batas fisik keras, bukan ambang klimatologis lokal. Pipeline belum menolak nilai hanya karena tampak ekstrem untuk Aceh. Ambang seperti “suhu terlalu tinggi untuk wilayah tertentu” memerlukan kajian kualitas yang terpisah agar kejadian ekstrem yang sah tidak dibuang.
 
-Jumlah grid hasil harian dapat lebih kecil daripada grid geometris mentah. Penyebabnya antara lain titik yang tidak mempunyai 24 nilai keadaan non-null atau titik yang tidak valid untuk permukaan daratan. Yang dipersyaratkan adalah himpunan grid hasil tersebut stabil dari hari ke hari.
+Akumulasi negatif tetap diizinkan dengan peringatan, sebagaimana dijelaskan pada bagian 9. Nilai hilang juga diperbolehkan pada hasil yang tetap mempertahankan baris grid.
 
-### 11.3 Nilai hilang
-
-Pipeline tidak mengganti nilai hilang dengan nol. Pada saat pemuatan database:
-
-```text
-NaN -> NULL
-```
-
-Perbedaan ini penting: `tp = 0` menyatakan tidak ada presipitasi, sedangkan `tp = NULL` menyatakan nilai tidak tersedia. Imputasi, interpolasi, atau definisi hari basah tidak dilakukan pada lapisan ETL ini.
-
-Perlu dicatat bahwa perlakuan saat agregasi bergantung pada jenis variabel. Untuk variabel keadaan, kurang dari 24 nilai non-null menyebabkan grid-hari tidak diterbitkan. Untuk variabel akumulasi, operasi aritmetika mempertahankan `NaN` jika salah satu nilai batasnya `NaN`; nilai tersebut kemudian disimpan sebagai `NULL` apabila barisnya tetap lolos penggabungan dan validasi grid.
+**Evaluasi melalui test.** Test memasukkan jam yang hilang, resolusi salah, offset waktu salah, tanggal lokal hilang, duplikasi, perubahan anggota grid, koordinat yang tidak sejajar, temperatur di bawah nol absolut, `swvl1 > 1`, nilai tak hingga, nilai hilang, dan akumulasi negatif. Kasus yang sah diterima dan kasus yang melanggar kontrak ditolak (`tests/unit/test_validation.py`).
 
 ---
 
-## 12. Artefak, resume, dan keterlacakan
+## 13. Penyimpanan RAW dan transformed
 
-### 12.1 Dua lapisan artefak
-
-```text
-RAW         = NetCDF hourly
-TRANSFORMED = Parquet harian
-```
-
-NetCDF adalah sumber ilmiah lokal yang tidak boleh ditimpa. Parquet adalah hasil deterministik dari proses agregasi dan konversi yang dapat ditelusuri ke NetCDF tertentu.
-
-Penyimpanan dilakukan melalui file sementara pada direktori yang sama, kemudian dipindahkan secara atomik ke nama akhir. Pendekatan ini mengurangi kemungkinan file akhir terlihat lengkap ketika proses penulisan sebenarnya terhenti.
-
-Jika file RAW atau Parquet sudah ada, runtime melakukan resume dan memvalidasinya kembali. Fungsi penyimpanan sendiri menolak overwrite. Dengan demikian:
+Struktur penyimpanan saat ini adalah:
 
 ```text
-file ada -> baca ulang -> periksa provenance -> validasi -> lanjut
+data/
+└── cds_reanalysis-era5-land/
+    └── bbox_n5p2_w96p1_s3p4_e97p6/
+        ├── raw/
+        │   └── 2022/
+        │       └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
+        └── transformed/
+            └── 2022/
+                └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
 ```
 
-bukan:
+**Keputusan proyek.** Nama jalur memuat sumber dan dataset, bounding box, lapisan data, tahun, periode, serta daftar variabel yang diurutkan.
 
-```text
-file ada -> anggap benar
-```
+**Alasan.** Identitas tersebut membuat jalur deterministik: permintaan logis yang sama kembali ke file yang sama, sedangkan wilayah berbeda tidak bertabrakan. Daftar variabel diurutkan karena urutan penulisan tidak mengubah isi ilmiah permintaan.
 
-### 12.2 Jalur artefak saat ini
+RAW tidak boleh ditimpa. Jika file sudah tersedia, pipeline membacanya kembali dan tetap menjalankan validasi. Parquet yang tersedia juga diperiksa sebelum digunakan kembali.
 
-Jalur dibentuk dari dataset, lapisan, sumber, tahun tanggal awal, periode, dan signature variabel yang telah diurutkan. Contoh:
-
-```text
-data/reanalysis-era5-land/raw/cds/2022/
-  2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
-
-data/reanalysis-era5-land/transformed/cds/2022/
-  2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
-```
-
-Pengurutan signature membuat `['tp', 't2m']` dan `['t2m', 'tp']` menunjuk nama partisi yang sama karena himpunan observasinya sama.
-
-**Batasan implementasi saat ini:** nama dan jalur artefak belum memasukkan bounding box. Dua permintaan dengan dataset, sumber, periode, dan variabel sama tetapi area berbeda akan menunjuk jalur file yang sama. Sementara desain ini belum diubah, satu ruang penyimpanan tidak boleh dipakai untuk kedua bounding box tersebut tanpa memisahkan `DATA_DIRECTORY` atau membersihkan artefak secara sadar. Berbeda dengan jalur file, `request_key` PostgreSQL sudah memasukkan bounding box.
-
-### 12.3 Provenance
-
-NetCDF menyimpan `downloaded_at` pada atribut file. Parquet menyimpan:
-
-```text
-raw_artifact_path
-raw_sha256
-downloaded_at
-transformed_at
-```
-
-Saat Parquet di-resume, pipeline menghitung ulang SHA-256 NetCDF dan membandingkannya dengan metadata Parquet. Perubahan isi atau pergantian sumber RAW menyebabkan resume ditolak.
-
-PostgreSQL menyimpan:
-
-```text
-downloaded_at
-transformed_artifact_path
-transformed_sha256
-transformed_at
-```
-
-Checksum dan jalur RAW tidak diulang di PostgreSQL karena hubungan ke RAW sudah dicatat pada metadata Parquet. Rantainya adalah:
-
-```text
-baris PostgreSQL
-    -> Parquet dan SHA-256 Parquet
-        -> NetCDF dan SHA-256 NetCDF
-```
-
-Provenance saat ini belum mencatat versi kode transformasi atau commit Git. Karena itu, checksum membuktikan identitas artefak, tetapi belum cukup untuk merekonstruksi versi algoritme jika kode berubah di masa depan.
+**Evaluasi melalui test.** Test memeriksa kestabilan jalur, identitas bounding box, penolakan overwrite RAW dan Parquet, resume file yang ada, serta kegagalan yang jelas ketika checkpoint tidak ditemukan (`tests/unit/test_storage.py` dan `tests/unit/test_runtime.py`).
 
 ---
 
-## 13. Identitas logis dan idempotensi PostgreSQL
+## 14. Catatan asal-usul data dan checksum
 
-`request_key` adalah SHA-256 dari representasi terurut yang memuat:
+Catatan asal-usul data—sering disebut *provenance*—menjelaskan dari file mana suatu hasil berasal dan kapan tahap pengolahan dilakukan.
 
-```text
-source, dataset, start_date, end_date,
-daftar variabel terurut, serta seluruh batas bounding box
-```
-
-Kunci ini mengidentifikasi satu partisi logis tanpa bergantung pada urutan variabel. PostgreSQL memakai schema `climate_data` dengan dua tabel.
-
-### 13.1 `daily_climate`
-
-Satu baris menyimpan metadata satu permintaan:
+NetCDF menyimpan waktu unduh. Metadata Parquet menyimpan:
 
 ```text
-id, request_key, dataset_name, source,
-start_date, end_date, variable_signature,
-north_lat, south_lat, east_lon, west_lon,
-downloaded_at, transformed_artifact_path,
-transformed_sha256, transformed_at
+jalur NetCDF RAW
+checksum SHA-256 NetCDF RAW
+waktu unduh
+waktu transformasi
 ```
 
-`request_key` mempunyai indeks unik. Jika partisi yang sama dimuat ulang, metadata diperbarui dan `id` yang sama dikembalikan.
-
-### 13.2 `daily_climate_detail`
-
-Satu baris menyimpan satu observasi grid-hari:
+PostgreSQL menyimpan jalur dan checksum Parquet serta waktu unduh dan transformasi. Hubungan penelusurannya adalah:
 
 ```text
-daily_climate_id
-valid_time
-valid_time_local
-latitude
-longitude
-tp_daily_total_mm
-t2m_daily_mean_c
-d2m_daily_mean_c
-swvl1_daily_mean_m3_m3
-ssrd_daily_total_j_m2
+observasi PostgreSQL
+    → Parquet dan checksum Parquet
+        → NetCDF dan checksum NetCDF
 ```
 
-Kolom variabel bersifat nullable agar nilai hilang tetap berbeda dari nol. Kunci unik observasi adalah:
+**Keputusan proyek.** Ketika Parquet akan digunakan kembali, checksum RAW dihitung ulang dan dibandingkan dengan metadata Parquet. Jalur RAW, kelengkapan metadata, dan format timestamp juga diperiksa.
+
+**Alasan.** Nama file yang sama tidak membuktikan bahwa isinya sama. Checksum berubah ketika byte file berubah, sehingga hasil lama tidak digunakan diam-diam setelah sumbernya diganti.
+
+**Evaluasi melalui test.** Test mengubah byte RAW dan memastikan resume ditolak. Test juga menghapus metadata checksum, mengganti jalur RAW, merusak timestamp, dan memastikan setiap ketidaksesuaian menghasilkan kegagalan (`tests/unit/test_storage.py`).
+
+**Batasan.** Provenance belum menyimpan commit Git atau versi algoritme transformasi. Checksum membuktikan identitas file, tetapi belum sepenuhnya menjelaskan versi kode yang menghasilkan file tersebut.
+
+---
+
+## 15. Perlindungan ketika penulisan atau pemuatan gagal
+
+### Penulisan file
+
+**Keputusan proyek.** NetCDF dan Parquet mula-mula ditulis ke file sementara pada direktori yang sama. Nama akhir hanya muncul setelah penulisan selesai. Jika penulisan gagal, file sementara dibersihkan.
+
+**Alasan.** Tanpa langkah ini, proses yang terhenti dapat meninggalkan file akhir yang terlihat sah tetapi sebenarnya hanya berisi sebagian data.
+
+**Evaluasi melalui test.** Test mensimulasikan kegagalan setelah sebagian isi NetCDF atau Parquet ditulis. Setelah kegagalan, tidak boleh ada file akhir maupun file sementara parsial (`tests/unit/test_storage.py`).
+
+### Pemuatan PostgreSQL
+
+**Keputusan proyek.** Metadata partisi dan seluruh observasinya dimuat dalam satu transaksi. Jika pemuatan detail gagal, perubahan metadata pada transaksi yang sama ikut dibatalkan.
+
+**Alasan.** Database tidak boleh menyatakan sebuah partisi tersedia ketika observasinya hanya tersimpan sebagian.
+
+**Evaluasi melalui test.** Integration test memasukkan detail yang tidak sah setelah metadata sempat di-upsert. PostgreSQL kemudian diperiksa dan harus berisi nol metadata serta nol detail dari percobaan tersebut (`tests/integration/test_postgresql_idempotency.py`).
+
+---
+
+## 16. PostgreSQL dan pencegahan duplikasi
+
+PostgreSQL menggunakan dua tabel:
+
+- `climate_data.daily_climate` untuk identitas, periode, wilayah, dan provenance satu partisi;
+- `climate_data.daily_climate_detail` untuk observasi setiap grid dan hari.
+
+**Keputusan proyek.** Menjalankan kembali partisi yang sama memperbarui baris yang sudah ada dan tidak menambah duplikat. Perilaku ini sering disebut *idempotensi*.
+
+Identitas partisi dibentuk dari sumber, dataset, periode, daftar variabel terurut, dan seluruh batas bounding box. Identitas satu observasi dibentuk dari partisi, waktu UTC, latitude, dan longitude.
+
+Contoh:
 
 ```text
-daily_climate_id + valid_time + latitude + longitude
+muat partisi yang sama pertama kali  → 1 metadata, 2 observasi
+muat partisi yang sama kedua kali   → tetap 1 metadata, tetap 2 observasi
 ```
 
-Pemuatan menggunakan UPSERT dalam kelompok 1.000 baris. Pengulangan permintaan memperbarui observasi dengan identitas yang sama, bukan menambah duplikat. Seluruh metadata dan detail dimuat di dalam satu transaksi database sehingga kegagalan tidak meninggalkan partisi setengah selesai.
+**Alasan.** Retry adalah kejadian normal pada pipeline data. Retry tidak boleh menggandakan jumlah hari atau grid dan mengubah hasil analisis.
 
-Database dan tabel dibuat jika belum tersedia. Perilaku pembuatan ini merupakan kemudahan lingkungan pengembangan; deployment produksi tetap harus mengelola kredensial dan perubahan schema secara terkendali.
+Kolom nilai cuaca di database dapat berisi `NULL` agar nilai hilang tetap berbeda dari nol. Nama kolom menyatakan statistik dan satuan, misalnya `tp_daily_total_mm` dan `t2m_daily_mean_c`.
+
+**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, pemetaan kolom, indeks unik, dan perintah pembaruan. Integration test nyata memuat partisi yang sama dua kali dan membuktikan jumlah metadata serta observasi tidak bertambah dan tidak ada kunci observasi ganda (`tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`).
 
 ---
 
-## 14. Akses hanya-baca untuk analisis
+## 17. Akses data untuk analisis
 
-`load_daily_climate_for_modelling()` membaca PostgreSQL berdasarkan pilihan eksplisit:
+Data harian dibaca dari PostgreSQL menggunakan pilihan eksplisit: sumber, nama dataset, periode, dan bounding box yang sama persis.
 
-```text
-source
-dataset_name
-start_date dan end_date
-bounding box yang sama persis
-```
+**Keputusan proyek.** Jalur pembacaan untuk analisis hanya membaca dan memvalidasi data. Jalur ini tidak membuat tabel, tidak mengganti nilai hilang, tidak melakukan scaling, tidak menghitung anomali, dan tidak menentukan hari basah.
 
-Rentang tanggal menggunakan batas awal inklusif dan batas akhir eksklusif pada hari setelah `end_date`. Hasil diurutkan menurut hari lokal, latitude, longitude, dan `daily_climate_id`.
+**Alasan.** Data iklim kanonis harus tetap sama ketika metode analisis atau eksperimen model berubah. Transformasi khusus model seharusnya dilakukan setelah data dibaca, bukan mengubah data sumber bersama.
 
-Sebelum dikembalikan, DataFrame diperiksa agar:
+Sebelum data diberikan kepada analisis, program memastikan bahwa struktur kolom lengkap, hasil tidak kosong, waktu lokal berada pada tengah malam, tidak ada observasi grid-hari ganda termasuk yang berasal dari partisi berbeda, dan tanggal berada dalam periode yang diminta.
 
-- seluruh kolom kanonis tersedia;
-- hasil tidak kosong;
-- tidak ada duplikat hari lokal dan grid, termasuk duplikat lintas partisi;
-- `valid_time_local` tepat pada tengah malam;
-- tanggal tidak keluar dari periode yang diminta.
-
-Lapisan ini sengaja hanya-baca. Ia tidak membuat tabel, tidak mengganti nilai hilang, tidak melakukan scaling, tidak menghitung anomali, dan tidak memberi label hari basah. Pemisahan ini menjaga agar dataset iklim kanonis tidak berubah mengikuti eksperimen model.
-
-Contoh pemakaian terdapat pada `scripts/read_daily_climate.py`:
-
-```python
-selection = DailyClimateSelection(
-    source=DataSource.CDS,
-    dataset_name="reanalysis-era5-land",
-    start_date=date(2022, 1, 1),
-    end_date=date(2022, 1, 3),
-    bbox=ACEH_LAND_DOMINANT_BBOX,
-)
-
-dataframe = load_daily_climate_for_modelling(selection)
-```
+**Evaluasi melalui test.** Test memeriksa filter sumber/dataset/periode/wilayah, struktur hasil, urutan deterministik, pelestarian nilai hilang, penolakan duplikasi, dan sifat hanya-baca (`tests/unit/test_daily_climate_repository.py`).
 
 ---
 
-## 15. Alur eksekusi lokal
+## 18. Batasan yang masih berlaku
 
-Lingkungan dibuat dengan:
+Dokumen ini tidak menyatakan jaminan melebihi implementasi dan test saat ini:
 
-```bash
-./scripts/setup_environment.sh
-```
-
-Skrip tersebut membuat virtual environment `myvenv` jika belum ada dan memasang `requirements.txt`. Konfigurasi CDS memerlukan `CDSAPI_KEY`, sedangkan PostgreSQL memerlukan `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, dan `POSTGRES_PASSWORD`.
-
-Pipeline CDS dijalankan dengan:
-
-```bash
-python scripts/run_pipeline_cds.py
-```
-
-Urutan di dalam `WeatherPipeline` adalah:
-
-1. tentukan jalur RAW;
-2. unduh atau resume NetCDF;
-3. validasi NetCDF;
-4. ubah NetCDF menjadi DataFrame;
-5. transformasikan atau resume Parquet;
-6. validasi hasil harian;
-7. UPSERT metadata dan observasi ke PostgreSQL.
-
-Data hasil dapat dibaca kembali dengan:
-
-```bash
-python scripts/read_daily_climate.py
-```
-
-Skrip konfigurasi saat ini berfungsi sebagai contoh kode, bukan antarmuka baris perintah umum. Periode, daftar variabel, dan bounding box diubah melalui konstanta pada `scripts/config.py`.
+1. Hari lokal 1 Januari 1950 tidak dapat dibentuk untuk UTC+7 karena konteks 31 Desember 1949 tidak tersedia.
+2. Timestamp harian belum menyimpan informasi zona secara melekat; arti UTC dan UTC+7 bergantung pada kontrak nama kolom.
+3. Pemeriksaan fisik hanya memakai batas yang benar-benar keras. Pipeline belum mempunyai ambang klimatologis khusus Aceh untuk mendeteksi nilai yang tidak lazim tetapi masih mungkin secara fisik.
+4. Akumulasi negatif diberi peringatan dan dipertahankan; pipeline belum menentukan aturan koreksi otomatis.
+5. Provenance belum mencatat versi kode atau commit Git.
+6. Konfigurasi periode, variabel, dan wilayah masih berupa konstanta pada `scripts/config.py`, belum menjadi antarmuka baris perintah umum.
+7. Test membuktikan perilaku program pada kasus yang dirancang, termasuk test PostgreSQL terisolasi. Test bukan validasi independen bahwa seluruh nilai ERA5-Land sesuai dengan pengamatan lapangan.
+8. ERA5-Land adalah data berbasis grid model. Analisis tingkat lokasi tetap perlu mempertimbangkan perbedaan elevasi, tutupan lahan, pesisir, dan representativitas grid terhadap kondisi setempat.
 
 ---
 
-## 16. Batas orkestrasi
+## 19. Ringkasan keputusan
 
-Semua aturan yang mengubah makna data berada di `pipeline/`, termasuk interpretasi timestamp, agregasi, konversi satuan, validasi, checkpoint, provenance, dan pemuatan database. Runtime lokal menyusun tahap-tahap tersebut melalui antarmuka extractor, storage, transformer, dan loader.
-
-Jika Airflow digunakan kemudian, Airflow hanya mengatur jadwal, interval pekerjaan, ketergantungan, retry, concurrency, credential, dan pemantauan. Logika ilmiah tidak dipindahkan ke DAG. Alasan pemisahan ini adalah hasil numerik untuk permintaan yang sama harus tetap identik, baik pipeline dipanggil dari skrip lokal maupun dari orkestrator.
-
----
-
-## 17. Batasan yang harus diketahui developer
-
-Dokumentasi ini membedakan keputusan yang sudah diterapkan dari kemampuan yang belum tersedia:
-
-1. Jalur artefak belum membedakan bounding box; `request_key` database sudah membedakannya.
-2. Provenance belum mencatat versi algoritme atau commit Git.
-3. Validasi memeriksa struktur, kontinuitas waktu, dan konsistensi grid, tetapi belum memeriksa rentang fisik setiap variabel.
-4. Nilai akumulasi negatif hanya diberi peringatan dan tidak dikoreksi.
-5. UTC+7 tidak dapat membentuk hari lokal pertama ERA5-Land, 1 Januari 1950, karena konteks hari sebelumnya tidak tersedia.
-6. Timestamp harian disimpan tanpa informasi zona; interpretasi UTC dan UTC+7 bergantung pada kontrak kolom.
-7. Konfigurasi skrip masih berupa konstanta dan belum menjadi CLI parametrik.
-8. Jalur ARCO tetap terpisah dan tidak boleh dianggap menghasilkan agregasi harian ERA5-Land.
-
-Daftar ini penting agar developer tidak menyimpulkan jaminan yang lebih luas daripada perilaku kode saat ini.
+1. CDS ERA5-Land per jam adalah satu-satunya sumber aktif pipeline.
+2. NetCDF RAW dipertahankan sebagai sumber ilmiah lokal yang tidak ditimpa.
+3. Hari analisis mengikuti UTC+7 dan tetap menyimpan pasangan waktu UTC.
+4. Variabel keadaan dirata-ratakan dari 24 sampel lengkap per grid-hari.
+5. `tp` dan `ssrd` dihitung dari batas akumulasi ERA5-Land, bukan dengan menjumlahkan nilai kumulatif per jam.
+6. Konversi satuan dilakukan setelah agregasi harian.
+7. Nilai hilang tidak diubah menjadi nol.
+8. Grid, waktu, kelengkapan hari, nilai terbatas, dan batas fisik keras diperiksa sebelum hasil digunakan.
+9. Wilayah menjadi bagian dari identitas file dan partisi database.
+10. Checksum dan metadata menjaga rantai asal-usul RAW → Parquet → PostgreSQL.
+11. Penulisan file dan transaksi database dirancang agar kegagalan tidak meninggalkan hasil parsial yang tampak sah.
+12. Retry tidak membuat observasi ganda.
+13. Akses untuk analisis bersifat hanya-baca dan tidak mengubah makna meteorologis data.
 
 ---
 
-## 18. Prinsip yang dipertahankan
-
-1. NetCDF hourly adalah sumber kebenaran ilmiah lokal.
-2. Hari analisis mengikuti kalender Aceh UTC+7.
-3. Timestamp UTC dan label hari lokal dipertahankan bersama.
-4. Variabel keadaan dan akumulasi tidak diproses dengan rumus yang sama.
-5. Hari dengan mean keadaan harus mempunyai 24 sampel non-null.
-6. `tp` dan `ssrd` dihitung dari batas akumulasi ERA5-Land, bukan dari penjumlahan 24 nilai kumulatif.
-7. Satuan sumber dipertahankan pada RAW; satuan analisis diterapkan setelah agregasi.
-8. Nilai hilang tidak diubah menjadi nol.
-9. Artefak yang di-resume tetap harus melewati pemeriksaan provenance dan validasi.
-10. RAW tidak ditimpa; pemuatan PostgreSQL bersifat idempoten.
-11. Data iklim kanonis dipisahkan dari transformasi khusus model.
-12. Orkestrator tidak menentukan makna ilmiah data.
-
----
-
-## 19. Referensi ilmiah utama
-
-Keputusan temporal dan spasial di atas mengikuti dokumentasi resmi berikut:
+## 20. Referensi resmi
 
 - [ERA5-Land hourly data from 1950 to present](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land)
+- [ERA5-Land post-processed daily statistics from 1950 to present](https://cds.climate.copernicus.eu/datasets/derived-era5-land-daily-statistics)
 - [ERA5-Land: data documentation](https://confluence.ecmwf.int/display/CKB/ERA5-Land%3A+data+documentation)
 - [ERA5 family post-processed daily statistics documentation](https://confluence.ecmwf.int/display/CKB/ERA5+family+post-processed+daily+statistics+documentation)
-- [ERA5 terminology: analysis and forecast; time and steps](https://confluence.ecmwf.int/display/CKB/ERA5+terminology%3A+analysis+and+forecast%3B+time+and+steps%3B+instantaneous+and+accumulated+and+mean+rates+and+min%2Fmax+parameters)
+- [ERA5 terminology: analysis, forecast, time, steps, instantaneous and accumulated parameters](https://confluence.ecmwf.int/display/CKB/ERA5+terminology%3A+analysis+and+forecast%3B+time+and+steps%3B+instantaneous+and+accumulated+and+mean+rates+and+min%2Fmax+parameters)
 
-Referensi tersebut menjadi dasar bagi keputusan berikut:
+Referensi ERA5 umum digunakan hanya untuk menjelaskan istilah yang juga dipakai dalam keluarga ERA5. Keputusan tentang resolusi, periode, dan akumulasi mengutamakan dokumentasi khusus ERA5-Land karena konvensi akumulasinya berbeda dari ERA5.
 
-- ERA5-Land pada CDS memakai grid reguler 0,1° × 0,1° dan tersedia hourly;
-- parameter keadaan berlaku pada timestamp, sedangkan parameter akumulasi berasal dari forecast;
-- forecast ERA5-Land untuk akumulasi dimulai pada 00:00 UTC dan berjalan sampai 24 jam;
-- nilai akumulasi bertimestamp 00:00 UTC mewakili 24 jam sebelumnya;
-- daily accumulation pada zona non-UTC harus disusun dari bagian akumulasi di kedua sisi midnight UTC.
-
-Jika dokumentasi penyedia, kode, dan dokumen ini berbeda, perubahan tidak boleh dilakukan secara diam-diam. Perbedaannya harus diperiksa terhadap data contoh, lalu kontrak ilmiah dan implementasi diperbarui bersama.
+Jika dokumentasi resmi, implementasi, dan hasil test menunjukkan perbedaan, perbedaan tersebut harus diperiksa sebagai perubahan kontrak. Dokumen, kode, dan test kemudian diperbarui bersama; tidak satu pun diubah secara diam-diam.

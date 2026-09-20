@@ -13,7 +13,7 @@ CDS ERA5-Land hourly RAW
 → Parquet checkpoint
 → idempotent PostgreSQL load
 → daily_climate / daily_climate_detail
-→ P15 controlled in-memory modelling access
+→ controlled in-memory modelling access
 ```
 
 Core behavior must remain testable without Apache Airflow.
@@ -38,7 +38,10 @@ Tests must protect:
 - deterministic request identity;
 - idempotent PostgreSQL loading;
 - canonical daily-climate table and foreign-key names;
-- P15 controlled database-to-memory access;\n- P19 artifact provenance and checksum integrity.
+- controlled database-to-memory access;
+- artifact provenance and checksum integrity;
+- atomic NetCDF and Parquet writes;
+- isolated PostgreSQL idempotency and transaction rollback.
 
 Scientific correctness is part of software correctness.
 
@@ -103,7 +106,7 @@ The development database supports only the current schema. Tests must not preser
 
 `daily_climate.request_key` identifies a logical request partition.
 
-P19 partition provenance stored in `daily_climate`:
+Partition provenance stored in `daily_climate`:
 
 ```text
 downloaded_at
@@ -141,9 +144,11 @@ Current modules include:
 ```text
 test_config_requests.py
 test_daily_climate_repository.py
+test_database.py
 test_extract.py
 test_extract_cds_normalization.py
 test_load.py
+test_runtime.py
 test_storage.py
 test_transform.py
 test_utils_request_validation.py
@@ -161,7 +166,7 @@ test_validation.py
 
 `test_daily_climate_repository.py` should protect:
 
-- explicit P15 source/dataset/period/bbox selection;
+- explicit source/dataset/period/bbox selection;
 - canonical table joins;
 - required DataFrame columns;
 - deterministic ordering;
@@ -173,9 +178,9 @@ Routine unit tests must not require a live PostgreSQL server.
 
 ---
 
-## P10/P11 Regression Rules
+## Checkpoint and Idempotency Regression Rules
 
-P10:
+Checkpoint behavior:
 
 ```text
 same logical request → same artifact path
@@ -183,7 +188,7 @@ RAW existing         → resume, never overwrite silently
 Parquet existing     → resume and validate
 ```
 
-P11:
+Database idempotency:
 
 ```text
 same request_key → same logical partition identity
@@ -194,13 +199,13 @@ When an isolated database integration test is used, loading the same partition t
 
 ---
 
-## P15 Testing Contract
+## Modelling-Data Access Contract
 
-P15 is defined as:
+Controlled modelling-data access is defined as:
 
 > controlled and validated access from canonical PostgreSQL daily climate observations to an in-memory modelling dataset, without creating a duplicate physical dataset and without changing meteorological semantics.
 
-P15 tests should verify:
+Repository tests should verify:
 
 - selection is explicit by source/dataset/period/spatial or partition identity as appropriate;
 - returned data preserves both `valid_time` and `valid_time_local`;
@@ -211,24 +216,20 @@ P15 tests should verify:
 
 The five meteorological variables are candidate parameters only. Tests must not assume all five are final clustering inputs.
 
-P15 must remain separate from:
+Modelling-data access must remain separate from:
 
 ```text
-P16 wet-day identification
-P17 feature contribution / subset evaluation
+wet-day identification
+feature contribution / subset evaluation
 ```
 
 ---
 
-## P18 / P19 Verification
+## Retry, Resume, and Provenance Verification
 
-P18 completed with:
+The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical backfill.
 
-```text
-59 passed
-```
-
-P19 adds tests for:
+Provenance coverage protects:
 
 - SHA-256 byte-change detection;
 - preservation of RAW `downloaded_at`;
@@ -237,6 +238,51 @@ P19 adds tests for:
 - PostgreSQL provenance columns;
 - metadata UPSERT of transformed artifact path/checksum;
 - runtime artifact handoff into transform/resume and database load.
+
+The current verified baseline is:
+
+```text
+90 unit tests passed
+2 PostgreSQL integration tests passed
+```
+
+The integration result requires an explicitly configured test database. It is not part of the default offline unit-test run.
+
+---
+
+## PostgreSQL Integration Tests
+
+`tests/integration/test_postgresql_idempotency.py` uses the real loader and an isolated schema to verify two database behaviors:
+
+1. loading the same logical partition twice does not create duplicate observations;
+2. a detail-row failure rolls back both the detail rows and the metadata UPSERT in the same transaction.
+
+Configuration is loaded from `.env` through:
+
+```text
+TEST_POSTGRES_HOST
+TEST_POSTGRES_PORT
+TEST_POSTGRES_DATABASE
+TEST_POSTGRES_USER
+TEST_POSTGRES_PASSWORD
+```
+
+If these variables are absent, the integration module is skipped rather than connecting to a development or production database implicitly.
+
+---
+
+## Known NetCDF Runtime Warning
+
+The project retains:
+
+```text
+numpy==2.5.1
+netCDF4==1.7.4
+```
+
+Under pytest, importing the NetCDF backend can emit an upstream `numpy.ndarray size changed` runtime warning. It remains visible by project decision because changing either version did not remove the warning consistently, `pip check` remains clean, and NetCDF tests still pass.
+
+Do not add a broad `RuntimeWarning` filter. Warnings produced by scientific validation, such as negative accumulations, must remain observable.
 
 ---
 
@@ -266,21 +312,21 @@ They should cover orchestration only:
 - concurrency/pools;
 - small artifact/control metadata handoff.
 
-Do not duplicate scientific transformation or P15 data-access tests inside DAG tests.
+Do not duplicate scientific transformation or modelling-data access tests inside DAG tests.
 
 ---
 
 ## Running Tests
 
 ```bash
-pytest tests/unit
-pytest tests/integration
+python -m pytest tests/unit -q
+python -m pytest tests/integration -v
 ```
 
-Focused ERA5-Land/P9-P19 suite:
+Focused ERA5-Land pipeline suite:
 
 ```bash
-pytest \
+python -m pytest \
   tests/unit/test_utils_request_validation.py \
   tests/unit/test_extract_cds_normalization.py \
   tests/unit/test_transform.py \
@@ -292,10 +338,11 @@ pytest \
   tests/unit/test_daily_climate_repository.py -v
 ```
 
-Latest verified pre-P19 baseline:
+Latest verified baseline:
 
 ```text
-59 passed
+90 unit tests passed
+2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
 ```
 
 ---

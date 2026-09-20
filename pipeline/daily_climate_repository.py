@@ -197,7 +197,7 @@ def load_daily_climate_for_modelling(
     validate_modelling_dataframe(dataframe, selection)
 
     log_metric(
-        "P15 modelling dataset",
+        "Daily climate modelling dataset",
         {
             "source": selection.source.value,
             "dataset_name": selection.dataset_name,
