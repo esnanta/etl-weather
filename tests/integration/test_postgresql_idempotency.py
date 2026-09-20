@@ -168,7 +168,8 @@ def test_loading_same_partition_twice_does_not_create_duplicates(
     )
 
     assert second_id == first_id
-    assert first_rows == second_rows == 2
+    assert first_rows == 2
+    assert second_rows == 0
 
     engine = create_engine(postgres_config.url, future=True)
     try:
