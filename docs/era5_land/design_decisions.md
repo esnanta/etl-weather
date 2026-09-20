@@ -508,6 +508,36 @@ muat partisi A kedua kali   → tetap 1 metadata, tetap 2 observasi
 
 Retry adalah kejadian normal pada pipeline data. Karena `request_key` partisi A tidak berubah, operasi UPSERT menemukan identitas yang sama dan memperbarui baris yang sudah ada. Retry tidak menggandakan jumlah hari atau grid di dalam partisi tersebut.
 
+### Melewati penulisan ketika partisi tidak berubah
+
+Idempotensi menjamin keadaan akhir yang sama, tetapi tidak dengan sendirinya berarti setiap retry harus menulis ulang database. Proyek menambahkan pemeriksaan *unchanged partition* agar retry yang benar-benar identik dapat menjadi operasi tanpa penulisan data (*no-op*).
+
+Sebelum metadata atau observasi ditulis, loader memeriksa empat kondisi:
+
+1. `request_key` menemukan partisi database yang sama;
+2. jalur artefak transformed sama;
+3. checksum SHA-256 Parquet sama;
+4. jumlah observasi detail di PostgreSQL sama dengan jumlah baris Parquet.
+
+Jika seluruh kondisi cocok, metadata dan detail tidak di-UPSERT ulang. Loader mengembalikan `rows_processed = 0` dan mencatat bahwa penulisan database dilewati:
+
+```text
+run pertama
+→ metadata ditulis
+→ 1.590 observasi ditulis
+→ rows_processed = 1.590
+
+run kedua dengan partisi dan artefak identik
+→ 1.590 observasi yang ada diverifikasi melalui jumlah baris
+→ metadata/detail tidak ditulis ulang
+→ rows_processed = 0
+→ database_write = skipped
+```
+
+Jika checksum, jalur artefak, atau jumlah observasi berbeda, pipeline tidak melewati load. Pipeline kembali menggunakan transaksi UPSERT normal agar partisi baru, berubah, atau tidak lengkap dapat ditulis atau diperbaiki dengan aman. Dengan demikian, optimasi ini tidak menggantikan idempotensi; optimasi hanya menghindari penulisan ketika identitas artefak dan kelengkapan partisi konsisten.
+
+Pemeriksaan ini tidak menghitung checksum atas seluruh nilai yang telah tersimpan di PostgreSQL. Jaminannya bergantung pada checksum Parquet, transaksi atomik pada load sebelumnya, indeks unik observasi, dan kesesuaian jumlah baris. Perubahan manual terhadap nilai database yang tidak mengubah jumlah baris tidak dapat dideteksi oleh pemeriksaan cepat ini.
+
 ### Ketika bounding box berubah
 
 Perubahan satu batas bbox menghasilkan `request_key` dan `daily_climate_id` yang berbeda, walaupun periode serta variabelnya sama. Hal ini juga berlaku ketika bbox baru mencakup seluruh bbox lama.
@@ -537,7 +567,7 @@ Perbedaan berikut penting untuk pembaca dari berbagai bidang:
 
 | Situasi | Perilaku sistem |
 |---|---|
-| Permintaan identik dijalankan kembali | Resume dan validasi checkpoint; UPSERT ke partisi yang sama; tidak menambah baris ganda |
+| Permintaan identik dijalankan kembali | Resume dan validasi checkpoint; lewati penulisan database jika checksum, path, dan jumlah baris cocok; jika tidak, UPSERT ke partisi yang sama |
 | Periode, variabel, atau bbox berubah | Membentuk partisi baru dengan `request_key` baru |
 | Bbox baru mencakup bbox lama | Mengunduh dan menyimpan seluruh bbox baru, bukan hanya area tambahannya |
 | Grid point sama muncul pada dua bbox | Dapat tersimpan pada kedua partisi karena tidak ada deduplikasi global lintas partisi |
@@ -552,7 +582,7 @@ Pipeline saat ini tidak melakukan *spatial incremental expansion*, tidak memoton
 
 Kolom nilai cuaca di database dapat berisi `NULL` agar nilai hilang tetap berbeda dari nol. Nama kolom menyatakan statistik dan satuan, misalnya `tp_daily_total_mm` dan `t2m_daily_mean_c`.
 
-**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, termasuk perubahan identitas ketika bbox berubah, pemetaan kolom, indeks unik, dan perintah pembaruan. Integration test nyata memuat partisi yang sama dua kali dan membuktikan jumlah metadata serta observasi tidak bertambah dan tidak ada kunci observasi ganda (`tests/unit/test_utils_request_validation.py`, `tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`). Test tersebut membuktikan idempotensi di dalam satu partisi; test tidak menyatakan adanya deduplikasi grid global di antara bbox yang berbeda.
+**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, perubahan identitas ketika bbox berubah, pemetaan kolom, indeks unik, UPSERT, deteksi partisi tidak berubah, hasil nol baris diproses, serta fallback ketika checksum atau jumlah observasi berbeda. Integration test PostgreSQL terisolasi memuat partisi yang sama dua kali dan mensyaratkan load kedua melewati penulisan observasi, sementara jumlah metadata dan observasi tetap serta tidak ada kunci observasi ganda (`tests/unit/test_utils_request_validation.py`, `tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`). Test tersebut membuktikan idempotensi dan optimasi no-op di dalam satu partisi; test tidak menyatakan adanya deduplikasi grid global di antara bbox yang berbeda.
 
 ---
 
@@ -599,8 +629,9 @@ Dokumen ini tidak menyatakan jaminan melebihi implementasi dan test saat ini:
 10. Checksum dan metadata menjaga rantai asal-usul RAW → Parquet → PostgreSQL.
 11. Penulisan file dan transaksi database dirancang agar kegagalan tidak meninggalkan hasil parsial yang tampak sah.
 12. Retry tidak membuat observasi ganda di dalam partisi permintaan yang sama.
-13. Idempotensi berlaku per `request_key`; grid point yang sama dapat tersimpan pada partisi bbox berbeda dan tidak dideduplikasi secara global.
-14. Akses untuk analisis bersifat hanya-baca dan tidak mengubah makna meteorologis data.
+13. Partisi dengan `request_key`, path/checksum Parquet, dan jumlah observasi yang sama melewati penulisan database; setiap ketidaksesuaian kembali ke UPSERT transaksional.
+14. Idempotensi berlaku per `request_key`; grid point yang sama dapat tersimpan pada partisi bbox berbeda dan tidak dideduplikasi secara global.
+15. Akses untuk analisis bersifat hanya-baca dan tidak mengubah makna meteorologis data.
 
 ---
 
