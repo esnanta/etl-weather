@@ -25,7 +25,7 @@ def test_build_cds_request_uses_era5_land_contract(monkeypatch) -> None:
     assert request.source is DataSource.CDS
     assert request.dataset == "reanalysis-era5-land"
     assert request.variables == ["tp", "t2m", "swvl1", "ssrd", "d2m"]
-    assert request.bbox.north_lat == 5.2
-    assert request.bbox.west_lon == 96.1
-    assert request.bbox.south_lat == 3.4
-    assert request.bbox.east_lon == 97.6
+    assert request.bbox.north_lat == 6.1
+    assert request.bbox.west_lon == 94.9
+    assert request.bbox.south_lat == 1.9
+    assert request.bbox.east_lon == 98.3
