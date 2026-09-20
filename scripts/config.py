@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
-ACEH_LAND_DOMINANT_BBOX = BoundingBox(
-    north_lat=5.2,
-    south_lat=3.4,
-    east_lon=97.6,
-    west_lon=96.1,
+ACEH_BBOX = BoundingBox(
+    north_lat=6.1,
+    south_lat=1.9,
+    east_lon=98.3,
+    west_lon=94.9,
 )
 
 CDS_DATASET = "reanalysis-era5-land"
@@ -27,7 +27,7 @@ def build_cds_request() -> WeatherRequest:
         start_date=CDS_START_DATE,
         end_date=CDS_END_DATE,
         variables=CDS_VARIABLES.copy(),
-        bbox=ACEH_LAND_DOMINANT_BBOX,
+        bbox=ACEH_BBOX,
     )
 def _require_cds_api_key() -> None:
     load_dotenv()
