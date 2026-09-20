@@ -95,6 +95,7 @@ class WeatherPipeline:
                 request,
                 raw_artifact,
             )
+            validate_transformed_dataset(transformed_dataset)
         else:
             transformed_dataset = self.transformer.transform(loaded_dataset)
             validate_transformed_dataset(transformed_dataset)
@@ -106,8 +107,6 @@ class WeatherPipeline:
                 raw_artifact=raw_artifact,
             )
 
-        if resumed:
-            validate_transformed_dataset(transformed_dataset)
         log_metric(
             "Transformed checkpoint",
             {
