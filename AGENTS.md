@@ -221,7 +221,7 @@ The development database supports only the current schema. Prefer recreating dev
 Implementation:
 
 ```text
-pipeline/daily_climate_repository.py
+pipeline/repositories/daily_climate.py
 ```
 
 Tests:
