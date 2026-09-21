@@ -11,13 +11,12 @@ import xarray as xr
 from dotenv import load_dotenv
 
 from pipeline.contracts.era5_land import (
-    ERA5_LAND_DATASET,
     ERA5_LAND_START_DATE,
     LOCAL_DAY_CONTEXT_DAYS,
 )
 from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
-from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
+from pipeline.model import RawWeatherDataset, WeatherRequest
 from pipeline.providers.cds import (
     CDS_API_TO_PROVIDER_VARIABLES,
     CDS_API_VARIABLE_NAMES,
