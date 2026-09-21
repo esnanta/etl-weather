@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import cast
+from typing import cast
 
 import pandas as pd
 
@@ -36,10 +37,11 @@ def _validate_era5_land_local_day_context(request: WeatherRequest) -> None:
         required_context_start = ERA5_LAND_FIRST_LOCAL_DAY - pd.Timedelta(
             hours=LOCAL_UTC_OFFSET_HOURS
         )
+        context_start = cast(pd.Timestamp, required_context_start)
         raise ValueError(
             "ERA5-Land local day 1950-01-01 cannot be transformed for UTC+7: "
             "it requires UTC context starting at "
-            f"{required_context_start:%Y-%m-%d %H:%M}, before ERA5-Land begins."
+            f"{context_start.strftime('%Y-%m-%d %H:%M')}, before ERA5-Land begins."
         )
 
 
