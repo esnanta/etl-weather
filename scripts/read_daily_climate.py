@@ -10,7 +10,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from pipeline.daily_climate_repository import (
+from pipeline.repositories.daily_climate import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,
 )
