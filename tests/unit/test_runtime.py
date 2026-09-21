@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import xarray as xr
 
+from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.model import (
     BoundingBox,
     DataLayer,
@@ -79,7 +80,7 @@ def _transformed_dataset(request: WeatherRequest) -> TransformedWeatherDataset:
     )
 
 
-class _Extractor:
+class _Extractor(WeatherExtractor):
     def __init__(self, raw_dataset: RawWeatherDataset):
         self.raw_dataset = raw_dataset
         self.calls = 0
@@ -90,7 +91,7 @@ class _Extractor:
         return self.raw_dataset
 
 
-class _Storage:
+class _Storage(DataStorage):
     def __init__(
         self,
         request: WeatherRequest,
@@ -177,7 +178,7 @@ class _Storage:
         return self.transformed_artifact_value
 
 
-class _Transformer:
+class _Transformer(DataTransformer):
     def __init__(self, transformed_dataset: TransformedWeatherDataset):
         self.transformed_dataset = transformed_dataset
         self.calls = 0
@@ -190,7 +191,7 @@ class _Transformer:
         return self.transformed_dataset
 
 
-class _Loader:
+class _Loader(DataLoader):
     def __init__(self):
         self.calls = 0
         self.dataset = None
