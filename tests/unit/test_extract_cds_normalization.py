@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from pipeline.extract import _normalize_cds_dataset
+from pipeline.extraction.cds import _normalize_cds_dataset
 
 
 def test_normalize_cds_dataset_renames_time_coordinate() -> None:

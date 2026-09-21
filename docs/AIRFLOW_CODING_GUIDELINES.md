@@ -83,28 +83,36 @@ Do not create interfaces, base classes, factories, or dependency layers simply t
 
 A module, class, or function should have one primary responsibility.
 
-For a weather ETL pipeline:
+For this weather ETL pipeline:
 
 ```text
-extract.py
+extraction/cds.py
     ↓
-retrieve weather data
+retrieve CDS ERA5-Land data
 
-validation.py
+validation/era5_land.py
     ↓
-validate raw records
+validate RAW and transformed ERA5-Land data
 
-transform.py
+transformation/era5_land.py
     ↓
-normalize and derive weather variables
+produce UTC+7 daily climate observations
 
-load.py
+storage/
     ↓
-persist processed data
+manage deterministic artifacts and local file I/O
 
-storage.py
+loaders/postgres.py
     ↓
-manage artifacts and storage
+persist canonical daily climate observations
+
+repositories/daily_climate.py
+    ↓
+provide controlled read-only modelling access
+
+runtime.py
+    ↓
+compose and orchestrate ETL stage boundaries
 ```
 
 Avoid:
@@ -703,7 +711,7 @@ from module import *
 Prefer:
 
 ```python
-from pipeline.transform import transform_weather_data
+from pipeline.transformation import transform_data
 ```
 
 Keep imports grouped logically:

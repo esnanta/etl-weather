@@ -88,7 +88,7 @@ must fall back to the transactional metadata and observation UPSERT path.
 Implementation:
 
 ```text
-pipeline/daily_climate_repository.py
+pipeline/repositories/daily_climate.py
 tests/unit/test_daily_climate_repository.py
 ```
 
@@ -109,7 +109,7 @@ Tests must protect the boundaries that become critical during retry/backfill:
 - missing-artifact failures;
 - canonical database schema and indexes;
 - metadata and observation UPSERT identities;
-- unchanged-partition load skipping and mismatch fallback;
+- unchanged-partition load skipping and checksum/path/observation-count mismatch fallback;
 - missing-value preservation into database NULL;
 - transformation failure for missing inputs or incomplete local days;
 - daily-climate repository negative cases and deterministic handoff.
@@ -154,7 +154,7 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_config_requests.py`: typed request configuration.
 - `test_extract.py`: extraction helpers without live provider access.
 - `test_extract_cds_normalization.py`: API names -> provider codes and `valid_time` normalization.
-- `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
+- `test_request.py`: request validation, signatures, deterministic request keys.
 - `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
 - `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume, missing artifacts, and atomic-write cleanup.
@@ -203,6 +203,6 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 Latest verified baseline:
 
 ```text
-99 unit tests passed
-2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
+100 unit tests passed
+2 PostgreSQL integration tests passed
 ```

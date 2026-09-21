@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 
-from pipeline.daily_climate_repository import (
+from pipeline.repositories.daily_climate import (
     DailyClimateSelection,
     _build_modelling_statement,
     load_daily_climate_for_modelling,
@@ -185,7 +185,7 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
         return source_dataframe.copy()
 
     monkeypatch.setattr(
-        "pipeline.daily_climate_repository._execute_modelling_query",
+        "pipeline.repositories.daily_climate._execute_modelling_query",
         fake_execute_modelling_query,
     )
 

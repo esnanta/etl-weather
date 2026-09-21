@@ -4,19 +4,20 @@ import logging
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from pipeline.daily_climate_repository import (
+from pipeline.repositories.daily_climate import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,
 )
 from pipeline.model import DataSource
 from scripts.config import (
-    ACEH_LAND_DOMINANT_BBOX,
+    ACEH_BBOX,
     CDS_DATASET,
     CDS_END_DATE,
     CDS_START_DATE,
@@ -29,7 +30,7 @@ logging.basicConfig(
 )
 
 
-def _format_value(value: object) -> str:
+def _format_value(value: Any) -> str:
     if pd.isna(value):
         return "NaN"
     if isinstance(value, float):
@@ -73,7 +74,7 @@ def main() -> None:
         dataset_name=CDS_DATASET,
         start_date=date.fromisoformat(CDS_START_DATE),
         end_date=date.fromisoformat(CDS_END_DATE),
-        bbox=ACEH_LAND_DOMINANT_BBOX,
+        bbox=ACEH_BBOX,
     )
     dataframe = load_daily_climate_for_modelling(selection)
     print(_build_dataframe_ascii_table(dataframe, rows=10))

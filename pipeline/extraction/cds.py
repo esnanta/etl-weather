@@ -10,28 +10,26 @@ from pathlib import Path
 import xarray as xr
 from dotenv import load_dotenv
 
+from pipeline.contracts.era5_land import (
+    ERA5_LAND_START_DATE,
+    LOCAL_DAY_CONTEXT_DAYS,
+)
 from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
-from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
-from pipeline.utils import (
+from pipeline.model import RawWeatherDataset, WeatherRequest
+from pipeline.providers.cds import (
     CDS_API_TO_PROVIDER_VARIABLES,
     CDS_API_VARIABLE_NAMES,
     VARIABLE_DESCRIPTIONS,
-    build_request,
     get_source_dataset_profile,
-    split_request_by_month,
-    validate_request,
 )
+from pipeline.request import build_request, split_request_by_month, validate_request
 
 logger = logging.getLogger(__name__)
 
 CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
-ERA5_LAND_DATASET = "reanalysis-era5-land"
-ERA5_LAND_START_DATE = "1950-01-01"
-LOCAL_DAY_CONTEXT_DAYS = 1
-
 
 def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """Normalize schema mechanics while preserving provider variable names."""

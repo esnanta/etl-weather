@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pipeline.extract import (
+from pipeline.extraction.cds import (
     CdsExtractor,
     _build_cds_request_payload,
     _build_era5_land_retrieval_request,
@@ -165,7 +165,7 @@ def test_cds_extractor_integrates_context_normalization_and_selection(
         "cdsapi",
         SimpleNamespace(Client=FakeCdsClient),
     )
-    monkeypatch.setattr("pipeline.extract.load_dotenv", lambda: False)
+    monkeypatch.setattr("pipeline.extraction.cds.load_dotenv", lambda: False)
     monkeypatch.setenv("CDSAPI_URL", "https://example.invalid/api")
     monkeypatch.setenv("CDSAPI_KEY", "1:offline-test-key")
 

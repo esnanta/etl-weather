@@ -6,6 +6,17 @@ from typing import cast
 
 import pandas as pd
 
+from pipeline.contracts.era5_land import (
+    ERA5_LAND_ACCUMULATED_VARIABLES,
+    ERA5_LAND_DAILY_MEAN_VARIABLES,
+    ERA5_LAND_DATASET,
+    ERA5_LAND_FIRST_LOCAL_DAY,
+    ERA5_LAND_OUTPUT_UNITS,
+    EXPECTED_HOURLY_SAMPLES_PER_DAY,
+    LOCAL_MIDNIGHT_IN_UTC_HOUR,
+    LOCAL_TIMEZONE,
+    LOCAL_UTC_OFFSET_HOURS,
+)
 from pipeline.interfaces import DataTransformer
 from pipeline.logging import (
     _log_dataframe_preview,
@@ -17,25 +28,6 @@ from pipeline.model import LoadedWeatherDataset, TransformedWeatherDataset, Weat
 
 logger = logging.getLogger(__name__)
 
-ERA5_LAND_DATASET = "reanalysis-era5-land"
-LOCAL_TIMEZONE = "Asia/Jakarta"
-LOCAL_UTC_OFFSET_HOURS = 7
-LOCAL_MIDNIGHT_IN_UTC_HOUR = (24 - LOCAL_UTC_OFFSET_HOURS) % 24
-EXPECTED_HOURLY_SAMPLES_PER_DAY = 24
-ERA5_LAND_FIRST_LOCAL_DAY = pd.Timestamp("1950-01-01")
-
-ERA5_LAND_ACCUMULATED_VARIABLES = {"tp", "ssrd"}
-ERA5_LAND_DAILY_MEAN_VARIABLES = {"t2m", "d2m", "swvl1"}
-
-ERA5_LAND_OUTPUT_UNITS = {
-    "tp": "mm/day",
-    "t2m": "degC",
-    "d2m": "degC",
-    "swvl1": "m3/m3",
-    "ssrd": "J/m2/day",
-}
-
-
 def _validate_era5_land_local_day_context(request: WeatherRequest) -> None:
     """Reject the first local day because its UTC+7 context predates ERA5-Land."""
     target_start = pd.Timestamp(request.start_date)
@@ -44,10 +36,11 @@ def _validate_era5_land_local_day_context(request: WeatherRequest) -> None:
         required_context_start = ERA5_LAND_FIRST_LOCAL_DAY - pd.Timedelta(
             hours=LOCAL_UTC_OFFSET_HOURS
         )
+        context_start = cast(pd.Timestamp, required_context_start)
         raise ValueError(
             "ERA5-Land local day 1950-01-01 cannot be transformed for UTC+7: "
             "it requires UTC context starting at "
-            f"{required_context_start:%Y-%m-%d %H:%M}, before ERA5-Land begins."
+            f"{context_start.strftime('%Y-%m-%d %H:%M')}, before ERA5-Land begins."
         )
 
 

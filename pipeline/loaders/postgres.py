@@ -23,7 +23,7 @@ from pipeline.storage import (
     calculate_file_sha256,
     read_parquet_provenance,
 )
-from pipeline.utils import build_request_key, build_variable_signature
+from pipeline.request import build_request_key, build_variable_signature
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +108,10 @@ def upsert_daily_climate_metadata(
         },
     )
     daily_climate_id = result.scalar()
-    if daily_climate_id is None:
-        raise RuntimeError("Failed to retrieve daily climate id after metadata upsert.")
-    daily_climate_id = int(daily_climate_id)
+    if not isinstance(daily_climate_id, int):
+        raise RuntimeError(
+            "Failed to retrieve integer daily climate id after metadata upsert."
+        )
 
     log_metric(
         "Daily climate metadata upsert",

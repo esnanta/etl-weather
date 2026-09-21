@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from pipeline.extract import CdsExtractor
+from pipeline.extraction import CdsExtractor
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
-from pipeline.load import PostgresDataLoader
+from pipeline.loaders import PostgresDataLoader
 from pipeline.logging import (
     log_metric,
     log_pipeline_header,
@@ -21,13 +21,9 @@ from pipeline.model import (
     TransformedWeatherDataset,
     WeatherRequest,
 )
-from pipeline.storage import (
-    LocalDataStorage,
-    artifact_exists,
-    artifact_path_for_metadata,
-)
-from pipeline.transform import DefaultDataTransformer
-from pipeline.utils import build_request, split_request_by_month, validate_request
+from pipeline.storage import LocalDataStorage
+from pipeline.transformation import DefaultDataTransformer
+from pipeline.request import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
 
 logger = logging.getLogger(__name__)
@@ -54,7 +50,7 @@ class WeatherPipeline:
     ) -> tuple[RawWeatherDataset, DatasetArtifact, LoadedWeatherDataset]:
         """Extract a RAW partition once, or resume from its immutable checkpoint."""
         artifact = self.storage.raw_artifact(request)
-        resumed = artifact_exists(artifact)
+        resumed = self.storage.exists(artifact)
 
         if resumed:
             raw_dataset = self.storage.load_raw(artifact, request)
@@ -74,7 +70,7 @@ class WeatherPipeline:
             "RAW checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": artifact_path_for_metadata(artifact.path),
+                "path": artifact.path.as_posix(),
             },
         )
         return raw_dataset, artifact, loaded_dataset
@@ -87,7 +83,7 @@ class WeatherPipeline:
         """Transform once, or resume from the deterministic Parquet checkpoint."""
         request = loaded_dataset.request
         artifact = self.storage.transformed_artifact(request)
-        resumed = artifact_exists(artifact)
+        resumed = self.storage.exists(artifact)
 
         if resumed:
             transformed_dataset = self.storage.load_transformed(
@@ -111,7 +107,7 @@ class WeatherPipeline:
             "Transformed checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": artifact_path_for_metadata(artifact.path),
+                "path": artifact.path.as_posix(),
             },
         )
         return transformed_dataset, artifact
@@ -162,9 +158,7 @@ class WeatherPipeline:
 def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
     """Build the default pipeline for a preselected source dataset."""
     if request.source is not DataSource.CDS:
-        raise ValueError(
-            f"Unsupported source for runtime pipeline: {request.source.value}"
-        )
+        raise ValueError("Unsupported source for runtime pipeline.")
     extractor = CdsExtractor()
 
     return WeatherPipeline(

@@ -2,62 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from calendar import monthrange
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from pipeline.model import DataSource, WeatherRequest
-
-logger = logging.getLogger(__name__)
-
-# Provider variable names are the public variable contract of the pipeline.
-# Human-readable names are metadata for logs/documentation only.
-VARIABLE_DESCRIPTIONS = {
-    "tp": "total precipitation",
-    "t2m": "2 metre temperature",
-    "d2m": "2 metre dewpoint temperature",
-    "swvl1": "volumetric soil water layer 1",
-    "ssrd": "surface solar radiation downwards",
-}
-
-# CDS API request names are an external API detail. Internally and in stored
-# RAW/transformed artifacts the provider variable names above remain primary.
-CDS_API_VARIABLE_NAMES = {
-    "tp": "total_precipitation",
-    "t2m": "2m_temperature",
-    "d2m": "2m_dewpoint_temperature",
-    "swvl1": "volumetric_soil_water_layer_1",
-    "ssrd": "surface_solar_radiation_downwards",
-}
-
-CDS_API_TO_PROVIDER_VARIABLES = {
-    api_name: provider_name
-    for provider_name, api_name in CDS_API_VARIABLE_NAMES.items()
-}
-
-CDS_ERA5_LAND_VARIABLES = {
-    "tp", "t2m", "d2m", "swvl1", "ssrd",
-}
-
-CDS_DATASET_PROFILES = {
-    "reanalysis-era5-land": {
-        "dataset_name": "copernicus-cds-era5-land",
-        "api_dataset": "reanalysis-era5-land",
-        "data_reference": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land",
-        "grid": "regular lat-lon",
-        "horizontal_resolution": "0.1 deg",
-        "horizontal_resolution_degrees": 0.1,
-        "time_steps_utc": "00..23 (hourly)",
-        "levels": "single level / land surface",
-        "requires_product_type": False,
-        "supported_variables": CDS_ERA5_LAND_VARIABLES,
-    },
-}
-
-DATASET_PROFILES_BY_SOURCE = {
-    DataSource.CDS: CDS_DATASET_PROFILES,
-}
+from pipeline.providers.cds import get_source_dataset_profile
 
 
 def validate_request(request: WeatherRequest) -> None:
@@ -100,13 +50,7 @@ def validate_request(request: WeatherRequest) -> None:
 def build_request(request: WeatherRequest) -> WeatherRequest:
     """Build a normalized request while preserving provider variable names."""
     dataset = request.dataset.strip().lower()
-    source_profiles = DATASET_PROFILES_BY_SOURCE.get(request.source)
-    if source_profiles is None:
-        raise ValueError(f"Unsupported source: {request.source.value}")
-    if dataset not in source_profiles:
-        raise ValueError(
-            f"Unsupported dataset '{dataset}' for source '{request.source.value}'."
-        )
+    profile = get_source_dataset_profile(request.source, dataset)
 
     variables = [v.strip().lower() for v in request.variables if v.strip()]
     if not variables:
@@ -114,7 +58,7 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     if len(set(variables)) != len(variables):
         raise ValueError("Duplicate variables are not allowed.")
 
-    supported = source_profiles[dataset]["supported_variables"]
+    supported = profile["supported_variables"]
     for variable in variables:
         if variable not in supported:
             raise ValueError(
@@ -132,6 +76,11 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     )
 
 
+def _next_day(value: date) -> date:
+    """Return the calendar day immediately after value."""
+    return date.fromordinal(value.toordinal() + 1)
+
+
 def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
     start_date = datetime.strptime(request.start_date, "%Y-%m-%d").date()
     end_date = datetime.strptime(request.end_date, "%Y-%m-%d").date()
@@ -141,8 +90,14 @@ def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
         last_day = monthrange(current_start.year, current_start.month)[1]
         month_end = current_start.replace(day=last_day)
         period_end = min(month_end, end_date)
-        requests.append(replace(request, start_date=current_start.isoformat(), end_date=period_end.isoformat()))
-        current_start = period_end + timedelta(days=1)
+        requests.append(
+            replace(
+                request,
+                start_date=current_start.isoformat(),
+                end_date=period_end.isoformat(),
+            )
+        )
+        current_start = _next_day(period_end)
     return requests
 
 
@@ -156,8 +111,14 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
         last_day = monthrange(current_start.year, current_start.month)[1]
         month_end = datetime(current_start.year, current_start.month, last_day).date()
         period_end = min(week_end, month_end, end_date)
-        requests.append(replace(request, start_date=current_start.isoformat(), end_date=period_end.isoformat()))
-        current_start = period_end + timedelta(days=1)
+        requests.append(
+            replace(
+                request,
+                start_date=current_start.isoformat(),
+                end_date=period_end.isoformat(),
+            )
+        )
+        current_start = _next_day(period_end)
     return requests
 
 
@@ -189,16 +150,3 @@ def format_request_period(start_date: str, end_date: str) -> str:
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     return f"{start:%Y}_{start:%m%d}_{end:%m%d}"
-
-
-def get_source_dataset_profile(source: DataSource, dataset: str) -> dict:
-    source_profiles = DATASET_PROFILES_BY_SOURCE.get(source)
-    if source_profiles is None:
-        raise ValueError(f"Unsupported source: {source.value}")
-    dataset_key = dataset.strip().lower()
-    profile = source_profiles.get(dataset_key)
-    if profile is None:
-        raise ValueError(
-            f"Unsupported dataset '{dataset_key}' for source '{source.value}'."
-        )
-    return profile

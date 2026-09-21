@@ -155,7 +155,7 @@ test_load.py
 test_runtime.py
 test_storage.py
 test_transform.py
-test_utils_request_validation.py
+test_request.py
 test_validation.py
 ```
 
@@ -168,7 +168,7 @@ test_validation.py
 - idempotent metadata behavior;
 - UPSERT-oriented observation persistence.
 - unchanged-partition detection and zero-write return behavior;
-- UPSERT fallback when checksum, path, or observation count differs.
+- UPSERT fallback when checksum, transformed artifact path, or observation count differs.
 
 `test_daily_climate_repository.py` should protect:
 
@@ -250,8 +250,8 @@ Provenance coverage protects:
 The current verified baseline is:
 
 ```text
-99 unit tests passed
-2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
+100 unit tests passed
+2 PostgreSQL integration tests passed
 ```
 
 The integration result requires an explicitly configured test database. It is not part of the default offline unit-test run.
@@ -335,7 +335,7 @@ Focused ERA5-Land pipeline suite:
 
 ```bash
 python -m pytest \
-  tests/unit/test_utils_request_validation.py \
+  tests/unit/test_request.py \
   tests/unit/test_extract_cds_normalization.py \
   tests/unit/test_transform.py \
   tests/unit/test_validation.py \
@@ -349,8 +349,8 @@ python -m pytest \
 Latest verified baseline:
 
 ```text
-99 unit tests passed
-2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
+100 unit tests passed
+2 PostgreSQL integration tests passed
 ```
 
 ---

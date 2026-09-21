@@ -85,7 +85,7 @@ def _transformed_dataframe() -> pd.DataFrame:
 
 
 def _save_transformed_checkpoint(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_artifact = save_raw_netcdf(_raw_dataset(request))
     transformed_artifact = save_transformed_parquet(
@@ -114,7 +114,7 @@ def _rewrite_parquet_provenance(
 
 
 def test_save_raw_netcdf_and_convert_to_dataframe(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
 
     artifact = save_raw_netcdf(_raw_dataset(request))
@@ -224,7 +224,7 @@ def test_save_raw_netcdf_refuses_to_overwrite_existing_checkpoint(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_dataset = _raw_dataset(request)
 
@@ -238,7 +238,7 @@ def test_failed_atomic_raw_write_leaves_no_final_or_temporary_artifact(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     expected_artifact = raw_artifact_for_request(
         request,
@@ -264,7 +264,7 @@ def test_failed_atomic_raw_write_leaves_no_final_or_temporary_artifact(
 
 
 def test_load_raw_netcdf_preserves_downloaded_at(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     artifact = save_raw_netcdf(_raw_dataset(request))
 
@@ -280,7 +280,7 @@ def test_save_and_load_transformed_parquet_checkpoint_with_provenance(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_artifact = save_raw_netcdf(_raw_dataset(request))
     dataframe = _transformed_dataframe()
@@ -311,7 +311,7 @@ def test_transformed_resume_rejects_changed_raw_checksum(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_artifact = save_raw_netcdf(_raw_dataset(request))
     transformed_artifact = save_transformed_parquet(
@@ -400,7 +400,7 @@ def test_save_transformed_parquet_refuses_to_overwrite_checkpoint(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_artifact = save_raw_netcdf(_raw_dataset(request))
     dataframe = _transformed_dataframe()
@@ -427,7 +427,7 @@ def test_failed_atomic_parquet_write_leaves_no_final_or_temporary_artifact(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     raw_artifact = save_raw_netcdf(_raw_dataset(request))
     expected_artifact = transformed_artifact_for_request(
@@ -445,7 +445,7 @@ def test_failed_atomic_parquet_write_leaves_no_final_or_temporary_artifact(
         raise OSError("simulated Parquet write failure")
 
     monkeypatch.setattr(
-        "pipeline.storage.pq.write_table",
+        "pipeline.storage.local.pq.write_table",
         fail_after_partial_write,
     )
 

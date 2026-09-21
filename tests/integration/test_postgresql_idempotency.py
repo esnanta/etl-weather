@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
 from pipeline.database import DatabaseConfig
-from pipeline.load import load_to_postgresql
+from pipeline.loaders.postgres import load_to_postgresql
 from pipeline.model import (
     BoundingBox,
     DataSource,
@@ -90,7 +90,7 @@ def _request() -> WeatherRequest:
 
 
 def _save_test_partition(tmp_path, monkeypatch, *, invalid_detail: bool = False):
-    monkeypatch.setattr("pipeline.storage.DATA_DIRECTORY", tmp_path)
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
     request = _request()
     downloaded_at = datetime(2022, 1, 2, 3, 4, 5, tzinfo=UTC)
     transformed_at = datetime(2022, 1, 2, 4, 5, 6, tzinfo=UTC)
