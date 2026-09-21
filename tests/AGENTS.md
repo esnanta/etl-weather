@@ -154,7 +154,7 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_config_requests.py`: typed request configuration.
 - `test_extract.py`: extraction helpers without live provider access.
 - `test_extract_cds_normalization.py`: API names -> provider codes and `valid_time` normalization.
-- `test_utils_request_validation.py`: request validation, signatures, deterministic request keys.
+- `test_request.py`: request validation, signatures, deterministic request keys.
 - `test_transform.py`: aggregation, timestamps, units, metadata removal, incomplete-day failures.
 - `test_validation.py`: temporal/spatial positive and negative contracts.
 - `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume, missing artifacts, and atomic-write cleanup.
