@@ -155,7 +155,7 @@ test_load.py
 test_runtime.py
 test_storage.py
 test_transform.py
-test_utils_request_validation.py
+test_request.py
 test_validation.py
 ```
 
@@ -335,7 +335,7 @@ Focused ERA5-Land pipeline suite:
 
 ```bash
 python -m pytest \
-  tests/unit/test_utils_request_validation.py \
+  tests/unit/test_request.py \
   tests/unit/test_extract_cds_normalization.py \
   tests/unit/test_transform.py \
   tests/unit/test_validation.py \
