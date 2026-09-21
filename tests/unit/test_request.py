@@ -8,6 +8,8 @@ from pipeline.request import (
     build_request_key,
     build_variable_signature,
     split_request_by_month,
+    weather_request_from_spec,
+    weather_request_to_spec,
 )
 
 
@@ -124,3 +126,41 @@ def test_split_request_by_month_preserves_partial_period_boundaries() -> None:
     assert all(monthly.dataset == request.dataset for monthly in monthly_requests)
     assert all(monthly.variables == request.variables for monthly in monthly_requests)
     assert all(monthly.bbox == request.bbox for monthly in monthly_requests)
+
+
+def test_weather_request_spec_round_trip_is_json_safe() -> None:
+    request = _request()
+
+    spec = weather_request_to_spec(request)
+    restored = weather_request_from_spec(spec)
+
+    assert restored == request
+    assert spec == {
+        "source": "cds",
+        "dataset": "reanalysis-era5-land",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-07",
+        "variables": ["tp", "t2m", "d2m", "swvl1", "ssrd"],
+        "bbox": {
+            "north_lat": 6.2,
+            "west_lon": 94.8,
+            "south_lat": 1.8,
+            "east_lon": 98.6,
+        },
+    }
+
+
+def test_weather_request_from_spec_rejects_missing_field() -> None:
+    spec = weather_request_to_spec(_request())
+    del spec["start_date"]
+
+    with pytest.raises(ValueError, match="missing 'start_date'"):
+        weather_request_from_spec(spec)
+
+
+def test_weather_request_from_spec_rejects_non_numeric_bbox() -> None:
+    spec = weather_request_to_spec(_request())
+    spec["bbox"]["north_lat"] = "6.2"
+
+    with pytest.raises(ValueError, match="coordinates must be numeric"):
+        weather_request_from_spec(spec)
