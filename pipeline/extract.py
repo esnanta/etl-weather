@@ -13,15 +13,13 @@ from dotenv import load_dotenv
 from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import DataSource, RawWeatherDataset, WeatherRequest
-from pipeline.utils import (
+from pipeline.providers.cds import (
     CDS_API_TO_PROVIDER_VARIABLES,
     CDS_API_VARIABLE_NAMES,
     VARIABLE_DESCRIPTIONS,
-    build_request,
     get_source_dataset_profile,
-    split_request_by_month,
-    validate_request,
 )
+from pipeline.request import build_request, split_request_by_month, validate_request
 
 logger = logging.getLogger(__name__)
 
