@@ -4,12 +4,17 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 
+import pipeline.repositories.daily_climate as daily_climate_repository
 from pipeline.repositories.daily_climate import (
     DailyClimateSelection,
-    _build_modelling_statement,
     load_daily_climate_for_modelling,
     validate_daily_climate_selection,
     validate_modelling_dataframe,
+)
+
+build_modelling_statement = getattr(
+    daily_climate_repository,
+    "_build_modelling_statement",
 )
 from pipeline.database import DatabaseConfig
 from pipeline.model import BoundingBox, DataSource
@@ -64,7 +69,7 @@ def _dataframe() -> pd.DataFrame:
 
 
 def test_build_modelling_statement_uses_canonical_tables_and_filters() -> None:
-    sql = str(_build_modelling_statement(_config()))
+    sql = str(build_modelling_statement(_config()))
 
     assert "climate_data.daily_climate AS dc" in sql
     assert "climate_data.daily_climate_detail AS dcd" in sql
