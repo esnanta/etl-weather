@@ -241,6 +241,7 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     assert "RETURNING id" in statement_text
 
     params = connection.params[0]
+    assert isinstance(params, dict)
     assert params["request_key"]
     assert params["downloaded_at"] == datetime(
         2022, 1, 2, 3, 4, 5, tzinfo=UTC
@@ -389,12 +390,14 @@ def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None
 
     assert rows_processed == 1
     assert len(connection.statements) == 1
-    sql = connection.statements[0]
-    assert "INSERT INTO climate_data.daily_climate_detail" in sql
+    statement_text = connection.statements[0]
+    assert "INSERT INTO" in statement_text
+    assert "climate_data.daily_climate_detail" in statement_text
     assert (
-        "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)" in sql
+        "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)"
+        in statement_text
     )
-    assert "DO UPDATE SET" in sql
+    assert "DO UPDATE SET" in statement_text
 
     records = connection.params[0]
     assert isinstance(records, list)
