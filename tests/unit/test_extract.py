@@ -9,13 +9,16 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pipeline.extraction.cds import (
-    CdsExtractor,
-    _build_cds_request_payload,
-    _build_era5_land_retrieval_request,
-    _format_context_period,
-    _retrieval_chunk_purpose,
+import pipeline.extraction.cds as cds_extraction
+from pipeline.extraction.cds import CdsExtractor
+
+build_cds_request_payload = getattr(cds_extraction, "_build_cds_request_payload")
+build_era5_land_retrieval_request = getattr(
+    cds_extraction,
+    "_build_era5_land_retrieval_request",
 )
+format_context_period = getattr(cds_extraction, "_format_context_period")
+retrieval_chunk_purpose = getattr(cds_extraction, "_retrieval_chunk_purpose")
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
 
@@ -42,7 +45,7 @@ def _request(
 def test_era5_land_retrieval_adds_previous_day_context() -> None:
     request = _request()
 
-    retrieval_request = _build_era5_land_retrieval_request(request)
+    retrieval_request = build_era5_land_retrieval_request(request)
 
     assert retrieval_request.start_date == "2021-12-31"
     assert retrieval_request.end_date == request.end_date
@@ -54,7 +57,7 @@ def test_era5_land_retrieval_adds_previous_day_context() -> None:
 def test_era5_land_retrieval_does_not_precede_dataset_start() -> None:
     request = _request(start_date="1950-01-01", end_date="1950-01-01")
 
-    retrieval_request = _build_era5_land_retrieval_request(request)
+    retrieval_request = build_era5_land_retrieval_request(request)
 
     assert retrieval_request.start_date == "1950-01-01"
     assert retrieval_request.end_date == "1950-01-01"
@@ -62,7 +65,7 @@ def test_era5_land_retrieval_does_not_precede_dataset_start() -> None:
 
 def test_retrieval_chunk_purpose_distinguishes_context_and_target() -> None:
     target = _request()
-    retrieval = _build_era5_land_retrieval_request(target)
+    retrieval = build_era5_land_retrieval_request(target)
     context_chunk = WeatherRequest(
         source=retrieval.source,
         dataset=retrieval.dataset,
@@ -72,15 +75,15 @@ def test_retrieval_chunk_purpose_distinguishes_context_and_target() -> None:
         bbox=retrieval.bbox,
     )
 
-    assert _retrieval_chunk_purpose(context_chunk, target) == "local-day context"
-    assert _retrieval_chunk_purpose(target, target) == "target period"
-    assert _format_context_period(retrieval, target) == (
+    assert retrieval_chunk_purpose(context_chunk, target) == "local-day context"
+    assert retrieval_chunk_purpose(target, target) == "target period"
+    assert format_context_period(retrieval, target) == (
         "2021-12-31 -> 2021-12-31"
     )
 
 
 def test_cds_payload_uses_hourly_era5_land_request_contract() -> None:
-    payload = _build_cds_request_payload(_request())
+    payload = build_cds_request_payload(_request())
 
     assert payload == {
         "variable": [
@@ -104,7 +107,7 @@ def test_cds_payload_rejects_interval_across_calendar_months() -> None:
     request = _request(start_date="2022-01-31", end_date="2022-02-01")
 
     with pytest.raises(ValueError, match="must stay in one month"):
-        _build_cds_request_payload(request)
+        build_cds_request_payload(request)
 
 
 def test_cds_extractor_integrates_context_normalization_and_selection(
@@ -127,14 +130,16 @@ def test_cds_extractor_integrates_context_normalization_and_selection(
             assert key == "1:offline-test-key"
             assert quiet is True
 
+        @staticmethod
         def retrieve(
-            self,
-            dataset_name: str,
-            payload: dict[str, object],
+            requested_dataset_name: str,
+            request_payload: dict[str, object],
             target: str,
         ) -> None:
             target_path = Path(target)
-            retrieve_calls.append((dataset_name, payload, target_path))
+            retrieve_calls.append(
+                (requested_dataset_name, request_payload, target_path)
+            )
             xr.Dataset(
                 {
                     "2m_temperature": (
