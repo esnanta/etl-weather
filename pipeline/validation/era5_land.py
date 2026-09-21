@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -383,7 +384,8 @@ def _validate_era5_land_transformed_space(
 
     grid_by_day: dict[pd.Timestamp, set[tuple[float, float]]] = {}
     for local_day, daily_frame in dataframe.groupby("valid_time_local", sort=True):
-        grid_by_day[pd.Timestamp(local_day)] = set(
+        local_day_timestamp = pd.Timestamp(cast(Any, local_day))
+        grid_by_day[local_day_timestamp] = set(
             zip(
                 daily_frame["latitude"].astype(float),
                 daily_frame["longitude"].astype(float),
@@ -427,8 +429,12 @@ def _validate_era5_land_transformed_values(
 ) -> None:
     """Validate finite values and only scientifically hard physical bounds."""
     for variable in request.variables:
-        values = pd.to_numeric(dataframe[variable], errors="coerce")
-        non_numeric = dataframe[variable].notna() & values.isna()
+        variable_series = cast(pd.Series, dataframe[variable])
+        values = cast(
+            pd.Series,
+            pd.to_numeric(variable_series, errors="coerce"),
+        )
+        non_numeric = variable_series.notna() & values.isna()
         if bool(non_numeric.any()):
             raise ValidationError(
                 f"ERA5-Land variable '{variable}' must be numeric or missing."
@@ -459,9 +465,11 @@ def _log_raw_validation_result(dataset: xr.Dataset, requested_variables: list[st
     """Log raw dataset validation."""
     required_coords = {"valid_time", "latitude", "longitude"}
     variables_requested = sorted(requested_variables)
-    variables_in_subset = sorted(list(dataset.data_vars))
-    variables_missing = sorted(set(variables_requested) - set(dataset.data_vars))
-    coordinates_missing = sorted(required_coords - set(dataset.coords))
+    data_variables = {str(name) for name in dataset.data_vars}
+    coordinate_names = {str(name) for name in dataset.coords}
+    variables_in_subset = sorted(data_variables)
+    variables_missing = sorted(set(variables_requested) - data_variables)
+    coordinates_missing = sorted(required_coords - coordinate_names)
     has_valid_time = "valid_time" in dataset.coords
     time_dtype = str(dataset.valid_time.dtype) if has_valid_time else "missing"
     time_is_datetime64 = bool(
