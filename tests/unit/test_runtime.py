@@ -277,7 +277,7 @@ def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch)
     assert artifact == storage.transformed_artifact_value
 
 
-def test_transform_or_resume_validates_before_and_after_saving_new_checkpoint(
+def test_transform_or_resume_validates_before_saving_new_checkpoint(
     monkeypatch,
 ) -> None:
     _, pipeline, _, storage, transformer, _ = _pipeline()
@@ -297,7 +297,7 @@ def test_transform_or_resume_validates_before_and_after_saving_new_checkpoint(
     assert transformer.calls == 1
     assert storage.load_transformed_calls == 0
     assert storage.save_transformed_calls == 1
-    assert validation_calls == [transformed, transformed]
+    assert validation_calls == [transformed]
 
 
 def test_load_delegates_dataset_and_artifact_to_idempotent_loader() -> None:

@@ -79,6 +79,9 @@ daily_climate_id + valid_time + latitude + longitude
 ```
 
 Database writes must remain idempotent UPSERT operations.
+An unchanged partition may skip database writes only when request identity,
+transformed artifact path/checksum, and observation count all match. Any mismatch
+must fall back to the transactional metadata and observation UPSERT path.
 
 ## Daily-Climate Repository Rules
 
@@ -106,6 +109,7 @@ Tests must protect the boundaries that become critical during retry/backfill:
 - missing-artifact failures;
 - canonical database schema and indexes;
 - metadata and observation UPSERT identities;
+- unchanged-partition load skipping and mismatch fallback;
 - missing-value preservation into database NULL;
 - transformation failure for missing inputs or incomplete local days;
 - daily-climate repository negative cases and deterministic handoff.
@@ -155,7 +159,8 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_validation.py`: temporal/spatial positive and negative contracts.
 - `test_storage.py`: RAW/Parquet deterministic artifacts, immutability, provenance metadata/checksum, resume, missing artifacts, and atomic-write cleanup.
 - `test_database.py`: canonical schema, provenance fields, foreign key, indexes and observation identity.
-- `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT and observation UPSERT.
+- `test_load.py`: column mapping, NULL handling, provenance metadata UPSERT,
+  observation UPSERT, and unchanged-partition load skipping.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
@@ -185,6 +190,7 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] provider variable naming
 [x] checkpoint / resume
 [x] idempotent database load
+[x] unchanged-partition database-write skip
 [x] temporal validation
 [x] spatial validation
 [x] unit conversion
@@ -197,6 +203,6 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 Latest verified baseline:
 
 ```text
-90 unit tests passed
-2 PostgreSQL integration tests passed with TEST_POSTGRES_* configured
+99 unit tests passed
+2 PostgreSQL integration tests collected and skipped because TEST_POSTGRES_* was not configured
 ```

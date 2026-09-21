@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,8 @@ from pipeline.extract import (
     CdsExtractor,
     _build_cds_request_payload,
     _build_era5_land_retrieval_request,
+    _format_context_period,
+    _retrieval_chunk_purpose,
 )
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
@@ -57,6 +60,25 @@ def test_era5_land_retrieval_does_not_precede_dataset_start() -> None:
     assert retrieval_request.end_date == "1950-01-01"
 
 
+def test_retrieval_chunk_purpose_distinguishes_context_and_target() -> None:
+    target = _request()
+    retrieval = _build_era5_land_retrieval_request(target)
+    context_chunk = WeatherRequest(
+        source=retrieval.source,
+        dataset=retrieval.dataset,
+        start_date="2021-12-31",
+        end_date="2021-12-31",
+        variables=retrieval.variables,
+        bbox=retrieval.bbox,
+    )
+
+    assert _retrieval_chunk_purpose(context_chunk, target) == "local-day context"
+    assert _retrieval_chunk_purpose(target, target) == "target period"
+    assert _format_context_period(retrieval, target) == (
+        "2021-12-31 -> 2021-12-31"
+    )
+
+
 def test_cds_payload_uses_hourly_era5_land_request_contract() -> None:
     payload = _build_cds_request_payload(_request())
 
@@ -87,6 +109,7 @@ def test_cds_payload_rejects_interval_across_calendar_months() -> None:
 
 def test_cds_extractor_integrates_context_normalization_and_selection(
     monkeypatch,
+    caplog,
 ) -> None:
     request = WeatherRequest(
         source=DataSource.CDS,
@@ -146,7 +169,8 @@ def test_cds_extractor_integrates_context_normalization_and_selection(
     monkeypatch.setenv("CDSAPI_URL", "https://example.invalid/api")
     monkeypatch.setenv("CDSAPI_KEY", "1:offline-test-key")
 
-    extracted = CdsExtractor().extract(request)
+    with caplog.at_level(logging.INFO):
+        extracted = CdsExtractor().extract(request)
 
     assert len(retrieve_calls) == 1
     dataset_name, payload, temporary_path = retrieve_calls[0]
@@ -165,3 +189,8 @@ def test_cds_extractor_integrates_context_normalization_and_selection(
     assert "time" not in extracted.raw_data.coords
     assert "snow_depth" not in extracted.raw_data.data_vars
     assert extracted.downloaded_at.tzinfo is not None
+    assert caplog.text.count("[METRIC] CDS source profile") == 1
+    assert "target_period    : 2022-01-02 -> 2022-01-02" in caplog.text
+    assert "retrieval_period : 2022-01-01 -> 2022-01-02" in caplog.text
+    assert "context_period   : 2022-01-01 -> 2022-01-01" in caplog.text
+    assert "purpose=local-day context + target period" in caplog.text

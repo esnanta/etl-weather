@@ -197,6 +197,11 @@ Observation identity for database UPSERT:
 daily_climate_id + valid_time + latitude + longitude
 ```
 
+An unchanged database load may be skipped only when the existing `request_key`,
+transformed artifact path/checksum, and observation count all match the current
+Parquet partition. Any mismatch must fall back to the normal transactional
+metadata and observation UPSERT path.
+
 Database daily-statistic columns:
 
 ```text

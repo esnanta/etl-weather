@@ -111,7 +111,43 @@ def _build_era5_land_retrieval_request(request: WeatherRequest) -> WeatherReques
     return replace(request, start_date=buffered_start.isoformat())
 
 
-def _download_cds(request: WeatherRequest) -> xr.Dataset:
+def _retrieval_chunk_purpose(
+    chunk: WeatherRequest,
+    target_request: WeatherRequest,
+) -> str:
+    """Describe whether a retrieval chunk provides context, target data, or both."""
+    chunk_start = datetime.strptime(chunk.start_date, "%Y-%m-%d").date()
+    chunk_end = datetime.strptime(chunk.end_date, "%Y-%m-%d").date()
+    target_start = datetime.strptime(target_request.start_date, "%Y-%m-%d").date()
+
+    if chunk_end < target_start:
+        return "local-day context"
+    if chunk_start < target_start:
+        return "local-day context + target period"
+    return "target period"
+
+
+def _format_context_period(
+    retrieval_request: WeatherRequest,
+    target_request: WeatherRequest,
+) -> str:
+    """Return the portion of retrieval used only as local-day context."""
+    retrieval_start = datetime.strptime(
+        retrieval_request.start_date,
+        "%Y-%m-%d",
+    ).date()
+    target_start = datetime.strptime(target_request.start_date, "%Y-%m-%d").date()
+    if retrieval_start >= target_start:
+        return "none"
+    context_end = target_start - timedelta(days=1)
+    return f"{retrieval_start.isoformat()} -> {context_end.isoformat()}"
+
+
+def _download_cds(
+    request: WeatherRequest,
+    *,
+    purpose: str,
+) -> xr.Dataset:
     try:
         import cdsapi
     except ModuleNotFoundError as error:
@@ -132,9 +168,11 @@ def _download_cds(request: WeatherRequest) -> xr.Dataset:
         temp_path.unlink()
 
     logger.info(
-        "Downloading CDS dataset from Copernicus API | period=%s -> %s.",
+        "Downloading CDS dataset from Copernicus API | "
+        "chunk_period=%s -> %s | purpose=%s.",
         request.start_date,
         request.end_date,
+        purpose,
     )
     try:
         client.retrieve(profile["api_dataset"], payload, str(temp_path))
@@ -144,31 +182,22 @@ def _download_cds(request: WeatherRequest) -> xr.Dataset:
         if temp_path.exists():
             temp_path.unlink()
 
-    dataset = _normalize_cds_dataset(dataset)
-    log_metric(
-        "CDS source profile",
-        {
-            "dataset_name": profile["dataset_name"],
-            "data_reference": profile["data_reference"],
-            "grid": profile["grid"],
-            "horizontal_resolution": profile["horizontal_resolution"],
-            "time_steps_utc": profile["time_steps_utc"],
-            "levels": profile["levels"],
-            "retrieved_period": f"{request.start_date} -> {request.end_date}",
-            "requested_variables": ", ".join(request.variables),
-            "variable_descriptions": {
-                variable: VARIABLE_DESCRIPTIONS.get(variable, variable)
-                for variable in request.variables
-            },
-            "available_variables": len(dataset.data_vars),
-        },
-    )
-    return dataset
+    return _normalize_cds_dataset(dataset)
 
 
-def _download_cds_period(request: WeatherRequest) -> xr.Dataset:
+def _download_cds_period(
+    request: WeatherRequest,
+    *,
+    target_request: WeatherRequest,
+) -> xr.Dataset:
     chunks = split_request_by_month(request)
-    datasets = [_download_cds(chunk) for chunk in chunks]
+    datasets = [
+        _download_cds(
+            chunk,
+            purpose=_retrieval_chunk_purpose(chunk, target_request),
+        )
+        for chunk in chunks
+    ]
     if len(datasets) == 1:
         return datasets[0]
 
@@ -195,7 +224,30 @@ class CdsExtractor(WeatherExtractor):
             normalized_request
         )
 
-        dataset = _download_cds_period(retrieval_request)
+        retrieval_chunks = split_request_by_month(retrieval_request)
+        log_metric(
+            "CDS retrieval plan",
+            {
+                "target_period": (
+                    f"{normalized_request.start_date} -> "
+                    f"{normalized_request.end_date}"
+                ),
+                "retrieval_period": (
+                    f"{retrieval_request.start_date} -> "
+                    f"{retrieval_request.end_date}"
+                ),
+                "context_period": _format_context_period(
+                    retrieval_request,
+                    normalized_request,
+                ),
+                "download_chunks": len(retrieval_chunks),
+            },
+        )
+
+        dataset = _download_cds_period(
+            retrieval_request,
+            target_request=normalized_request,
+        )
 
         missing_variables = [
             variable
@@ -209,6 +261,36 @@ class CdsExtractor(WeatherExtractor):
                 f"Missing: {', '.join(missing_variables)}. "
                 f"Available: {available_variables}"
             )
+
+        profile = get_source_dataset_profile(
+            normalized_request.source,
+            normalized_request.dataset,
+        )
+        log_metric(
+            "CDS source profile",
+            {
+                "dataset_name": profile["dataset_name"],
+                "data_reference": profile["data_reference"],
+                "grid": profile["grid"],
+                "horizontal_resolution": profile["horizontal_resolution"],
+                "time_steps_utc": profile["time_steps_utc"],
+                "levels": profile["levels"],
+                "target_period": (
+                    f"{normalized_request.start_date} -> "
+                    f"{normalized_request.end_date}"
+                ),
+                "retrieved_period": (
+                    f"{retrieval_request.start_date} -> "
+                    f"{retrieval_request.end_date}"
+                ),
+                "requested_variables": ", ".join(normalized_request.variables),
+                "available_variables": len(dataset.data_vars),
+                "variable_descriptions": {
+                    variable: VARIABLE_DESCRIPTIONS.get(variable, variable)
+                    for variable in normalized_request.variables
+                },
+            },
+        )
 
         dataset = dataset[normalized_request.variables]
         return RawWeatherDataset(

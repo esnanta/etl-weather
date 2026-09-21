@@ -41,14 +41,19 @@ def upsert_daily_climate_metadata(
     artifact: DatasetArtifact,
     connection: Connection,
     config: DatabaseConfig,
+    *,
+    transformed_artifact_path: str | None = None,
+    transformed_sha256: str | None = None,
 ) -> int:
     """Create or reuse metadata for one logical daily-climate partition."""
     request = dataset.request
     request_key = build_request_key(request)
     provenance = read_parquet_provenance(artifact)
     downloaded_at = datetime.fromisoformat(provenance["downloaded_at"])
-    transformed_artifact_path = artifact_path_for_metadata(artifact.path)
-    transformed_sha256 = calculate_file_sha256(artifact.path)
+    transformed_artifact_path = (
+        transformed_artifact_path or artifact_path_for_metadata(artifact.path)
+    )
+    transformed_sha256 = transformed_sha256 or calculate_file_sha256(artifact.path)
 
     result = connection.execute(
         text(
@@ -121,6 +126,69 @@ def upsert_daily_climate_metadata(
     return daily_climate_id
 
 
+def find_unchanged_daily_climate_partition(
+    *,
+    request_key: str,
+    transformed_artifact_path: str,
+    transformed_sha256: str,
+    expected_rows: int,
+    connection: Connection,
+    config: DatabaseConfig,
+) -> tuple[int, int] | None:
+    """Return an unchanged partition only when provenance and row count match."""
+    metadata_result = connection.execute(
+        text(
+            f"""
+            SELECT id, transformed_artifact_path, transformed_sha256
+            FROM {config.schema}.{config.daily_climate_table}
+            WHERE request_key = :request_key
+            """
+        ),
+        {"request_key": request_key},
+    )
+    metadata = metadata_result.mappings().one_or_none()
+    if metadata is None:
+        return None
+
+    checksum_matches = metadata["transformed_sha256"] == transformed_sha256
+    path_matches = (
+        metadata["transformed_artifact_path"] == transformed_artifact_path
+    )
+    if not checksum_matches or not path_matches:
+        return None
+
+    daily_climate_id = int(metadata["id"])
+    database_rows = int(
+        connection.execute(
+            text(
+                f"""
+                SELECT COUNT(*)
+                FROM {config.schema}.{config.daily_climate_detail_table}
+                WHERE daily_climate_id = :daily_climate_id
+                """
+            ),
+            {"daily_climate_id": daily_climate_id},
+        ).scalar_one()
+    )
+    if database_rows != expected_rows:
+        return None
+
+    log_metric(
+        "PostgreSQL load skipped",
+        {
+            "daily_climate_id": daily_climate_id,
+            "request_key_match": True,
+            "checksum_match": True,
+            "artifact_path_match": True,
+            "expected_rows": expected_rows,
+            "database_rows": database_rows,
+            "status": "unchanged",
+            "database_write": "skipped",
+        },
+    )
+    return daily_climate_id, database_rows
+
+
 def _prepare_observation_dataframe(
     dataset: TransformedWeatherDataset,
     daily_climate_id: int,
@@ -152,7 +220,7 @@ def upsert_daily_climate_observations(
     config: DatabaseConfig,
 ) -> int:
     """UPSERT daily observations using partition/time/grid identity."""
-    dataframe, rename_map = _prepare_observation_dataframe(dataset, daily_climate_id)
+    dataframe, _ = _prepare_observation_dataframe(dataset, daily_climate_id)
     if dataframe.empty:
         return 0
 
@@ -186,10 +254,11 @@ def upsert_daily_climate_observations(
     log_metric(
         "Daily climate observations upserted",
         {
+            "daily_climate_id": daily_climate_id,
             "rows_processed": len(dataframe),
-            "columns": columns,
-            "provider_to_database_columns": rename_map,
+            "variables": ", ".join(dataset.request.variables),
             "conflict_key": "daily_climate_id + valid_time + latitude + longitude",
+            "mode": "idempotent upsert",
         },
     )
     return len(dataframe)
@@ -207,12 +276,31 @@ def load_to_postgresql(
     create_daily_climate_table(engine, resolved_config)
     create_daily_climate_detail_table(engine, resolved_config)
 
+    request_key = build_request_key(dataset.request)
+    transformed_artifact_path = artifact_path_for_metadata(artifact.path)
+    transformed_sha256 = calculate_file_sha256(artifact.path)
+    expected_rows = len(dataset.dataset)
+
     with engine.begin() as connection:
+        unchanged_partition = find_unchanged_daily_climate_partition(
+            request_key=request_key,
+            transformed_artifact_path=transformed_artifact_path,
+            transformed_sha256=transformed_sha256,
+            expected_rows=expected_rows,
+            connection=connection,
+            config=resolved_config,
+        )
+        if unchanged_partition is not None:
+            daily_climate_id, _ = unchanged_partition
+            return daily_climate_id, 0
+
         daily_climate_id = upsert_daily_climate_metadata(
             dataset=dataset,
             artifact=artifact,
             connection=connection,
             config=resolved_config,
+            transformed_artifact_path=transformed_artifact_path,
+            transformed_sha256=transformed_sha256,
         )
         rows_processed = upsert_daily_climate_observations(
             dataset=dataset,

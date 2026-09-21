@@ -20,48 +20,55 @@ def log_section_start(section: str) -> float:
 def log_section_completed(section: str, started_at: float) -> None:
     """Log section completion with duration."""
     elapsed_time = time.perf_counter() - started_at
-    logger.info("[DONE] %s completed | duration=%.2fs", section, elapsed_time)
+    logger.info("[DONE] %s completed | duration=%.2fs\n", section, elapsed_time)
 
 
 def log_metric(title: str, metrics: Mapping[str, Any]) -> None:
-    """Log a metric block using an ASCII table for compact readability."""
-    table = _build_ascii_table(metrics)
-    logger.info("[METRIC] %s\n%s\n", title, table)
+    """Log one readable key-value metric block."""
+    block = _build_key_value_block(metrics)
+    logger.info("[METRIC] %s\n%s\n", title, block)
 
 
-def _build_ascii_table(metrics: Mapping[str, Any]) -> str:
-    """Build an ASCII key-value table."""
-    headers = ("field", "value")
-    rows = [(str(key), str(value)) for key, value in metrics.items()]
-    field_width = max(len(headers[0]), *(len(field) for field, _ in rows))
-    value_width = max(len(headers[1]), *(len(value) for _, value in rows))
-    border = f"+-{'-' * field_width}-+-{'-' * value_width}-+"
-    header_row = f"| {headers[0].ljust(field_width)} | {headers[1].ljust(value_width)} |"
-    body_rows = "\n".join(
-        f"| {field.ljust(field_width)} | {value.ljust(value_width)} |"
-        for field, value in rows
+def _format_metric_value(value: Any) -> str:
+    """Format common metric containers without Python collection punctuation."""
+    if isinstance(value, Mapping):
+        return ", ".join(f"{key}={item}" for key, item in value.items()) or "none"
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return ", ".join(str(item) for item in value) or "none"
+    return str(value)
+
+
+def _build_key_value_block(metrics: Mapping[str, Any]) -> str:
+    """Build an aligned key-value block without ASCII table borders."""
+    if not metrics:
+        return ""
+    field_width = max(len(str(key)) for key in metrics)
+    return "\n".join(
+        f"{str(key).ljust(field_width)} : {_format_metric_value(value)}"
+        for key, value in metrics.items()
     )
-    return f"{border}\n{header_row}\n{border}\n{body_rows}\n{border}"
 
 
 def log_pipeline_header(request) -> None:
     """Log one headline for a pipeline run."""
-    table = _build_ascii_table(
+    block = _build_key_value_block(
         {
             "request_dataset": request.dataset,
             "source_system": request.source.value,
-            "period": f"{request.start_date} -> {request.end_date}",
+            "target_period": f"{request.start_date} -> {request.end_date}",
             "variables": ", ".join(request.variables),
         },
     )
-    logger.info("[PIPELINE] start\n%s\n", table)
+    logger.info("[PIPELINE] start\n%s\n", block)
 
 
 def _log_dataframe_preview(
     dataframe: pd.DataFrame,
     rows: int = 10,
 ) -> None:
-    """Log the first rows of a DataFrame."""
+    """Log the first rows of a DataFrame at DEBUG level."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
     preview = dataframe.head(rows).copy()
     if "time" in dataframe.columns:
         time_values = pd.to_datetime(dataframe["time"])
@@ -81,7 +88,7 @@ def _log_dataframe_preview(
                 ),
             },
         )
-    logger.info("[PREVIEW]\n%s", preview.to_string(index=False))
+    logger.debug("[PREVIEW]\n%s", preview.to_string(index=False))
 
 
 def log_pipeline_summary(
@@ -97,15 +104,15 @@ def log_pipeline_summary(
     duration = (finished_at - started_at).total_seconds()
     file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
 
-    completion_table = _build_ascii_table(
+    completion_block = _build_key_value_block(
         {
             "request_dataset": request.dataset,
             "source_system": request.source.value,
-            "period": f"{request.start_date} -> {request.end_date}",
+            "target_period": f"{request.start_date} -> {request.end_date}",
             "status": "completed",
         },
     )
-    logger.info("[PIPELINE] completed\n%s\n", completion_table)
+    logger.info("[PIPELINE] completed\n%s\n", completion_block)
     log_metric(
         "Pipeline summary",
         {

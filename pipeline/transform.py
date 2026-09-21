@@ -14,7 +14,6 @@ from pipeline.logging import (
     log_metric,
 )
 from pipeline.model import LoadedWeatherDataset, TransformedWeatherDataset, WeatherRequest
-from pipeline.utils import VARIABLE_DESCRIPTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -200,10 +199,7 @@ def _convert_era5_land_units(
     log_metric(
         "ERA5-Land unit conversion",
         {
-            "variables": {
-                variable: VARIABLE_DESCRIPTIONS.get(variable, variable)
-                for variable in request.variables
-            },
+            "variables": ", ".join(request.variables),
             "conversions": conversions,
             "output_units": {
                 variable: ERA5_LAND_OUTPUT_UNITS[variable]
@@ -241,15 +237,11 @@ def _aggregate_era5_land_daily(
             "target_period": f"{request.start_date} -> {request.end_date}",
             "expected_hourly_samples_per_day": EXPECTED_HOURLY_SAMPLES_PER_DAY,
             "local_midnight_in_utc": f"{LOCAL_MIDNIGHT_IN_UTC_HOUR:02d}:00",
-            "variable_descriptions": {
-                variable: VARIABLE_DESCRIPTIONS.get(variable, variable)
-                for variable in request.variables
-            },
-            "accumulated_variables": sorted(
-                set(request.variables) & ERA5_LAND_ACCUMULATED_VARIABLES
+            "accumulated_variables": ", ".join(
+                sorted(set(request.variables) & ERA5_LAND_ACCUMULATED_VARIABLES)
             ),
-            "daily_mean_variables": sorted(
-                set(request.variables) & ERA5_LAND_DAILY_MEAN_VARIABLES
+            "daily_mean_variables": ", ".join(
+                sorted(set(request.variables) & ERA5_LAND_DAILY_MEAN_VARIABLES)
             ),
         },
     )

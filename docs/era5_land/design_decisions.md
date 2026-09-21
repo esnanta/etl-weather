@@ -144,7 +144,7 @@ Karena keempat batas sejajar dengan lattice 0,1°, jumlah posisi koordinat dapat
 Angka 1.505 adalah jumlah maksimum **grid point** yang dapat dipilih pada satu timestamp sebelum mask laut dan pemeriksaan kelengkapan diterapkan. Angka 1.428 mempunyai arti geometris yang berbeda: jumlah persegi panjang yang terbentuk *di antara* garis koordinat yang bersebelahan pada ilustrasi. Angka tersebut bukan jumlah maksimum baris observasi ERA5-Land. Untuk identitas dan pengolahan data, proyek menggunakan 1.505 kemungkinan pasangan `(latitude, longitude)`, bukan 1.428 persegi panjang antargaris.
 
 
-![Aceh BBOX](https://raw.githubusercontent.com/esnanta/etl-weather/dev/docs/images/map_bbox_grid_era5_land_aceh.png)
+![Aceh BBOX](https://github.com/esnanta/etl-weather/blob/53058c8b87fdd0f63b57c3afa4052925f7cfff94/docs/images/map_bbox_grid_era5_land_aceh.png)
 
 ### Arti latitude dan longitude pada data transformed
 
@@ -160,6 +160,10 @@ Nilai `tp`, `t2m`, `d2m`, `swvl1`, dan `ssrd` pada baris tersebut adalah hasil h
 latitude  = 3,4
 longitude = 97,2
 ```
+
+![Contoh Data ParquetX](https://github.com/esnanta/etl-weather/blob/c49d43facbb93f6cd0732d1debf9db3701105e40/docs/images/grid_point_transformed_data_parquet.jpg)
+
+
 
 berarti nilai cuaca pada grid point 3,4° LU dan 97,2° BT. Koordinat itu bukan lokasi stasiun pengamatan dan bukan titik yang berada secara acak di dalam sebuah sel. Koordinat tersebut adalah titik acuan grid tempat nilai hasil model—setelah interpolasi ke grid reguler CDS—diberikan.
 
@@ -400,7 +404,7 @@ Struktur penyimpanan saat ini adalah:
 ```text
 data/
 └── cds_reanalysis-era5-land/
-    └── bbox_n5p2_w96p1_s3p4_e97p6/
+    └── bbox_n6p1_w94p9_s1p9_e98p3/
         ├── raw/
         │   └── 2022/
         │       └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
@@ -470,29 +474,115 @@ observasi PostgreSQL
 
 ---
 
-## 16. PostgreSQL dan pencegahan duplikasi
+## 16. PostgreSQL, idempotensi, dan batas deduplikasi
 
 PostgreSQL menggunakan dua tabel:
 
 - `climate_data.daily_climate` untuk identitas, periode, wilayah, dan provenance satu partisi;
 - `climate_data.daily_climate_detail` untuk observasi setiap grid dan hari.
 
-**Keputusan proyek.** Menjalankan kembali partisi yang sama memperbarui baris yang sudah ada dan tidak menambah duplikat. Perilaku ini sering disebut *idempotensi*.
+### Arti idempotensi dalam pipeline ini
 
-Identitas partisi dibentuk dari sumber, dataset, periode, daftar variabel terurut, dan seluruh batas bounding box. Identitas satu observasi dibentuk dari partisi, waktu UTC, latitude, dan longitude.
+**Keputusan proyek.** Menjalankan kembali partisi permintaan yang sama memperbarui baris yang sudah ada dan tidak menambah duplikat. Perilaku ini disebut *idempotensi*: suatu operasi dapat diulang, tetapi keadaan akhir penyimpanan tetap sama seperti setelah operasi pertama yang berhasil.
+
+Identitas partisi, yang direpresentasikan oleh `request_key`, dibentuk dari:
+
+```text
+provider + dataset + periode + himpunan variabel terurut + bounding box
+```
+
+Identitas satu observasi di dalam PostgreSQL dibentuk dari:
+
+```text
+daily_climate_id + valid_time + latitude + longitude
+```
+
+Dengan demikian, idempotensi yang dijamin sistem adalah **idempotent per request partition, bukan globally deduplicated per grid point**. Dalam bahasa sederhana, pipeline mencegah penggandaan ketika permintaan yang identik dijalankan kembali. Pipeline tidak mencari dan menghapus semua grid point yang kebetulan sama di antara dua permintaan dengan konfigurasi berbeda.
+
+Contoh untuk partisi yang sama:
+
+```text
+muat partisi A pertama kali  → 1 metadata, 2 observasi
+muat partisi A kedua kali   → tetap 1 metadata, tetap 2 observasi
+```
+
+Retry adalah kejadian normal pada pipeline data. Karena `request_key` partisi A tidak berubah, operasi UPSERT menemukan identitas yang sama dan memperbarui baris yang sudah ada. Retry tidak menggandakan jumlah hari atau grid di dalam partisi tersebut.
+
+### Melewati penulisan ketika partisi tidak berubah
+
+Idempotensi menjamin keadaan akhir yang sama, tetapi tidak dengan sendirinya berarti setiap retry harus menulis ulang database. Proyek menambahkan pemeriksaan *unchanged partition* agar retry yang benar-benar identik dapat menjadi operasi tanpa penulisan data (*no-op*).
+
+Sebelum metadata atau observasi ditulis, loader memeriksa empat kondisi:
+
+1. `request_key` menemukan partisi database yang sama;
+2. jalur artefak transformed sama;
+3. checksum SHA-256 Parquet sama;
+4. jumlah observasi detail di PostgreSQL sama dengan jumlah baris Parquet.
+
+Jika seluruh kondisi cocok, metadata dan detail tidak di-UPSERT ulang. Loader mengembalikan `rows_processed = 0` dan mencatat bahwa penulisan database dilewati:
+
+```text
+run pertama
+→ metadata ditulis
+→ 1.590 observasi ditulis
+→ rows_processed = 1.590
+
+run kedua dengan partisi dan artefak identik
+→ 1.590 observasi yang ada diverifikasi melalui jumlah baris
+→ metadata/detail tidak ditulis ulang
+→ rows_processed = 0
+→ database_write = skipped
+```
+
+Jika checksum, jalur artefak, atau jumlah observasi berbeda, pipeline tidak melewati load. Pipeline kembali menggunakan transaksi UPSERT normal agar partisi baru, berubah, atau tidak lengkap dapat ditulis atau diperbaiki dengan aman. Dengan demikian, optimasi ini tidak menggantikan idempotensi; optimasi hanya menghindari penulisan ketika identitas artefak dan kelengkapan partisi konsisten.
+
+Pemeriksaan ini tidak menghitung checksum atas seluruh nilai yang telah tersimpan di PostgreSQL. Jaminannya bergantung pada checksum Parquet, transaksi atomik pada load sebelumnya, indeks unik observasi, dan kesesuaian jumlah baris. Perubahan manual terhadap nilai database yang tidak mengubah jumlah baris tidak dapat dideteksi oleh pemeriksaan cepat ini.
+
+### Ketika bounding box berubah
+
+Perubahan satu batas bbox menghasilkan `request_key` dan `daily_climate_id` yang berbeda, walaupun periode serta variabelnya sama. Hal ini juga berlaku ketika bbox baru mencakup seluruh bbox lama.
 
 Contoh:
 
 ```text
-muat partisi yang sama pertama kali  → 1 metadata, 2 observasi
-muat partisi yang sama kedua kali   → tetap 1 metadata, tetap 2 observasi
+partisi A
+bbox lama = N 5,2; W 96,1; S 3,4; E 97,6
+
+partisi B
+bbox baru = N 6,1; W 94,9; S 1,9; E 98,3
 ```
 
-**Alasan.** Retry adalah kejadian normal pada pipeline data. Retry tidak boleh menggandakan jumlah hari atau grid dan mengubah hasil analisis.
+Bbox B mencakup bbox A, tetapi pipeline tidak menafsirkan perubahan itu sebagai perintah untuk mengambil hanya wilayah tambahan di luar bbox A. CDS diminta menyediakan seluruh area bbox B, kemudian hasilnya disimpan sebagai partisi B yang mandiri. Artefak bbox A tidak dihapus atau ditimpa.
+
+Akibatnya, grid point yang berada pada wilayah tumpang tindih dapat muncul pada kedua partisi. Misalnya, observasi tanggal dan lokasi yang sama dapat tersimpan sebagai:
+
+| `daily_climate_id` | `valid_time` | `latitude` | `longitude` | Asal |
+|---:|---|---:|---:|---|
+| 101 | 2022-01-01 17:00 | 4,3 | 96,8 | partisi A, bbox lama |
+| 102 | 2022-01-01 17:00 | 4,3 | 96,8 | partisi B, bbox baru |
+
+Secara geografis, kedua baris mengacu pada grid point dan waktu yang sama. Secara model data, keduanya bukan duplikat kunci karena `daily_climate_id` berbeda. Perbedaan tersebut mempertahankan asal-usul data: setiap observasi tetap dapat ditelusuri ke konfigurasi bbox dan artefak yang menghasilkannya.
+
+Perbedaan berikut penting untuk pembaca dari berbagai bidang:
+
+| Situasi | Perilaku sistem |
+|---|---|
+| Permintaan identik dijalankan kembali | Resume dan validasi checkpoint; lewati penulisan database jika checksum, path, dan jumlah baris cocok; jika tidak, UPSERT ke partisi yang sama |
+| Periode, variabel, atau bbox berubah | Membentuk partisi baru dengan `request_key` baru |
+| Bbox baru mencakup bbox lama | Mengunduh dan menyimpan seluruh bbox baru, bukan hanya area tambahannya |
+| Grid point sama muncul pada dua bbox | Dapat tersimpan pada kedua partisi karena tidak ada deduplikasi global lintas partisi |
+
+Desain ini mengutamakan pemisahan konfigurasi dan provenance, bukan penghematan ruang melalui penggabungan grid global. Redundansi spasial antarbbox adalah konsekuensi yang diketahui, bukan tanda bahwa retry atau UPSERT gagal.
+
+### Konsekuensi untuk analisis
+
+Pembacaan kanonis memilih satu bbox secara eksplisit, sehingga analisis normal menggunakan satu partisi spasial yang sesuai. Apabila peneliti menggabungkan data dari beberapa bbox, ia harus memeriksa tumpang tindih berdasarkan waktu, latitude, dan longitude. Jika diperlukan satu observasi saja untuk setiap grid-hari, aturan pemilihan harus ditetapkan secara eksplisit—misalnya memilih partisi dengan bbox terbaru atau satu sumber provenance tertentu—agar grid yang tumpang tindih tidak dihitung dua kali.
+
+Pipeline saat ini tidak melakukan *spatial incremental expansion*, tidak memotong area yang sudah pernah diunduh, dan tidak melakukan deduplikasi global lintas `request_key`. Perubahan ke salah satu perilaku tersebut memerlukan keputusan desain baru karena akan mengubah identitas partisi, provenance, serta cara retry dan pembacaan data bekerja.
 
 Kolom nilai cuaca di database dapat berisi `NULL` agar nilai hilang tetap berbeda dari nol. Nama kolom menyatakan statistik dan satuan, misalnya `tp_daily_total_mm` dan `t2m_daily_mean_c`.
 
-**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, pemetaan kolom, indeks unik, dan perintah pembaruan. Integration test nyata memuat partisi yang sama dua kali dan membuktikan jumlah metadata serta observasi tidak bertambah dan tidak ada kunci observasi ganda (`tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`).
+**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, perubahan identitas ketika bbox berubah, pemetaan kolom, indeks unik, UPSERT, deteksi partisi tidak berubah, hasil nol baris diproses, serta fallback ketika checksum atau jumlah observasi berbeda. Integration test PostgreSQL terisolasi memuat partisi yang sama dua kali dan mensyaratkan load kedua melewati penulisan observasi, sementara jumlah metadata dan observasi tetap serta tidak ada kunci observasi ganda (`tests/unit/test_utils_request_validation.py`, `tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`). Test tersebut membuktikan idempotensi dan optimasi no-op di dalam satu partisi; test tidak menyatakan adanya deduplikasi grid global di antara bbox yang berbeda.
 
 ---
 
@@ -538,8 +628,10 @@ Dokumen ini tidak menyatakan jaminan melebihi implementasi dan test saat ini:
 9. Wilayah menjadi bagian dari identitas file dan partisi database.
 10. Checksum dan metadata menjaga rantai asal-usul RAW → Parquet → PostgreSQL.
 11. Penulisan file dan transaksi database dirancang agar kegagalan tidak meninggalkan hasil parsial yang tampak sah.
-12. Retry tidak membuat observasi ganda.
-13. Akses untuk analisis bersifat hanya-baca dan tidak mengubah makna meteorologis data.
+12. Retry tidak membuat observasi ganda di dalam partisi permintaan yang sama.
+13. Partisi dengan `request_key`, path/checksum Parquet, dan jumlah observasi yang sama melewati penulisan database; setiap ketidaksesuaian kembali ke UPSERT transaksional.
+14. Idempotensi berlaku per `request_key`; grid point yang sama dapat tersimpan pada partisi bbox berbeda dan tidak dideduplikasi secara global.
+15. Akses untuk analisis bersifat hanya-baca dan tidak mengubah makna meteorologis data.
 
 ---
 

@@ -6,6 +6,8 @@ import pandas as pd
 from pipeline.database import DatabaseConfig
 from pipeline.load import (
     _prepare_observation_dataframe,
+    find_unchanged_daily_climate_partition,
+    load_to_postgresql,
     upsert_daily_climate_metadata,
     upsert_daily_climate_observations,
 )
@@ -120,6 +122,62 @@ class _ScalarResult:
         return self.value
 
 
+class _MappingResult:
+    def __init__(self, value):
+        self.value = value
+
+    def mappings(self):
+        return self
+
+    def one_or_none(self):
+        return self.value
+
+
+class _CountResult:
+    def __init__(self, value: int):
+        self.value = value
+
+    def scalar_one(self):
+        return self.value
+
+
+class _PartitionLookupConnection:
+    def __init__(self, metadata, database_rows: int):
+        self.metadata = metadata
+        self.database_rows = database_rows
+        self.statements: list[str] = []
+        self.params: list[object] = []
+
+    def execute(self, statement, params=None):
+        sql = str(statement)
+        self.statements.append(sql)
+        self.params.append(params)
+        if "WHERE request_key = :request_key" in sql:
+            return _MappingResult(self.metadata)
+        if "WHERE daily_climate_id = :daily_climate_id" in sql:
+            return _CountResult(self.database_rows)
+        raise AssertionError(f"Unexpected SQL: {sql}")
+
+
+class _BeginContext:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self.connection
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+
+class _Engine:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def begin(self):
+        return _BeginContext(self.connection)
+
+
 class _UpsertConnection:
     def __init__(self, daily_climate_id: int = 42):
         self.daily_climate_id = daily_climate_id
@@ -186,6 +244,110 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     assert params["transformed_artifact_path"] == "data/transformed/daily.parquet"
     assert params["transformed_sha256"] == "transformed-hash"
     assert params["transformed_at"] == _transformed_at()
+
+
+def test_unchanged_partition_matches_provenance_and_observation_count() -> None:
+    connection = _PartitionLookupConnection(
+        metadata={
+            "id": 42,
+            "transformed_artifact_path": "data/transformed/daily.parquet",
+            "transformed_sha256": "transformed-hash",
+        },
+        database_rows=1,
+    )
+
+    result = find_unchanged_daily_climate_partition(
+        request_key="request-key",
+        transformed_artifact_path="data/transformed/daily.parquet",
+        transformed_sha256="transformed-hash",
+        expected_rows=1,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert result == (42, 1)
+    assert len(connection.statements) == 2
+
+
+def test_partition_is_not_skipped_when_checksum_changes() -> None:
+    connection = _PartitionLookupConnection(
+        metadata={
+            "id": 42,
+            "transformed_artifact_path": "data/transformed/daily.parquet",
+            "transformed_sha256": "old-hash",
+        },
+        database_rows=1,
+    )
+
+    result = find_unchanged_daily_climate_partition(
+        request_key="request-key",
+        transformed_artifact_path="data/transformed/daily.parquet",
+        transformed_sha256="new-hash",
+        expected_rows=1,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert result is None
+    assert len(connection.statements) == 1
+
+
+def test_partition_is_not_skipped_when_observation_count_changes() -> None:
+    connection = _PartitionLookupConnection(
+        metadata={
+            "id": 42,
+            "transformed_artifact_path": "data/transformed/daily.parquet",
+            "transformed_sha256": "transformed-hash",
+        },
+        database_rows=0,
+    )
+
+    result = find_unchanged_daily_climate_partition(
+        request_key="request-key",
+        transformed_artifact_path="data/transformed/daily.parquet",
+        transformed_sha256="transformed-hash",
+        expected_rows=1,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert result is None
+    assert len(connection.statements) == 2
+
+
+def test_load_skips_database_writes_for_unchanged_partition(monkeypatch) -> None:
+    connection = _PartitionLookupConnection(
+        metadata={
+            "id": 42,
+            "transformed_artifact_path": "data/transformed/daily.parquet",
+            "transformed_sha256": "transformed-hash",
+        },
+        database_rows=1,
+    )
+    monkeypatch.setattr(
+        "pipeline.load.create_database_engine",
+        lambda _: _Engine(connection),
+    )
+    monkeypatch.setattr("pipeline.load.create_schema", lambda *_: None)
+    monkeypatch.setattr("pipeline.load.create_daily_climate_table", lambda *_: None)
+    monkeypatch.setattr(
+        "pipeline.load.create_daily_climate_detail_table",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        "pipeline.load.artifact_path_for_metadata",
+        lambda _: "data/transformed/daily.parquet",
+    )
+    monkeypatch.setattr(
+        "pipeline.load.calculate_file_sha256",
+        lambda _: "transformed-hash",
+    )
+
+    result = load_to_postgresql(_dataset(), _artifact(), _config())
+
+    assert result == (42, 0)
+    assert len(connection.statements) == 2
+    assert all("INSERT INTO" not in sql for sql in connection.statements)
 
 
 def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None:
