@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from pipeline.extract import CdsExtractor
+from pipeline.extraction import CdsExtractor
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.loaders import PostgresDataLoader
 from pipeline.logging import (
@@ -26,7 +26,7 @@ from pipeline.storage import (
     artifact_exists,
     artifact_path_for_metadata,
 )
-from pipeline.transform import DefaultDataTransformer
+from pipeline.transformation import DefaultDataTransformer
 from pipeline.request import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
 
