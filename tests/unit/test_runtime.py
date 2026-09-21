@@ -116,6 +116,10 @@ class _Storage:
         self.save_raw_calls = 0
         self.load_transformed_calls = 0
         self.save_transformed_calls = 0
+        self.existing_artifacts: set[Path] = set()
+
+    def exists(self, artifact: DatasetArtifact) -> bool:
+        return artifact.path in self.existing_artifacts
 
     def raw_artifact(self, request: WeatherRequest) -> DatasetArtifact:
         assert request == self.request
@@ -220,7 +224,6 @@ def test_extract_or_resume_creates_raw_checkpoint_when_missing(monkeypatch) -> N
     request, pipeline, extractor, storage, _, _ = _pipeline()
     validation_calls = []
 
-    monkeypatch.setattr("pipeline.runtime.artifact_exists", lambda artifact: False)
     monkeypatch.setattr(
         "pipeline.runtime.validate_raw_dataset",
         lambda dataset: validation_calls.append(dataset),
@@ -241,7 +244,7 @@ def test_extract_or_resume_uses_and_validates_existing_raw_checkpoint(monkeypatc
     request, pipeline, extractor, storage, _, _ = _pipeline()
     validation_calls = []
 
-    monkeypatch.setattr("pipeline.runtime.artifact_exists", lambda artifact: True)
+    storage.existing_artifacts.add(storage.raw_artifact_value.path)
     monkeypatch.setattr(
         "pipeline.runtime.validate_raw_dataset",
         lambda dataset: validation_calls.append(dataset),
@@ -259,7 +262,7 @@ def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch)
     _, pipeline, _, storage, transformer, _ = _pipeline()
     validation_calls = []
 
-    monkeypatch.setattr("pipeline.runtime.artifact_exists", lambda artifact: True)
+    storage.existing_artifacts.add(storage.transformed_artifact_value.path)
     monkeypatch.setattr(
         "pipeline.runtime.validate_transformed_dataset",
         lambda dataset: validation_calls.append(dataset),
@@ -283,7 +286,6 @@ def test_transform_or_resume_validates_before_saving_new_checkpoint(
     _, pipeline, _, storage, transformer, _ = _pipeline()
     validation_calls = []
 
-    monkeypatch.setattr("pipeline.runtime.artifact_exists", lambda artifact: False)
     monkeypatch.setattr(
         "pipeline.runtime.validate_transformed_dataset",
         lambda dataset: validation_calls.append(dataset),
