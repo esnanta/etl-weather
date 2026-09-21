@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
-from pipeline.load import (
+from pipeline.loaders.postgres import (
     _prepare_observation_dataframe,
     find_unchanged_daily_climate_partition,
     load_to_postgresql,
@@ -202,7 +202,7 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     artifact = _artifact()
 
     monkeypatch.setattr(
-        "pipeline.load.read_parquet_provenance",
+        "pipeline.loaders.postgres.read_parquet_provenance",
         lambda _: {
             "raw_artifact_path": "data/raw.nc",
             "raw_sha256": "raw-hash",
@@ -211,11 +211,11 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
         },
     )
     monkeypatch.setattr(
-        "pipeline.load.artifact_path_for_metadata",
+        "pipeline.loaders.postgres.artifact_path_for_metadata",
         lambda _: "data/transformed/daily.parquet",
     )
     monkeypatch.setattr(
-        "pipeline.load.calculate_file_sha256",
+        "pipeline.loaders.postgres.calculate_file_sha256",
         lambda _: "transformed-hash",
     )
 
@@ -325,21 +325,21 @@ def test_load_skips_database_writes_for_unchanged_partition(monkeypatch) -> None
         database_rows=1,
     )
     monkeypatch.setattr(
-        "pipeline.load.create_database_engine",
+        "pipeline.loaders.postgres.create_database_engine",
         lambda _: _Engine(connection),
     )
-    monkeypatch.setattr("pipeline.load.create_schema", lambda *_: None)
-    monkeypatch.setattr("pipeline.load.create_daily_climate_table", lambda *_: None)
+    monkeypatch.setattr("pipeline.loaders.postgres.create_schema", lambda *_: None)
+    monkeypatch.setattr("pipeline.loaders.postgres.create_daily_climate_table", lambda *_: None)
     monkeypatch.setattr(
-        "pipeline.load.create_daily_climate_detail_table",
+        "pipeline.loaders.postgres.create_daily_climate_detail_table",
         lambda *_: None,
     )
     monkeypatch.setattr(
-        "pipeline.load.artifact_path_for_metadata",
+        "pipeline.loaders.postgres.artifact_path_for_metadata",
         lambda _: "data/transformed/daily.parquet",
     )
     monkeypatch.setattr(
-        "pipeline.load.calculate_file_sha256",
+        "pipeline.loaders.postgres.calculate_file_sha256",
         lambda _: "transformed-hash",
     )
 
