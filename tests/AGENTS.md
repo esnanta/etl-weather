@@ -88,7 +88,7 @@ must fall back to the transactional metadata and observation UPSERT path.
 Implementation:
 
 ```text
-pipeline/daily_climate_repository.py
+pipeline/repositories/daily_climate.py
 tests/unit/test_daily_climate_repository.py
 ```
 
