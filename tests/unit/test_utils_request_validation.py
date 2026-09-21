@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
-from pipeline.utils import (
+from pipeline.request import (
     build_request,
     build_request_key,
     build_variable_signature,
