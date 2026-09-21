@@ -6,14 +6,12 @@ from calendar import monthrange
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from pipeline.model import WeatherRequest
+from pipeline.model import DataSource, WeatherRequest
 from pipeline.providers.cds import get_source_dataset_profile
 
 
 def validate_request(request: WeatherRequest) -> None:
     """Validate a WeatherRequest."""
-    from pipeline.model import DataSource
-
     if not isinstance(request.source, DataSource):
         raise ValueError("Invalid data source.")
     if not request.dataset.strip():
