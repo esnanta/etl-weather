@@ -15,21 +15,21 @@ from pipeline.model import (
 class WeatherExtractor(ABC):
     @abstractmethod
     def extract(self, request: WeatherRequest) -> RawWeatherDataset:
-        pass
+        ...
 
 
 class DataStorage(ABC):
     @abstractmethod
     def raw_artifact(self, request: WeatherRequest) -> DatasetArtifact:
-        pass
+        ...
 
     @abstractmethod
     def transformed_artifact(self, request: WeatherRequest) -> DatasetArtifact:
-        pass
+        ...
 
     @abstractmethod
     def save_raw(self, dataset: RawWeatherDataset) -> DatasetArtifact:
-        pass
+        ...
 
     @abstractmethod
     def load_raw(
@@ -37,7 +37,7 @@ class DataStorage(ABC):
         artifact: DatasetArtifact,
         request: WeatherRequest,
     ) -> RawWeatherDataset:
-        pass
+        ...
 
     @abstractmethod
     def save_transformed(
@@ -48,7 +48,7 @@ class DataStorage(ABC):
         transformed_at: datetime,
         raw_artifact: DatasetArtifact,
     ) -> DatasetArtifact:
-        pass
+        ...
 
     @abstractmethod
     def load_transformed(
@@ -57,17 +57,17 @@ class DataStorage(ABC):
         request: WeatherRequest,
         raw_artifact: DatasetArtifact,
     ) -> TransformedWeatherDataset:
-        pass
+        ...
 
     @abstractmethod
     def convert_to_dataframe(self, artifact: DatasetArtifact) -> pd.DataFrame:
-        pass
+        ...
 
 
 class DataTransformer(ABC):
     @abstractmethod
     def transform(self, raw_dataset: LoadedWeatherDataset) -> TransformedWeatherDataset:
-        pass
+        ...
 
 
 class DataLoader(ABC):
@@ -77,4 +77,4 @@ class DataLoader(ABC):
         dataset: TransformedWeatherDataset,
         artifact: DatasetArtifact,
     ) -> tuple[int, int]:
-        pass
+        ...
