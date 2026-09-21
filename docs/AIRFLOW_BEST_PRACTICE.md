@@ -1,932 +1,266 @@
 # AIRFLOW BEST PRACTICES
 
-This document focuses on Airflow DAG design, orchestration behavior,
-task boundaries, retries, scheduling, and operational controls.
-Implementation details for ETL functions, scientific correctness, and
-data-shape rules live in `AIRFLOW_CODING_GUIDELINES.md`.
+This document defines the Airflow orchestration policy for this repository.
+It extends, but does not redefine, the pipeline architecture and runtime
+contracts in [`../AGENTS.md`](../AGENTS.md) and [`../README.md`](../README.md).
 
-## 1. Keep DAGs Declarative, Small, and Human-Readable
+When the documents differ, use the following authority order:
 
-A DAG should describe **workflow orchestration**, not contain the full
-implementation of the workflow.
+1. `AGENTS.md` for architecture and engineering contracts;
+2. `README.md` for current pipeline behavior and usage;
+3. this document for Airflow orchestration policy;
+4. `AIRFLOW_CODING_GUIDELINES.md` for Airflow-specific implementation rules.
 
-A reader should be able to understand the pipeline by looking at the DAG
-structure without reading every implementation detail.
+Scientific formulas, schemas, units, artifact layout, checkpoint semantics,
+provenance, and PostgreSQL idempotency are intentionally not repeated here.
 
-Prefer:
+## 1. Airflow's Responsibility
 
-``` text
-extract
-   ↓
-validate
-   ↓
-transform
-   ↓
+Airflow owns:
+
+- scheduling and logical data intervals;
+- task dependencies and workflow state;
+- retry, timeout, pool, and concurrency policy;
+- Connections, secrets, sensors, alerting, and operational metadata.
+
+The pipeline owns all ETL behavior. DAG code must call the existing pipeline
+runtime rather than reimplement extraction, validation, transformation,
+storage, or loading.
+
+## 2. Task Boundaries
+
+The default DAG graph follows the retry and checkpoint boundaries already
+owned by the pipeline:
+
+```text
+extract_or_resume
+        ↓
+transform_or_resume
+        ↓
 load
 ```
 
-instead of:
+Validation stays inside these runtime operations:
 
-``` text
-run_everything()
+```text
+extract_or_resume   → RAW checkpoint validation
+transform_or_resume → transformed checkpoint validation
+load                → transactional idempotency checks and persistence
 ```
 
-Guidelines:
+Do not create separate `validate_raw` or `validate_transformed` Airflow tasks.
+Doing so would allow resumed checkpoints to bypass the validation guaranteed
+by the runtime boundary.
 
--   Keep DAG files small and focused.
--   Use clear and consistent DAG and task names.
--   Keep task responsibilities explicit.
--   Avoid deeply nested workflow logic.
--   Move reusable business logic into separate Python modules.
--   Avoid placing large functions directly inside DAG files.
+An interval-to-request adapter may be a small pure helper or a lightweight
+orchestration task. It must not become an alternative implementation of
+pipeline request partitioning.
 
-The DAG should answer:
+The current runtime methods use in-memory xarray/Pandas objects within one
+process. Those objects must not cross Airflow task boundaries. A downstream
+task must rehydrate its input from the deterministic checkpoint through
+Airflow-neutral pipeline code. If a small runtime entrypoint is needed for that
+handoff, add it to `pipeline/`; do not implement checkpoint loading or
+validation in the DAG.
 
-> What runs, in what order, under what conditions?
+## 3. Scheduling Timezone and Data Intervals
 
-The implementation modules should answer:
+Every DAG must declare `Asia/Jakarta` explicitly. Do not depend on the Airflow
+default timezone, the host timezone, or `datetime.now()`.
 
-> How is the work performed?
+Airflow supplies half-open intervals:
 
-------------------------------------------------------------------------
+```text
+[data_interval_start, data_interval_end)
+```
 
-## 2. Treat Airflow as an Orchestrator, Not a Processing Engine
+The pipeline accepts an inclusive date range. The adapter must therefore map a
+local-midnight interval as follows:
 
-Airflow should coordinate computation, not become the computation
-itself.
-
-Avoid putting heavy workloads directly inside Airflow orchestration
-code, such as:
-
--   large-scale data aggregation;
--   multi-GB Pandas transformations;
--   machine-learning training;
--   CPU-intensive processing;
--   large file manipulation;
--   complex analytical workloads.
-
-Instead, Airflow should invoke the appropriate processing component.
+```text
+pipeline_start_date = local(data_interval_start).date()
+pipeline_end_date   = local(data_interval_end).date() - 1 calendar day
+```
 
 For example:
 
-``` text
-Airflow Task
-     ↓
-Python ETL module
+```text
+Airflow interval : [2026-09-01 00:00, 2026-09-02 00:00) Asia/Jakarta
+Pipeline period  : 2026-09-01 through 2026-09-01 inclusive
 ```
 
-or:
+The adapter must reject an empty interval and any scheduled boundary that is
+not local midnight. It must not calculate ERA5-Land UTC accumulation
+boundaries; that remains pipeline logic.
 
-``` text
-Airflow Task
-     ↓
-Spark / dbt / SQL / container / external service
-```
+## 4. ERA5-Land Availability Policy
 
-Principle:
+ERA5-Land-T daily updates are documented as available about five days behind
+real time, and CDS updates do not occur at a fixed time of day. Consequently,
+an operational run must not assume that yesterday's data is available.
 
-> Airflow should call the thing, not be the thing.
+The initial operational policy is a conservative six-completed-local-day lag.
+Keep this value explicit in Airflow configuration and observable in logs; do
+not bury it in scientific pipeline code. A run may process only an interval
+whose end is no later than the configured eligibility boundary.
 
-------------------------------------------------------------------------
+If the project later adopts availability polling, use a bounded, deferrable or
+rescheduling sensor with a timeout. A sensor must check source readiness; it
+must not duplicate extraction or hold a worker slot for a long wait.
 
-## 3. Separate Orchestration Logic from Business Logic
+## 5. Operational Scheduling and Historical Backfill
 
-Airflow-specific code should not own the core ETL logic.
+The operational DAG must use `catchup=False`. Airflow scheduler catchup is not
+the historical bootstrap mechanism for this project.
 
-Task code should stay thin: it should accept artifact references or
-parameters, call the ETL layer, and emit the next artifact reference.
-The implementation details of parsing, validation, transformation, and
-loading belong in `AIRFLOW_CODING_GUIDELINES.md`.
+Historical loading must be initiated explicitly with a reviewed date range.
+The existing pipeline remains responsible for splitting long ranges into its
+deterministic monthly request partitions.
 
-Principle:
+Before a backfill, verify:
 
-> Airflow decides what runs and when. ETL modules decide how the work is
-> performed.
+- the requested inclusive period and bounding box;
+- expected request-partition count;
+- CDS pool capacity and database capacity;
+- available disk space;
+- the intended behavior for failed partitions and reruns.
 
-------------------------------------------------------------------------
+Do not create thousands of daily DagRuns merely to populate historical data.
 
-## 4. Design Tasks Around Clear Responsibilities
+## 6. Retry and Failure Policy
 
-Each task should perform one meaningful responsibility.
+Retry only failures that can recover without a code or data change. Retry
+configuration must be explicit per task rather than inherited blindly from one
+global value.
 
-Good:
+| Boundary | Retry candidates | Fail without repeated retry |
+| --- | --- | --- |
+| `extract_or_resume` | CDS throttling, network timeout, temporary service failure | invalid request, invalid/resumed RAW checkpoint, deterministic validation failure |
+| `transform_or_resume` | only a demonstrated transient infrastructure failure | scientific validation failure, changed RAW checksum, code/configuration error |
+| `load` | temporary PostgreSQL connectivity or lock contention | schema/contract violation, invalid transformed artifact, deterministic data error |
 
-``` text
-extract
-validate
-transform
-export_csv
-load_database
-```
+A sensible initial baseline is three extraction attempts, no transformation
+retry, and two load attempts, with bounded exponential backoff for retryable
+failures. Treat these as deployment defaults, not as permission to catch and
+retry every exception.
 
-Avoid combining unrelated responsibilities:
+Every task must also have a finite execution timeout appropriate to its
+workload. Airflow must receive the original failure: task wrappers must not
+swallow exceptions or return a success status after an error.
 
-``` text
-extract_validate_transform_upload_notify()
-```
+## 7. Pools and Concurrency
 
-However, task granularity should remain pragmatic.
+All CDS retrieval tasks must use a dedicated `cds_api` pool. Start with one
+slot unless measured behavior and CDS service policy justify a higher value.
 
-Do not split trivial operations into dozens of meaningless tasks.
+Use `max_active_runs=1` for the first operational DAG. Increase it only after
+confirming that deterministic artifacts, local storage, memory, database
+connections, and source-service capacity remain safe under overlap.
 
-Bad:
+Pool and concurrency limits complement each other:
 
-``` text
-read_file
-↓
-rename_column
-↓
-drop_column
-↓
-convert_price
-↓
-convert_rating
-↓
-save_file
-```
+- the CDS pool protects the external service;
+- `max_active_runs` limits overlapping logical runs;
+- executor/worker limits protect local compute;
+- a database pool may be added if concurrent loaders can exhaust PostgreSQL.
 
-if all of those operations logically belong to a single transformation
-step.
+## 8. Artifact Identity and XCom
 
-The goal is:
+Airflow execution identity must never determine scientific artifact identity.
+In particular, do not put `run_id`, `dag_run_id`, task attempt, or wall-clock
+execution time into `request_key` or artifact paths.
 
-> Tasks should be independently understandable, retryable, and
-> observable.
+These values are useful only as orchestration and logging metadata. Pipeline
+artifact identity continues to be derived from the logical request contract in
+`AGENTS.md`.
 
-Not:
+XCom may contain only small JSON-serializable control metadata, such as:
 
-> Every Python function must become an Airflow task.
+- the request specification or deterministic `request_key`;
+- RAW or transformed artifact references;
+- small row-count or status summaries.
 
-------------------------------------------------------------------------
+Never place a DataFrame, xarray Dataset, NetCDF/Parquet bytes, complete API
+response, credentials, or another large payload in XCom. When downstream code
+can deterministically reconstruct a reference from the request, pass only the
+request metadata.
 
-## 5. Make Every Task Idempotent
+## 9. DAG Parsing, Configuration, and Secrets
 
-A task should be safe to execute more than once.
+DAG import must remain lightweight and deterministic. Top-level DAG code must
+not perform network calls, database queries, artifact reads, directory scans,
+or pipeline execution.
 
-Running a task twice should not corrupt the pipeline.
+Environment-dependent orchestration values belong in Airflow configuration,
+Connections, environment variables, or an approved secrets backend. Airflow
+Variables are suitable for small operational settings, not dataset storage or
+a substitute application database.
 
-A retry should not:
+Credentials must never appear in DAG source, task arguments, XCom, or logs.
 
--   create duplicate records;
--   duplicate files unnecessarily;
--   send the same external transaction twice;
--   corrupt intermediate data;
--   leave inconsistent partial state.
+## 10. Observability and Alerting
 
-Prefer deterministic artifact naming or execution-specific paths such
-as:
+Airflow logs should add orchestration context without duplicating the detailed
+scientific logs produced by the pipeline. At minimum, make these values easy to
+correlate when available:
 
-``` text
-data/raw/2026-09-03/products.json
-```
-
-or:
-
-``` text
-data/raw/{dag_run_id}/products.json
-```
-
-Database writes should use appropriate mechanisms such as:
-
-``` text
-UPSERT
-MERGE
-ON CONFLICT
-```
-
-when applicable.
-
-Principle:
-
-> Retry should be a recovery mechanism, not a data corruption risk.
-
-------------------------------------------------------------------------
-
-## 6. Make Data Dependencies Explicit
-
-Tasks should communicate through clearly defined artifacts or
-identifiers.
-
-Prefer:
-
-``` text
-extract
-   ↓
-raw artifact path
-   ↓
-validate
-   ↓
-validated artifact path
-   ↓
-transform
-```
-
-over relying on invisible shared state.
-
-Avoid global mutable data or undocumented assumptions about files in
-temporary directories.
-
-A downstream task should know exactly what artifact it consumes.
-
-This makes the pipeline:
-
--   reproducible;
--   observable;
--   testable;
--   easier to rerun;
--   easier to debug.
-
-------------------------------------------------------------------------
-
-## 7. Treat Data Artifacts as First-Class Objects
-
-For data pipelines, passing around the location and metadata of data is
-usually better than passing the data itself.
-
-For example:
-
-``` text
-DatasetArtifact
-
-dataset     = products
-layer       = RAW
-created_at  = ...
-path        = ...
-```
-
-Then the workflow becomes:
-
-``` text
-EXTRACT
-   ↓
-RAW artifact
-   ↓
-VALIDATE
-   ↓
-TRANSFORM
-   ↓
-PROCESSED artifact
-   ↓
-LOAD / EXPORT
-```
-
-A useful conceptual separation is:
-
-``` text
-RAW
- ↓
-PROCESSED
- ↓
-EXPORT / SERVING
-```
-
-Do not silently overwrite earlier data layers unless that behavior is
-explicitly intended.
-
-------------------------------------------------------------------------
-
-## 8. Use XCom Only for Control Metadata
-
-XCom should transport **small orchestration messages**, not datasets.
-
-Appropriate XCom values include:
-
--   artifact paths;
--   object IDs;
--   partition names;
--   status values;
--   row counts;
--   timestamps;
--   small configuration values.
-
-A path such as:
-
-``` text
-/data/processed/products/20260903.parquet
-```
-
-is appropriate.
-
-Avoid putting into XCom:
-
--   Pandas DataFrames;
--   large JSON responses;
--   HTML documents;
--   binary files;
--   full datasets;
--   thousands of API objects.
-
-Prefer:
-
-``` text
-XCom
-   ↓
-"where is the data?"
-```
-
-rather than:
-
-``` text
-XCom
-   ↓
-"here is all the data"
-```
-
-------------------------------------------------------------------------
-
-## 9. Prefer Immutable Pipeline Stages
-
-When possible, each pipeline stage should create a new artifact instead
-of mutating the previous one.
-
-Prefer:
-
-``` text
-raw/products.json
-        ↓
-processed/products.parquet
-        ↓
-export/products.csv
-```
-
-instead of repeatedly modifying the same file in place.
-
-Immutable stages improve:
-
--   debugging;
--   rollback;
--   lineage;
--   reproducibility;
--   auditing.
-
-They also make failures easier to isolate.
-
-------------------------------------------------------------------------
-
-## 10. Validate Early and Fail Clearly
-
-If a task receives an unexpected artifact or violated contract, fail
-immediately instead of passing bad state downstream.
-
-Use clear error messages that identify the failing task, the artifact
-involved, and the reason the workflow cannot continue. Field-level and
-domain-level validation rules belong in
-`AIRFLOW_CODING_GUIDELINES.md`.
-
-------------------------------------------------------------------------
-
-## 11. Make Task Inputs and Outputs Deterministic
-
-Given the same input and configuration, a task should ideally produce
-the same logical result.
-
-Avoid hidden dependencies such as wall-clock time, random values,
-current working directories, or global mutable variables unless they are
-explicitly part of task behavior.
-
-Execution-specific information should preferably come from Airflow
-context, such as:
-
--   `logical_date`;
--   `data_interval_start`;
--   `data_interval_end`;
--   `run_id`.
-
-This makes backfills and reruns predictable.
-
-------------------------------------------------------------------------
-
-## 12. Design Pipelines Around Airflow Data Intervals
-
-Do not think of scheduled pipelines simply as:
-
-> Run this every hour.
-
-Think instead:
-
-> Process the data belonging to this interval.
-
-Conceptually:
-
-``` text
-Airflow run
-
+```text
+dag_id
+task_id
+run_id
+try_number
 data_interval_start
-        ↓
 data_interval_end
-        ↓
-process exactly this partition
+request_key
+artifact reference
+processed/skipped row count
+duration
 ```
 
-This matters for:
-
--   reruns;
--   backfills;
--   historical processing;
--   partitioned datasets;
--   reproducibility.
-
-Avoid deriving pipeline partitions solely from the wall-clock time at
-which the task happens to execute.
-
-------------------------------------------------------------------------
-
-## 13. Make Retries Intentional
-
-Retries should be used for failures that may genuinely recover.
-
-Examples:
-
--   temporary API failure;
--   network timeout;
--   temporary database connection failure;
--   rate limiting;
--   temporary object-storage issue.
-
-Retries are less useful for deterministic failures such as:
-
--   invalid schema;
--   missing required column;
--   programming bug;
--   invalid configuration.
-
-Configure deliberately:
-
--   retries;
--   retry delay;
--   execution timeout.
-
-Avoid infinite or excessive retry behavior.
-
-A task that repeatedly fails because of bad data should fail visibly
-rather than quietly retry for hours.
-
-------------------------------------------------------------------------
-
-## 14. Use Sensors Responsibly
-
-Sensors should detect readiness, not occupy resources unnecessarily.
-
-Use appropriate:
-
--   `poke_interval`;
--   `timeout`.
-
-For long waits, prefer mechanisms that release worker resources, such as
-deferrable operators or event-driven approaches where appropriate.
-
-Principle:
-
-> Sensors should check, not camp.
-
-Avoid using a worker slot simply to wait for an external file for hours.
-
-------------------------------------------------------------------------
-
-## 15. Keep DAG Parsing Lightweight
-
-DAG files are repeatedly parsed by Airflow.
-
-Therefore, avoid expensive work at module import time.
-
-Do not perform network requests, large dataset reads, database queries,
-or expensive file operations at the top level of a DAG file.
-
-Bad:
-
-``` python
-data = pd.read_csv("huge_dataset.csv")
-
-with DAG(...):
-    ...
-```
-
-Prefer defining the expensive operation inside task runtime.
-
-Top-level DAG code should primarily define orchestration.
-
-------------------------------------------------------------------------
-
-## 16. Be Careful with Dynamic DAG Generation
-
-Dynamic DAG generation can be useful, but should solve a real
-orchestration problem.
-
-Avoid generating hundreds or thousands of nearly identical DAGs when one
-parameterized DAG or dynamic task mapping would represent the workflow
-more clearly.
-
-Prefer:
-
-``` text
-one logical pipeline
-+
-configuration
-```
-
-over thousands of nearly identical DAG definitions when the workflows
-are fundamentally identical.
-
-------------------------------------------------------------------------
-
-## 17. Control Concurrency Deliberately
-
-More parallelism does not automatically mean better performance.
-
-Consider:
-
--   Airflow worker capacity;
--   database connection limits;
--   API rate limits;
--   CPU;
--   memory;
--   external service capacity.
-
-Use appropriate controls such as:
-
--   pools;
--   `max_active_runs`;
--   task concurrency;
--   DAG concurrency;
--   executor capacity.
-
-Do not allow hundreds of tasks to simultaneously overwhelm the same
-database or API.
-
-Principle:
-
-> Parallelism must respect the capacity of the systems being
-> orchestrated.
-
-------------------------------------------------------------------------
-
-## 18. Keep Configuration Outside Business Logic
-
-Values that vary by environment should not be scattered throughout the
-code.
-
-Separate:
-
-``` text
-code
-configuration
-credentials
-runtime parameters
-```
-
-Use appropriate mechanisms such as:
-
--   environment variables;
--   Airflow Connections;
--   Airflow Variables;
--   secret backends;
--   runtime parameters.
-
-Do not abuse Airflow Variables as a general-purpose application
-database.
-
-------------------------------------------------------------------------
-
-## 19. Never Store Secrets in DAG Code
-
-Credentials must not be committed into source control.
-
-Do not hard-code API keys, database passwords, tokens, or other secrets.
-
-Use:
-
--   Airflow Connections;
--   environment secrets;
--   HashiCorp Vault;
--   AWS Secrets Manager;
--   GCP Secret Manager;
--   Azure Key Vault;
-
-depending on infrastructure.
-
-Also ensure secrets do not appear accidentally in logs.
-
-------------------------------------------------------------------------
-
-## 20. Make Logging Structured and Useful
-
-Every important task should provide enough information to answer:
-
--   What ran?
--   What input was used?
--   What output was produced?
--   How many records were processed?
--   How long did it take?
--   Why did it fail?
-
-Useful log information might include:
-
-``` text
-dataset=products
-input_records=1000
-valid_records=930
-invalid_records=70
-output_path=/data/processed/products.parquet
-duration_seconds=4.8
-```
-
-Avoid logging entire datasets.
-
-Also avoid meaningless logs such as `Starting...`, `Processing...`, and
-`Done...` without useful execution context.
-
-------------------------------------------------------------------------
-
-## 21. Observability Is Part of Pipeline Design
-
-Logs alone are not enough.
-
-Important pipelines should expose useful operational signals such as:
-
--   task duration;
--   failure rate;
--   retry count;
--   processed record count;
--   data freshness;
--   data volume;
--   pipeline latency.
-
-Alert on meaningful failures.
-
-Avoid alert fatigue by notifying on conditions that actually require
-attention.
-
-The goal is not:
-
-> Tell me everything.
-
-The goal is:
-
-> Tell me when something important is wrong.
-
-------------------------------------------------------------------------
-
-## 22. Test Business Logic Without Airflow
-
-Airflow tests should focus on DAG structure, task wiring, retries, and
-dependency behavior. Core ETL logic should be covered by ordinary unit
-and integration tests in `AIRFLOW_CODING_GUIDELINES.md`.
-
-Do not require an Airflow scheduler just to verify pure transformation
-logic.
-
-------------------------------------------------------------------------
-
-## 23. Test Pipeline Contracts, Not Only Functions
-
-ETL stages have contracts. Airflow should pass artifact references
-between stages, while `AIRFLOW_CODING_GUIDELINES.md` defines the schema,
-units, and transformation rules that those artifacts must satisfy.
-
-Tests should verify task handoff behavior, artifact existence, and
-contract compatibility so one stage cannot silently break another.
-
-------------------------------------------------------------------------
-
-## 24. Design for Partial Failure
-
-Distributed workflows fail.
-
-Assume that:
-
-``` text
-extract succeeds
-validate succeeds
-transform succeeds
-load fails
-```
-
-will eventually happen.
-
-The pipeline should allow the failed `load` task to be retried without
-unnecessarily rerunning earlier stages when their outputs remain valid.
-
-This is another reason to use explicit, persistent artifacts between
-stages.
-
-------------------------------------------------------------------------
-
-## 25. Avoid Hidden Side Effects
-
-A task should make its side effects obvious.
-
-For example:
-
-``` text
-upload_google_sheets
-```
-
-clearly indicates external mutation.
-
-A generic task called:
-
-``` text
-process_data
-```
-
-that unexpectedly writes database records, uploads files, sends email,
-and deletes temporary objects is difficult to reason about and dangerous
-to retry.
-
-Prefer explicit task names and explicit side effects.
-
-------------------------------------------------------------------------
-
-## 26. Use Clear Naming Conventions
-
-Names should communicate intent.
-
-Prefer:
-
-``` text
-fashion_etl
-extract_products
-validate_products
-transform_products
-export_products_csv
-upload_products_google_sheets
-```
-
-Avoid:
-
-``` text
-task1
-task2
-run_data
-do_process
-final_task
-final_v2_fixed
-```
-
-The DAG graph itself should be readable as documentation.
-
-------------------------------------------------------------------------
-
-## 27. Document the Pipeline's Intent, Not the Obvious Code
-
-Documentation should explain:
-
--   Why does this DAG exist?
--   What data does it process?
--   What triggers it?
--   What are its inputs?
--   What are its outputs?
--   What external systems does it touch?
--   What assumptions does it make?
--   What happens on failure?
-
-Avoid documentation that merely repeats code.
-
-Bad:
-
-``` text
-transform_task transforms the data.
-```
-
-Better:
-
-``` text
-Transforms validated raw product records into the canonical
-product schema used by downstream exports and analytics.
-```
-
-------------------------------------------------------------------------
-
-## 28. Version-Control All Workflow Code
-
-DAGs and pipeline code should follow the same engineering discipline as
-application code.
-
-Use:
-
--   Git;
--   branches;
--   pull requests;
--   code review;
--   automated tests;
--   CI. 
-
-Production DAGs should not be manually edited directly on the Airflow
-server.
-
-Deployment should be reproducible.
-
-------------------------------------------------------------------------
-
-## 29. Treat the Metadata Database as Infrastructure
-
-Airflow's metadata database should not become a general-purpose storage
-location for pipeline datasets.
-
-Maintain it through appropriate operational procedures such as:
-
--   database backups;
--   retention policies;
--   XCom cleanup;
--   log retention;
--   Airflow database maintenance;
--   version upgrades.
-
-Pipeline data belongs in the appropriate data storage system, not in
-Airflow's metadata database.
-
-------------------------------------------------------------------------
-
-## 30. Choose Infrastructure According to Workload
-
-Executor choice should reflect deployment scale rather than ideology.
-
-For example:
-
-``` text
-SequentialExecutor
-→ very limited/local use
-
-LocalExecutor
-→ single-machine parallel execution
-
-CeleryExecutor
-→ distributed workers
-
-KubernetesExecutor
-→ dynamically provisioned Kubernetes workloads
-```
-
-`LocalExecutor` is not inherently bad for production. It can be
-reasonable for smaller production environments.
-
-Choose based on:
-
--   workload;
--   availability requirements;
--   operational complexity;
--   scalability requirements;
--   infrastructure;
--   team capability.
-
-Do not introduce distributed infrastructure merely because it appears
-more sophisticated.
-
-------------------------------------------------------------------------
-
-# Core Engineering Principles
-
-1.  DAGs describe orchestration; modules implement computation.
-2.  Keep business logic independent from Airflow.
-3.  Keep tasks focused, explicit, and independently retryable.
-4.  Make every task idempotent.
-5.  Pass artifact references, not datasets.
-6.  Make data dependencies and pipeline contracts explicit.
-7.  Preserve data lineage through clear pipeline stages.
-8.  Validate early and fail clearly.
-9.  Design around logical data intervals, not wall-clock execution time.
-10. Make failures observable and recovery predictable.
-11. Keep configuration and secrets outside application logic.
-12. Test pipeline logic independently from Airflow.
-13. Prefer simple designs over unnecessary orchestration complexity.
-14. Optimize for correctness and recoverability before parallelism.
-15. Treat Airflow as an orchestrator, not as the data platform itself.
-
-# Architectural Principle
-
-A recommended thin-orchestrator architecture is:
-
-``` text
-                   AIRFLOW
-              Orchestration Layer
-                     │
-         ┌───────────┼───────────┐
-         ▼           ▼           ▼
-      Extract     Transform     Load
-       Task         Task         Task
-         │           │           │
-         ▼           ▼           ▼
-    ───────────────────────────────
-             PIPELINE LAYER
-    ───────────────────────────────
-         │           │           │
-    extract.py  transform.py   load.py
-         │           │           │
-         └───────────┼───────────┘
-                     ▼
-               STORAGE LAYER
-                     │
-             ┌───────┼────────┐
-             ▼       ▼        ▼
-            RAW   PROCESSED  EXPORT
-```
-
-The architectural rule is:
-
-> **Airflow owns workflow state.**\
-> **Pipeline code owns data-processing logic.**\
-> **Storage owns data artifacts.**
-
-This separation keeps orchestration thin, business logic independently
-testable, data dependencies explicit, and pipeline execution easier to
-observe, retry, and maintain.
+Important operational signals include task duration, retry count, last
+successful eligible interval, freshness lag, processed/skipped counts, and
+failure reason. Alerts should identify the failed boundary and logical period
+and must not expose secrets.
+
+## 11. Partial Failure and Recovery
+
+Persistent deterministic checkpoints allow a failed downstream boundary to be
+retried without needlessly recreating valid upstream artifacts. For example, a
+failed `load` retry should consume the already validated transformed checkpoint.
+
+Airflow clearing or rerunning a task does not authorize overwriting an
+artifact. Resume, validation, overwrite refusal, and database idempotency remain
+pipeline responsibilities.
+
+## 12. Airflow Test Scope
+
+Airflow tests should verify orchestration behavior only:
+
+- DAGs import without errors or external I/O;
+- task IDs and dependencies match the three runtime boundaries;
+- timezone, schedule, `catchup`, and `max_active_runs` are explicit;
+- interval-to-inclusive-date mapping covers normal and invalid boundaries;
+- retry, timeout, and `cds_api` pool assignments are correct;
+- XCom values remain small control metadata;
+- task wrappers propagate failures;
+- no Airflow dependency leaks into `pipeline/`.
+
+Core pipeline tests remain Airflow-independent and follow `tests/AGENTS.md`.
+
+## Implementation Gate
+
+Before enabling a DAG, confirm all of the following:
+
+- [ ] The graph uses `extract_or_resume → transform_or_resume → load`.
+- [ ] Validation has not been split out of pipeline runtime boundaries.
+- [ ] `Asia/Jakarta` and interval conversion are explicit and tested.
+- [ ] The six-day availability lag is configurable and logged.
+- [ ] The operational DAG uses `catchup=False`.
+- [ ] Historical backfill is explicit and range-controlled.
+- [ ] Extraction uses the `cds_api` pool.
+- [ ] Retry and timeout settings are defined per task.
+- [ ] `run_id` does not affect request or artifact identity.
+- [ ] XCom contains only small control metadata.
+- [ ] DAG parsing performs no external work.
+- [ ] Secrets use approved Airflow facilities.
+- [ ] Airflow-specific tests pass while core tests still run without Airflow.
