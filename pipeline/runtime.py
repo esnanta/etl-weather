@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pipeline.extract import CdsExtractor
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
-from pipeline.load import PostgresDataLoader
+from pipeline.loaders import PostgresDataLoader
 from pipeline.logging import (
     log_metric,
     log_pipeline_header,
