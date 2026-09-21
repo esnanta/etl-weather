@@ -4,6 +4,7 @@ import logging
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -29,7 +30,7 @@ logging.basicConfig(
 )
 
 
-def _format_value(value: object) -> str:
+def _format_value(value: Any) -> str:
     if pd.isna(value):
         return "NaN"
     if isinstance(value, float):
