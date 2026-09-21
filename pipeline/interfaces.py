@@ -20,6 +20,10 @@ class WeatherExtractor(ABC):
 
 class DataStorage(ABC):
     @abstractmethod
+    def exists(self, artifact: DatasetArtifact) -> bool:
+        ...
+
+    @abstractmethod
     def raw_artifact(self, request: WeatherRequest) -> DatasetArtifact:
         ...
 
