@@ -13,7 +13,6 @@ from pipeline.interfaces import DataStorage
 from pipeline.logging import _log_dataframe_preview
 from pipeline.model import (
     DatasetArtifact,
-    LoadedWeatherDataset,
     RawWeatherDataset,
     TransformedWeatherDataset,
     WeatherRequest,
@@ -247,19 +246,6 @@ def load_transformed_parquet(
         dataset=dataframe,
     )
 
-
-def load_raw_dataset(
-    artifact: DatasetArtifact,
-    metadata: RawWeatherDataset,
-) -> LoadedWeatherDataset:
-    """Load a Parquet artifact into a Pandas DataFrame."""
-    logger.info("Loading Parquet artifact:\n%s", artifact.path)
-    dataframe = pd.read_parquet(artifact.path)
-    return LoadedWeatherDataset(
-        request=metadata.request,
-        downloaded_at=metadata.downloaded_at,
-        raw_data=dataframe,
-    )
 
 
 class LocalDataStorage(DataStorage):
