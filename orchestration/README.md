@@ -1,172 +1,201 @@
-# Data Orchestration with Apache Airflow
+# ERA5-Land Orchestration with Apache Airflow
 
-This project uses Apache Airflow to orchestrate the ETL (Extract, Transform, Load) pipeline for fashion data. The business logic resides within the `pipeline/` directory, and Airflow acts as the orchestrator.
+Apache Airflow orchestrates the existing CDS ERA5-Land pipeline. Scientific
+transformation, validation, deterministic artifacts, provenance, and
+PostgreSQL persistence remain in `pipeline/`.
 
-**Note:** All commands should be run from the root of the project directory.
+Run all commands from the repository root unless a command says otherwise.
 
 ## Prerequisites
 
 - Python 3.12
-- A virtual environment tool (e.g., `venv`)
+- PostgreSQL for canonical climate observations
+- CDS API credentials
+- A single host or shared `data/` filesystem visible to every task worker
 
-## Setup and Installation
+The initial local configuration uses Airflow 3.3.2, SQLite metadata, and the
+`LocalExecutor`. SQLite is suitable for local setup and controlled development.
+Before increasing task concurrency for a full historical run, use a supported
+external Airflow metadata database and revalidate the deployment.
 
-1.  **Create and activate a Python virtual environment:**
+## Installation
 
-    ```bash
-    python3 -m venv myvenv
-    source myvenv/bin/activate
-    ```
-
-2.  **Install Apache Airflow:**
-
-    ```bash
-    AIRFLOW_VERSION=3.2.2
-    PYTHON_VERSION=3.12
-    CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-    pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
-    ```
-
-3.  **Initialize Airflow:**
-
-    Run the activation script to set up the environment variables, then initialize the database.
-
-    ```bash
-    source activate-airflow.sh
-    airflow db migrate
-    ```
-
-4.  **Configure Airflow:**
-
-    In `orchestration/airflow.cfg`, it's recommended to disable the example DAGs:
-
-    ```ini
-    load_examples = False
-    ```
-
-## Running the Orchestration
-
-For local development, the easiest way to run Airflow is using the `standalone` command, which bundles all necessary services into a single process.
+Create a dedicated local environment:
 
 ```bash
-source activate-airflow.sh
+python3.12 -m venv .venv-airflow
+source .venv-airflow/bin/activate
+```
+
+Install Airflow with its matching official Python 3.12 constraints, then
+install the pipeline dependencies and verify the resolved environment:
+
+```bash
+AIRFLOW_VERSION=3.3.2
+PYTHON_VERSION=3.12
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+pip install -r requirements-airflow.txt --constraint "${CONSTRAINT_URL}"
+pip install -r requirements.txt
+pip check
+```
+
+The separate requirement files keep the core pipeline installable without
+Airflow. Both sets are installed into the same local environment for DAG task
+execution.
+
+## Environment Activation
+
+Activate the Python environment and repository-specific Airflow settings:
+
+```bash
+source .venv-airflow/bin/activate
+source orchestration/activate.sh
+```
+
+Provide `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline `POSTGRES_*` values through
+the environment or the deployment's approved secrets mechanism. Do not put
+secret values in DAG parameters, source files, XCom, or logs.
+
+For local development, values may be exported from the untracked `.env` file
+before starting Airflow:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+## Initialize Airflow
+
+Initialize or migrate the local metadata database and create the CDS pool:
+
+```bash
+airflow db migrate
+airflow pools set cds_api 1 "Copernicus CDS API requests"
+```
+
+The `cds_api` pool starts with one slot so historical mapping does not create
+concurrent CDS downloads.
+
+## Start Airflow
+
+For local development:
+
+```bash
 airflow standalone
 ```
 
-You can now access the Airflow UI at `http://localhost:8080`. To stop all services, press `Ctrl+C` in the terminal.
+Open `http://localhost:8080`. Use the credentials displayed by the standalone
+command or written by the configured Airflow authentication manager. Stop the
+local services with `Ctrl+C`.
 
-### Alternative: Running Services Individually
+## Directory Structure
 
-If you need more granular control, you can start the services in separate terminals.
-
-1.  **Start the Airflow Services:**
-
-    Open three separate terminals. In each, activate the environment and start the corresponding service:
-
-    *   **Terminal 1: Scheduler**
-        ```bash
-        source activate-airflow.sh
-        airflow scheduler
-        ```
-
-    *   **Terminal 2: Webserver**
-        ```bash
-        source activate-airflow.sh
-        airflow webserver
-        ```
-
-    *   **Terminal 3: DAG Processor**
-        ```bash
-        source activate-airflow.sh
-        airflow dag-processor
-        ```
-
-2.  **Access the Airflow UI:**
-
-    You can now access the Airflow UI at `http://localhost:8080`.
-
-## Project Structure
-
+```text
+orchestration/
+├── dags/
+│   └── cds_era5_land_historical_backfill.py
+├── docs/
+│   └── IMPLEMENTATION_PLAN.md
+├── logs/                    # generated; ignored by Git
+├── tasks/
+│   └── era5_land.py
+├── activate.sh
+├── airflow.cfg
+├── airflow.db               # generated; ignored by Git
+└── README.md
 ```
-etl-fashion-data-engineer/
-├── orchestration/
-│   ├── dags/
-│   ├── logs/
-│   ├── tasks/
-│   ├── airflow.cfg
-│   └── airflow.db
-└── ...
+
+## Historical Backfill DAG
+
+DAG ID:
+
+```text
+cds_era5_land_historical_backfill
 ```
+
+The DAG has no schedule. A user must trigger it with an explicit inclusive
+period. For example:
+
+```bash
+airflow dags trigger cds_era5_land_historical_backfill \
+  --conf '{"start_date":"2016-01-01","end_date":"2025-12-31"}'
+```
+
+An alternative period can be supplied without changing source code:
+
+```bash
+airflow dags trigger cds_era5_land_historical_backfill \
+  --conf '{"start_date":"2014-01-01","end_date":"2024-12-31"}'
+```
+
+`2014-01-01` through `2024-12-31` spans eleven complete calendar years and
+therefore produces 132 monthly partitions. Airflow processes the exact range
+provided by the user and does not reinterpret it as a rolling ten-year period.
+
+The range is split into deterministic monthly requests. Ten complete calendar
+years produce 120 mapped partitions. The DAG limits itself to two active task
+instances initially, while the `cds_api` pool permits only one extraction.
 
 ## Task Flow
 
-The ETL process is broken down into a series of tasks orchestrated by Airflow.
-
 ```text
-                     fashion_etl.py
-                            │
-                            ▼
-                     Dag Processor
-                            │
-                            ▼
-                    DAG Definition
-                            │
-           ┌────────────┬───┴───┬────────────┐
-           │            │       │            │
-           ▼            ▼       ▼            ▼
-     Extract Task   Validate Task   Transform Task
-           │            │       │            │
-           └────────────┼───────┼────────────┘
-                        │
-                        ▼
-                      Scheduler
-                        │
-                        ▼
-                   DAG Run #{run_id}
-                        │
-           ┌────────────┬───┴───┬────────────┐
-           │            │       │            │
-           ▼            ▼       ▼            │
-      Extract TI     Validate TI     Transform TI
-           │            │       │            │
-           └────────────┼───────┼────────────┘
-                        │
-                        ▼
-                  LocalExecutor
-                        │
-           ┌────────────┬───┴───┬────────────┐
-           │            │       │            │
-           ▼            ▼       ▼            ▼
-     scrape_data()  validate()    transform()
+explicit start_date and end_date
+               |
+               v
+    plan_monthly_requests
+               |
+               v
+ extract_or_resume [monthly]
+               |
+               v
+transform_or_resume [monthly]
+               |
+               v
+        load [monthly]
 ```
 
-### Task Principles
+Validation is not a separate Airflow task. RAW validation remains inside
+`extract_or_resume`, and transformed validation remains inside
+`transform_or_resume` and checkpoint rehydration.
 
--   **Airflow as Orchestrator:** Airflow is only responsible for triggering and monitoring tasks.
--   **Thin DAGs:** The DAG definitions are lightweight and focus on task dependencies.
--   **Granular and Atomic Tasks:** Each task has a single, well-defined responsibility.
--   **Artifact-based Communication:** Tasks communicate through artifacts (files), not in-memory data.
+Tasks exchange only small request and artifact metadata through XCom. NetCDF,
+Parquet, xarray, and Pandas objects remain in deterministic artifacts or task
+process memory.
 
-### Task Breakdown
+## Safe Retry and Resume
 
-| Task         | Input         | Output        |
-|--------------|---------------|---------------|
-| Extract      | Website       | artifact.path |
-| Validate     | artifact.path | artifact.path |
-| Transform    | artifact.path | artifact.path |
-| Export CSV   | artifact.path | artifact.path |
-| Upload to GS | artifact.path | status (bool) |
+- A valid existing RAW NetCDF checkpoint is resumed and validated.
+- A valid existing transformed Parquet checkpoint is resumed and validated.
+- PostgreSQL loading remains idempotent.
+- Clearing a failed task does not authorize artifact overwrite.
+- `run_id` and task attempts do not affect request or artifact identity.
 
-## Cleanup
+Before running the complete historical range, run and rerun one month, then
+test three consecutive months. Check storage, row counts, provenance, duration,
+and database behavior before triggering all 120 partitions.
 
-To stop all Airflow processes:
+## Tests
+
+Core and Airflow-neutral orchestration helpers:
 
 ```bash
-pkill -f "airflow"
+python -m pytest tests/unit tests/airflow_orchestration/test_tasks.py -q
 ```
 
-Reset the database:
+Airflow DAG parsing and policy:
+
 ```bash
-pkill -f "airflow"
-rm -f orchestration/airflow.db
+source orchestration/activate.sh
+python -m pytest tests/airflow_orchestration -q
 ```
+
+## Local State
+
+`orchestration/logs/`, `orchestration/airflow.db`, PID files, and generated
+authentication files are local runtime state and are ignored by Git.
+
+Do not delete the metadata database while Airflow processes are running. A
+reset is a deliberate local-development operation and is not part of the
+normal retry or backfill procedure.

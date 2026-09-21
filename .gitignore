@@ -2,6 +2,7 @@
 
 # Python Virtual Environment
 /myvenv
+/.venv-airflow
 
 # Environment variables
 .env
@@ -61,5 +62,10 @@ coverage.xml
 # Log files
 *.log
 logs/
+/orchestration/logs/
+/orchestration/airflow.db
+/orchestration/airflow.db-*
+/orchestration/*.pid
+/orchestration/simple_auth_manager_passwords.json.generated
 /data/
 /Copernicus_Weather_Pipeline_Guide.ipynb

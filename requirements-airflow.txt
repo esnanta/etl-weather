@@ -1,0 +1,2 @@
+# Install this file with the matching official Apache Airflow constraints.
+apache-airflow==3.3.2

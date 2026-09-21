@@ -11,6 +11,28 @@ It follows the architecture and engineering contracts in
 Airflow must orchestrate the existing pipeline without replacing its scientific
 transformation, validation, checkpoint, provenance, or persistence behavior.
 
+## Current Implementation Status
+
+Implemented and locally verified on 2026-09-21:
+
+- JSON-safe request specifications and checkpoint-backed runtime entrypoints;
+- 105 core unit tests after the runtime-boundary change;
+- manual monthly historical backfill DAG and thin task wrappers;
+- Airflow 3.3.2 dependency boundary and local activation/configuration;
+- DagBag, task graph, retry, timeout, pool, interval, and ten-year mapping tests;
+- 119 tests passed in the combined Airflow/pipeline environment, with two
+  PostgreSQL integration tests skipped because no isolated test database was
+  configured;
+- local metadata migration and `cds_api` pool command verified without running
+  an external CDS request or historical backfill.
+
+Still pending:
+
+- execution against a configured isolated PostgreSQL integration database;
+- one-month live CDS smoke test and same-month idempotent rerun;
+- three-month rollout, capacity review, and selected full-range backfill;
+- the later recurring operational DAG.
+
 ## Target Structure
 
 The initial orchestration layout is:

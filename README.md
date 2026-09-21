@@ -2,7 +2,7 @@
 
 ETL pipeline for downloading Copernicus Climate Data Store (CDS) ERA5-Land hourly data, transforming it into UTC+7 daily climate observations, storing deterministic NetCDF and Parquet artifacts, and loading the results idempotently into PostgreSQL.
 
-The pipeline runs independently from Apache Airflow. Airflow orchestration may be added later without moving scientific transformation logic out of `pipeline/`.
+The pipeline runs independently from Apache Airflow and can also be orchestrated through the historical backfill DAG in `orchestration/`. Airflow does not move scientific transformation logic out of `pipeline/`.
 
 ## Active Dataset
 
@@ -62,8 +62,14 @@ This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for
 
 ```text
 etl-weather/
-├── dags/
 ├── docs/
+├── orchestration/
+│   ├── dags/
+│   ├── docs/
+│   ├── tasks/
+│   ├── activate.sh
+│   ├── airflow.cfg
+│   └── README.md
 ├── pipeline/
 │   ├── contracts/
 │   ├── database/
@@ -80,6 +86,7 @@ etl-weather/
 │   └── runtime.py
 ├── scripts/
 ├── tests/
+├── requirements-airflow.txt
 ├── requirements.txt
 └── README.md
 ```
@@ -91,7 +98,7 @@ The `pipeline/` package is organized by responsibility: provider/request contrac
 ```text
                               +-------------------------+
                               | scripts/run_pipeline_*  |
-                              |     / future Airflow    |
+                              | / Airflow task wrappers |
                               +------------+------------+
                                            |
                                            v
@@ -168,8 +175,9 @@ model.py                -> pipeline data models and artifact metadata
 interfaces.py           -> infrastructure boundaries used by runtime.py
 
 Key boundary:
-Airflow may orchestrate these same runtime stage boundaries later, but scientific
-transformation, storage, validation, and persistence remain inside pipeline/.
+Airflow orchestrates these same checkpoint-backed runtime stage boundaries, but
+scientific transformation, storage, validation, and persistence remain inside
+pipeline/.
 ```
 
 ## Environment Setup
@@ -206,6 +214,13 @@ python scripts/run_pipeline_cds.py
 ```
 
 The dataset, period, variables, and bounding box for this entrypoint are defined explicitly in `scripts/config.py`. Long periods are split into monthly requests by the pipeline runtime.
+
+## Running with Apache Airflow
+
+The manually triggered historical backfill DAG accepts an explicit inclusive
+date range and maps it into deterministic monthly partitions. Installation,
+configuration, task flow, and safe rollout instructions are documented in
+[`orchestration/README.md`](./orchestration/README.md).
 
 ## Data Layout
 
