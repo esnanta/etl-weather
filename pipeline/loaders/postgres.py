@@ -109,7 +109,9 @@ def upsert_daily_climate_metadata(
     )
     daily_climate_id = result.scalar()
     if not isinstance(daily_climate_id, int):
-        raise RuntimeError("Failed to retrieve integer daily climate id after metadata upsert.")
+        raise RuntimeError(
+            "Failed to retrieve integer daily climate id after metadata upsert."
+        )
 
     log_metric(
         "Daily climate metadata upsert",
