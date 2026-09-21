@@ -23,7 +23,7 @@ from pipeline.storage import (
     calculate_file_sha256,
     read_parquet_provenance,
 )
-from pipeline.utils import build_request_key, build_variable_signature
+from pipeline.request import build_request_key, build_variable_signature
 
 logger = logging.getLogger(__name__)
 
