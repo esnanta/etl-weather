@@ -65,11 +65,26 @@ etl-weather/
 ├── dags/
 ├── docs/
 ├── pipeline/
+│   ├── contracts/
+│   ├── database/
+│   ├── extraction/
+│   ├── loaders/
+│   ├── providers/
+│   ├── repositories/
+│   ├── storage/
+│   ├── transformation/
+│   ├── validation/
+│   ├── interfaces.py
+│   ├── model.py
+│   ├── request.py
+│   └── runtime.py
 ├── scripts/
 ├── tests/
 ├── requirements.txt
 └── README.md
 ```
+
+The `pipeline/` package is organized by responsibility: provider/request contracts, extraction, validation, scientific transformation, artifact storage, PostgreSQL persistence, and read-only repository access. `runtime.py` is the composition/orchestration layer and remains independent from Airflow.
 
 ## Environment Setup
 
