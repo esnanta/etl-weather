@@ -11,6 +11,7 @@ import xarray as xr
 
 import pipeline.extraction.cds as cds_extraction
 from pipeline.extraction.cds import CdsExtractor
+from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
 build_cds_request_payload = getattr(cds_extraction, "_build_cds_request_payload")
 build_era5_land_retrieval_request = getattr(
@@ -19,7 +20,6 @@ build_era5_land_retrieval_request = getattr(
 )
 format_context_period = getattr(cds_extraction, "_format_context_period")
 retrieval_chunk_purpose = getattr(cds_extraction, "_retrieval_chunk_purpose")
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
 
 def _request(
