@@ -27,7 +27,7 @@ from pipeline.storage import (
     artifact_path_for_metadata,
 )
 from pipeline.transform import DefaultDataTransformer
-from pipeline.utils import build_request, split_request_by_month, validate_request
+from pipeline.request import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
 
 logger = logging.getLogger(__name__)
