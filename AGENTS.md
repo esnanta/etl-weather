@@ -45,14 +45,16 @@ Core rule:
 
 Keep in `pipeline/`:
 
-- extraction;
-- validation;
-- scientific transformation;
-- unit conversion;
-- artifact storage;
-- checkpoint/resume;
-- database persistence/idempotency;
-- controlled PostgreSQL-to-in-memory modelling access.
+- `extraction/` for provider extraction;
+- `validation/` for RAW/transformed validation;
+- `transformation/` for scientific transformation and unit conversion;
+- `contracts/` for shared scientific constants/contracts;
+- `storage/` for deterministic artifacts and local I/O;
+- `loaders/` for database persistence/idempotency;
+- `database/` for database configuration and schema bootstrap;
+- `repositories/` for controlled read-only data access;
+- `request.py` for request validation, normalization, splitting, and identity;
+- `runtime.py` for ETL orchestration/composition only.
 
 Keep in future `dags/`:
 
