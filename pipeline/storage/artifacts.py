@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from pipeline.model import DataLayer, DatasetArtifact, WeatherRequest
-from pipeline.utils import build_variable_signature, format_request_period
+from pipeline.request import build_variable_signature, format_request_period
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent.parent
 DATA_DIRECTORY = PROJECT_DIRECTORY / "data"
