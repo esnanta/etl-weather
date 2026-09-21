@@ -1,3 +1,7 @@
+from typing import cast
+
+from sqlalchemy.engine import Engine
+
 from pipeline.database import (
     DatabaseConfig,
     create_daily_climate_detail_table,
@@ -47,7 +51,7 @@ class _Engine:
 def test_create_schema_uses_canonical_climate_schema() -> None:
     engine = _Engine()
 
-    create_schema(engine, _config())
+    create_schema(cast(Engine, cast(object, engine)), _config())
 
     assert engine.connection.statements == [
         "CREATE SCHEMA IF NOT EXISTS climate_data"
@@ -57,7 +61,7 @@ def test_create_schema_uses_canonical_climate_schema() -> None:
 def test_daily_climate_table_protects_request_identity_and_provenance() -> None:
     engine = _Engine()
 
-    create_daily_climate_table(engine, _config())
+    create_daily_climate_table(cast(Engine, cast(object, engine)), _config())
 
     sql = "\n".join(engine.connection.statements)
     assert "CREATE TYPE climate_data.data_source_enum" in sql
@@ -78,7 +82,7 @@ def test_daily_climate_table_protects_request_identity_and_provenance() -> None:
 def test_daily_climate_detail_table_protects_fk_and_observation_identity() -> None:
     engine = _Engine()
 
-    create_daily_climate_detail_table(engine, _config())
+    create_daily_climate_detail_table(cast(Engine, cast(object, engine)), _config())
 
     sql = "\n".join(engine.connection.statements)
     assert "CREATE TABLE IF NOT EXISTS climate_data.daily_climate_detail" in sql

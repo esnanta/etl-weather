@@ -184,7 +184,7 @@ def test_source_metadata_is_not_propagated_to_transformed_dataset() -> None:
     assert "number" not in transformed.columns
     assert "surface" not in transformed.columns
     assert "expver" not in transformed.columns
-    assert set(["tp", "t2m", "d2m", "swvl1", "ssrd"]).issubset(transformed.columns)
+    assert {"tp", "t2m", "d2m", "swvl1", "ssrd"}.issubset(transformed.columns)
 
 
 def test_era5_land_transform_rejects_missing_requested_column() -> None:

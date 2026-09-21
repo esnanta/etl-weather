@@ -1,15 +1,23 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
+
+from sqlalchemy.engine import Connection
 
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
+import pipeline.loaders.postgres as postgres_loader
 from pipeline.loaders.postgres import (
-    _prepare_observation_dataframe,
     find_unchanged_daily_climate_partition,
     load_to_postgresql,
     upsert_daily_climate_metadata,
     upsert_daily_climate_observations,
+)
+
+prepare_observation_dataframe = getattr(
+    postgres_loader,
+    "_prepare_observation_dataframe",
 )
 from pipeline.model import (
     BoundingBox,
@@ -87,7 +95,7 @@ def test_database_config_uses_daily_climate_table_names() -> None:
 
 
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
-    dataframe, rename_map = _prepare_observation_dataframe(
+    dataframe, rename_map = prepare_observation_dataframe(
         _dataset(), daily_climate_id=7
     )
 
@@ -109,7 +117,7 @@ def test_prepare_observation_dataframe_preserves_missing_as_null() -> None:
     dataset = _dataset()
     dataset.dataset.loc[0, "tp"] = float("nan")
 
-    dataframe, _ = _prepare_observation_dataframe(dataset, daily_climate_id=7)
+    dataframe, _ = prepare_observation_dataframe(dataset, daily_climate_id=7)
 
     assert dataframe.loc[0, "tp_daily_total_mm"] is None
 
@@ -222,21 +230,23 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     daily_climate_id = upsert_daily_climate_metadata(
         _dataset(),
         artifact,
-        connection,
+        cast(Connection, cast(object, connection)),
         _config(),
     )
 
     assert daily_climate_id == 42
     assert len(connection.statements) == 1
-    sql = connection.statements[0]
-    assert "INSERT INTO climate_data.daily_climate" in sql
-    assert "ON CONFLICT (request_key)" in sql
-    assert "downloaded_at" in sql
-    assert "transformed_artifact_path" in sql
-    assert "transformed_sha256" in sql
-    assert "RETURNING id" in sql
+    statement_text = connection.statements[0]
+    assert "INSERT INTO" in statement_text
+    assert "climate_data.daily_climate" in statement_text
+    assert "ON CONFLICT (request_key)" in statement_text
+    assert "downloaded_at" in statement_text
+    assert "transformed_artifact_path" in statement_text
+    assert "transformed_sha256" in statement_text
+    assert "RETURNING id" in statement_text
 
     params = connection.params[0]
+    assert isinstance(params, dict)
     assert params["request_key"]
     assert params["downloaded_at"] == datetime(
         2022, 1, 2, 3, 4, 5, tzinfo=UTC
@@ -261,7 +271,7 @@ def test_unchanged_partition_matches_provenance_and_observation_count() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 
@@ -284,7 +294,7 @@ def test_partition_is_not_skipped_when_checksum_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="new-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 
@@ -307,7 +317,7 @@ def test_partition_is_not_skipped_when_artifact_path_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 
@@ -330,7 +340,7 @@ def test_partition_is_not_skipped_when_observation_count_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 
@@ -379,18 +389,20 @@ def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None
     rows_processed = upsert_daily_climate_observations(
         _dataset(),
         daily_climate_id=42,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 
     assert rows_processed == 1
     assert len(connection.statements) == 1
-    sql = connection.statements[0]
-    assert "INSERT INTO climate_data.daily_climate_detail" in sql
+    statement_text = connection.statements[0]
+    assert "INSERT INTO" in statement_text
+    assert "climate_data.daily_climate_detail" in statement_text
     assert (
-        "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)" in sql
+        "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)"
+        in statement_text
     )
-    assert "DO UPDATE SET" in sql
+    assert "DO UPDATE SET" in statement_text
 
     records = connection.params[0]
     assert isinstance(records, list)
@@ -412,7 +424,7 @@ def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> N
     rows_processed = upsert_daily_climate_observations(
         empty_dataset,
         daily_climate_id=42,
-        connection=connection,
+        connection=cast(Connection, cast(object, connection)),
         config=_config(),
     )
 

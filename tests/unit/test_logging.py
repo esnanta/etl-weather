@@ -2,17 +2,19 @@ import logging
 
 import pandas as pd
 
+import pipeline.logging as pipeline_logging
 from pipeline.logging import (
-    _build_key_value_block,
-    _log_dataframe_preview,
     log_metric,
     log_section_completed,
     log_section_start,
 )
 
+build_key_value_block = getattr(pipeline_logging, "_build_key_value_block")
+log_dataframe_preview = getattr(pipeline_logging, "_log_dataframe_preview")
+
 
 def test_key_value_block_has_no_ascii_table_borders() -> None:
-    block = _build_key_value_block(
+    block = build_key_value_block(
         {
             "dataset": "reanalysis-era5-land",
             "variables": ["tp", "t2m"],
@@ -51,10 +53,10 @@ def test_dataframe_preview_is_hidden_at_info_and_available_at_debug(caplog) -> N
     dataframe = pd.DataFrame({"value": [1]})
 
     with caplog.at_level(logging.INFO, logger="pipeline.logging"):
-        _log_dataframe_preview(dataframe)
+        log_dataframe_preview(dataframe)
     assert "[PREVIEW]" not in caplog.text
 
     caplog.clear()
     with caplog.at_level(logging.DEBUG, logger="pipeline.logging"):
-        _log_dataframe_preview(dataframe)
+        log_dataframe_preview(dataframe)
     assert "[PREVIEW]" in caplog.text

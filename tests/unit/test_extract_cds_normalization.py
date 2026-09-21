@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from pipeline.extraction.cds import _normalize_cds_dataset
+import pipeline.extraction.cds as cds_extraction
+
+normalize_cds_dataset = getattr(cds_extraction, "_normalize_cds_dataset")
 
 
 def test_normalize_cds_dataset_renames_time_coordinate() -> None:
@@ -15,7 +17,7 @@ def test_normalize_cds_dataset_renames_time_coordinate() -> None:
         },
     )
 
-    normalized = _normalize_cds_dataset(dataset)
+    normalized = normalize_cds_dataset(dataset)
     assert "valid_time" in normalized.coords
     assert "time" not in normalized.coords
     assert "tp" in normalized.data_vars
@@ -36,7 +38,7 @@ def test_normalize_cds_dataset_converts_api_names_back_to_provider_codes() -> No
         },
     )
 
-    normalized = _normalize_cds_dataset(dataset)
+    normalized = normalize_cds_dataset(dataset)
 
     for name in ("tp", "t2m", "swvl1", "ssrd", "d2m"):
         assert name in normalized.data_vars

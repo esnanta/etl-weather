@@ -217,10 +217,11 @@ def test_transformed_grid_membership_remains_stable_with_one_day_missing_value()
 
     validate_transformed_dataset(_transformed_dataset(dataframe, request))
 
-    grid_counts = dataframe.groupby("valid_time_local")[[
-        "latitude",
-        "longitude",
-    ]].size()
+    grid_counts = (
+        dataframe.loc[:, ["valid_time_local", "latitude", "longitude"]]
+        .groupby("valid_time_local")
+        .size()
+    )
     assert grid_counts.tolist() == [2, 2, 2]
     assert dataframe["t2m"].isna().sum() == 1
 
