@@ -21,11 +21,7 @@ from pipeline.model import (
     TransformedWeatherDataset,
     WeatherRequest,
 )
-from pipeline.storage import (
-    LocalDataStorage,
-    artifact_exists,
-    artifact_path_for_metadata,
-)
+from pipeline.storage import LocalDataStorage
 from pipeline.transformation import DefaultDataTransformer
 from pipeline.request import build_request, split_request_by_month, validate_request
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
@@ -54,7 +50,7 @@ class WeatherPipeline:
     ) -> tuple[RawWeatherDataset, DatasetArtifact, LoadedWeatherDataset]:
         """Extract a RAW partition once, or resume from its immutable checkpoint."""
         artifact = self.storage.raw_artifact(request)
-        resumed = artifact_exists(artifact)
+        resumed = self.storage.exists(artifact)
 
         if resumed:
             raw_dataset = self.storage.load_raw(artifact, request)
@@ -74,7 +70,7 @@ class WeatherPipeline:
             "RAW checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": artifact_path_for_metadata(artifact.path),
+                "path": artifact.path.as_posix(),
             },
         )
         return raw_dataset, artifact, loaded_dataset
@@ -87,7 +83,7 @@ class WeatherPipeline:
         """Transform once, or resume from the deterministic Parquet checkpoint."""
         request = loaded_dataset.request
         artifact = self.storage.transformed_artifact(request)
-        resumed = artifact_exists(artifact)
+        resumed = self.storage.exists(artifact)
 
         if resumed:
             transformed_dataset = self.storage.load_transformed(
@@ -111,7 +107,7 @@ class WeatherPipeline:
             "Transformed checkpoint",
             {
                 "status": "resumed" if resumed else "created",
-                "path": artifact_path_for_metadata(artifact.path),
+                "path": artifact.path.as_posix(),
             },
         )
         return transformed_dataset, artifact
