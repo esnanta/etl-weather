@@ -16,7 +16,7 @@ from pipeline.repositories.daily_climate import (
 )
 from pipeline.model import DataSource
 from scripts.config import (
-    ACEH_LAND_DOMINANT_BBOX,
+    ACEH_BBOX,
     CDS_DATASET,
     CDS_END_DATE,
     CDS_START_DATE,
@@ -73,7 +73,7 @@ def main() -> None:
         dataset_name=CDS_DATASET,
         start_date=date.fromisoformat(CDS_START_DATE),
         end_date=date.fromisoformat(CDS_END_DATE),
-        bbox=ACEH_LAND_DOMINANT_BBOX,
+        bbox=ACEH_BBOX,
     )
     dataframe = load_daily_climate_for_modelling(selection)
     print(_build_dataframe_ascii_table(dataframe, rows=10))
