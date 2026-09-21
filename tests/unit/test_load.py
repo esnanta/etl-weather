@@ -1,5 +1,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
+
+from sqlalchemy.engine import Connection
 
 import pandas as pd
 
@@ -222,7 +225,7 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     daily_climate_id = upsert_daily_climate_metadata(
         _dataset(),
         artifact,
-        connection,
+        cast(Connection, connection),
         _config(),
     )
 
@@ -261,7 +264,7 @@ def test_unchanged_partition_matches_provenance_and_observation_count() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
@@ -284,7 +287,7 @@ def test_partition_is_not_skipped_when_checksum_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="new-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
@@ -307,7 +310,7 @@ def test_partition_is_not_skipped_when_artifact_path_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
@@ -330,7 +333,7 @@ def test_partition_is_not_skipped_when_observation_count_changes() -> None:
         transformed_artifact_path="data/transformed/daily.parquet",
         transformed_sha256="transformed-hash",
         expected_rows=1,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
@@ -379,7 +382,7 @@ def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None
     rows_processed = upsert_daily_climate_observations(
         _dataset(),
         daily_climate_id=42,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
@@ -412,7 +415,7 @@ def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> N
     rows_processed = upsert_daily_climate_observations(
         empty_dataset,
         daily_climate_id=42,
-        connection=connection,
+        connection=cast(Connection, connection),
         config=_config(),
     )
 
