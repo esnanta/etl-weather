@@ -7,12 +7,17 @@ from sqlalchemy.engine import Connection
 import pandas as pd
 
 from pipeline.database import DatabaseConfig
+import pipeline.loaders.postgres as postgres_loader
 from pipeline.loaders.postgres import (
-    _prepare_observation_dataframe,
     find_unchanged_daily_climate_partition,
     load_to_postgresql,
     upsert_daily_climate_metadata,
     upsert_daily_climate_observations,
+)
+
+prepare_observation_dataframe = getattr(
+    postgres_loader,
+    "_prepare_observation_dataframe",
 )
 from pipeline.model import (
     BoundingBox,
@@ -90,7 +95,7 @@ def test_database_config_uses_daily_climate_table_names() -> None:
 
 
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
-    dataframe, rename_map = _prepare_observation_dataframe(
+    dataframe, rename_map = prepare_observation_dataframe(
         _dataset(), daily_climate_id=7
     )
 
@@ -112,7 +117,7 @@ def test_prepare_observation_dataframe_preserves_missing_as_null() -> None:
     dataset = _dataset()
     dataset.dataset.loc[0, "tp"] = float("nan")
 
-    dataframe, _ = _prepare_observation_dataframe(dataset, daily_climate_id=7)
+    dataframe, _ = prepare_observation_dataframe(dataset, daily_climate_id=7)
 
     assert dataframe.loc[0, "tp_daily_total_mm"] is None
 
