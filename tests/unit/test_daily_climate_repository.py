@@ -5,6 +5,8 @@ import pytest
 from sqlalchemy import create_engine
 
 import pipeline.repositories.daily_climate as daily_climate_repository
+from pipeline.database import DatabaseConfig
+from pipeline.model import BoundingBox, DataSource
 from pipeline.repositories.daily_climate import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,
@@ -16,8 +18,6 @@ build_modelling_statement = getattr(
     daily_climate_repository,
     "_build_modelling_statement",
 )
-from pipeline.database import DatabaseConfig
-from pipeline.model import BoundingBox, DataSource
 
 
 def _config() -> DatabaseConfig:
