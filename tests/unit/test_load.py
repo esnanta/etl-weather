@@ -292,6 +292,29 @@ def test_partition_is_not_skipped_when_checksum_changes() -> None:
     assert len(connection.statements) == 1
 
 
+def test_partition_is_not_skipped_when_artifact_path_changes() -> None:
+    connection = _PartitionLookupConnection(
+        metadata={
+            "id": 42,
+            "transformed_artifact_path": "data/transformed/old.parquet",
+            "transformed_sha256": "transformed-hash",
+        },
+        database_rows=1,
+    )
+
+    result = find_unchanged_daily_climate_partition(
+        request_key="request-key",
+        transformed_artifact_path="data/transformed/daily.parquet",
+        transformed_sha256="transformed-hash",
+        expected_rows=1,
+        connection=connection,
+        config=_config(),
+    )
+
+    assert result is None
+    assert len(connection.statements) == 1
+
+
 def test_partition_is_not_skipped_when_observation_count_changes() -> None:
     connection = _PartitionLookupConnection(
         metadata={
