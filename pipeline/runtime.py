@@ -158,9 +158,7 @@ class WeatherPipeline:
 def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
     """Build the default pipeline for a preselected source dataset."""
     if request.source is not DataSource.CDS:
-        raise ValueError(
-            f"Unsupported source for runtime pipeline: {request.source.value}"
-        )
+        raise ValueError("Unsupported source for runtime pipeline.")
     extractor = CdsExtractor()
 
     return WeatherPipeline(
