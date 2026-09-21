@@ -185,9 +185,10 @@ class _Transformer(DataTransformer):
 
     def transform(
         self,
-        loaded_dataset: LoadedWeatherDataset,
+        raw_dataset: LoadedWeatherDataset,
     ) -> TransformedWeatherDataset:
         self.calls += 1
+        assert isinstance(raw_dataset, LoadedWeatherDataset)
         return self.transformed_dataset
 
 
