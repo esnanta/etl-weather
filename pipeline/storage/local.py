@@ -251,6 +251,9 @@ def load_transformed_parquet(
 class LocalDataStorage(DataStorage):
     """Local filesystem artifact storage, independent from Airflow."""
 
+    def exists(self, artifact: DatasetArtifact) -> bool:
+        return artifact_exists(artifact)
+
     def raw_artifact(self, request: WeatherRequest) -> DatasetArtifact:
         return raw_artifact_for_request(request)
 
