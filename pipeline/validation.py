@@ -14,7 +14,7 @@ from pipeline.transform import (
     LOCAL_UTC_OFFSET_HOURS,
     TransformedWeatherDataset,
 )
-from pipeline.utils import get_source_dataset_profile
+from pipeline.providers.cds import get_source_dataset_profile
 
 logger = logging.getLogger(__name__)
 
