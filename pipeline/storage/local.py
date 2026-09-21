@@ -191,7 +191,7 @@ def save_transformed_parquet(
         downloaded_at=downloaded_at,
         transformed_at=transformed_at,
     )
-    table = pa.Table.from_pandas(df, preserve_index=False)
+    table = pa.Table.from_pandas(df=df, preserve_index=False)
     schema_metadata = dict(table.schema.metadata or {})
     schema_metadata.update(
         {
