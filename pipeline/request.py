@@ -4,7 +4,7 @@ import hashlib
 import json
 from calendar import monthrange
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from pipeline.model import DataSource, WeatherRequest
 from pipeline.providers.cds import get_source_dataset_profile
@@ -76,6 +76,11 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
     )
 
 
+def _next_day(value: date) -> date:
+    """Return the calendar day immediately after value."""
+    return date.fromordinal(value.toordinal() + 1)
+
+
 def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
     start_date = datetime.strptime(request.start_date, "%Y-%m-%d").date()
     end_date = datetime.strptime(request.end_date, "%Y-%m-%d").date()
@@ -92,7 +97,7 @@ def split_request_by_month(request: WeatherRequest) -> list[WeatherRequest]:
                 end_date=period_end.isoformat(),
             )
         )
-        current_start = period_end + timedelta(days=1)
+        current_start = _next_day(period_end)
     return requests
 
 
@@ -113,7 +118,7 @@ def split_request_by_week(request: WeatherRequest) -> list[WeatherRequest]:
                 end_date=period_end.isoformat(),
             )
         )
-        current_start = period_end + timedelta(days=1)
+        current_start = _next_day(period_end)
     return requests
 
 
