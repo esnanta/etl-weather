@@ -1,2 +1,6 @@
 # Install this file with the matching official Apache Airflow constraints.
 apache-airflow==3.3.2
+
+# Direct imports used by orchestration DAGs.
+apache-airflow-task-sdk==1.3.2
+pendulum==3.2.0
