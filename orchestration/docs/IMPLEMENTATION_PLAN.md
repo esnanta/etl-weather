@@ -25,6 +25,8 @@ Implemented and locally verified through 2026-09-23:
   database on 2026-09-23;
 - local metadata migration and `cds_api` pool command verified without running
   an external CDS request or historical backfill;
+- local standalone startup verified, followed by diagnosis of the first smoke
+  run's pre-execution failure and configuration of a shared Airflow JWT secret;
 - Airflow DAG constructor types made explicit for IDE/static inspection:
   mutable `tags` and `ParamsDict` parameters.
 
@@ -224,6 +226,8 @@ strategy rather than being appended blindly to the pipeline dependency set.
 - [x] Create the `cds_api` pool with one slot.
 - [x] Resolve CDS and PostgreSQL credentials through Airflow Connections,
       environment-backed secrets, or the approved local secret boundary.
+- [x] Require one environment-backed `api_auth/jwt_secret` shared by the
+      scheduler, task runner, and API server.
 - [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
       serialized task data.
 - [x] Update `.gitignore` for Airflow runtime state.

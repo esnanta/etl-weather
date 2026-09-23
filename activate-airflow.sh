@@ -3,6 +3,13 @@
 
 source myvenv/bin/activate
 
+if [[ -z "${AIRFLOW__API_AUTH__JWT_SECRET:-}" ]]; then
+    echo "ERROR: AIRFLOW__API_AUTH__JWT_SECRET is not set." >&2
+    echo "Generate it once with: openssl rand -hex 32" >&2
+    echo "Then store it in the untracked .env file before starting Airflow." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export AIRFLOW_HOME="$PROJECT_ROOT/orchestration"

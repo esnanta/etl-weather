@@ -51,7 +51,16 @@ and validate the deployment again.
 3. **Load credentials and activate the Airflow configuration:**
 
    Store local values in the untracked `.env` file. Never put credentials in
-   DAG parameters, source files, XCom, or logs.
+   DAG parameters, source files, XCom, or logs. Generate the shared Airflow JWT
+   secret once, then save the generated value as
+   `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   Do not generate a new value every time Airflow starts. Airflow's scheduler,
+   task runner, and API server must use the same value.
 
    ```bash
    set -a
@@ -61,10 +70,12 @@ and validate the deployment again.
    source activate-airflow.sh
    ```
 
-   The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
-   `POSTGRES_*` variables. The root activation script activates `myvenv` and
-   configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the absolute SQLite metadata
-   URL, the DAG folder, and `PYTHONPATH` for this repository.
+   The project expects `CDSAPI_URL`, `CDSAPI_KEY`,
+   `AIRFLOW__API_AUTH__JWT_SECRET`, and the pipeline `POSTGRES_*` variables.
+   The root activation script refuses to start without the shared JWT secret,
+   activates `myvenv`, and configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the
+   absolute SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this
+   repository.
 
 4. **Initialize Airflow:**
 
@@ -263,6 +274,12 @@ The second example spans eleven complete calendar years and therefore creates
 - Clearing a failed task does not authorize artifact overwrite.
 - `run_id`, task attempts, and wall-clock time do not affect request or
   artifact identity.
+
+If a task log stops at `Pre Execute` while standalone startup warns that
+`api_auth/jwt_secret` is empty, stop all Airflow components, configure one
+stable `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`, and restart Airflow. Separate
+random secrets prevent Airflow components from authenticating task execution;
+they do not indicate a CDS or pipeline-data failure.
 
 Before a complete historical run, inspect artifact counts, provenance, row
 counts, disk usage, memory, task duration, and database behavior. Diagnose a
