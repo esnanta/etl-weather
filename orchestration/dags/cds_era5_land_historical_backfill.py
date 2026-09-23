@@ -23,7 +23,7 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     max_active_tasks=2,
-    tags=["cds", "era5-land", "historical-backfill"],
+    tags={"cds", "era5-land", "historical-backfill"},
     params={
         "start_date": Param(
             None,
