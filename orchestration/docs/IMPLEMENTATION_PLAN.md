@@ -20,9 +20,9 @@ Implemented and locally verified through 2026-09-23:
 - manual monthly historical backfill DAG and thin task wrappers;
 - Airflow 3.3.2 dependency boundary and local activation/configuration;
 - DagBag, task graph, retry, timeout, pool, interval, and ten-year mapping tests;
-- 119 tests passed in the combined Airflow/pipeline environment, with two
-  PostgreSQL integration tests skipped because no isolated test database was
-  configured;
+- 119 tests passed in the combined Airflow/pipeline environment;
+- two PostgreSQL integration tests passed against a configured isolated test
+  database on 2026-09-23;
 - local metadata migration and `cds_api` pool command verified without running
   an external CDS request or historical backfill;
 - Airflow DAG constructor types made explicit for IDE/static inspection:
@@ -30,7 +30,6 @@ Implemented and locally verified through 2026-09-23:
 
 Still pending:
 
-- execution against a configured isolated PostgreSQL integration database;
 - one-month live CDS smoke test and same-month idempotent rerun;
 - three-month rollout, capacity review, and selected full-range backfill;
 - the later recurring operational DAG.
@@ -125,7 +124,7 @@ the project adopts shared storage through an explicit design decision.
 - [x] Confirm that the working tree or remote branch contains no unexpected
       overlapping changes.
 - [x] Run the existing core unit-test baseline.
-- [ ] Run the isolated PostgreSQL integration baseline when the configured test
+- [x] Run the isolated PostgreSQL integration baseline when the configured test
       database is available.
 - [x] Do not modify scientific contracts, units, timestamps, request identity,
       artifact layout, or database identity as part of Airflow setup.
@@ -267,7 +266,7 @@ safely rerun the backfill from `orchestration/README.md`.
 - [x] Verify wrapper exceptions propagate.
 - [x] Verify no Airflow import leaks into `pipeline/`.
 - [x] Run all existing core unit tests without Airflow.
-- [ ] Run PostgreSQL integration tests when the isolated database is available.
+- [x] Run PostgreSQL integration tests when the isolated database is available.
 
 Exit condition: orchestration tests and the unchanged core baseline pass.
 
