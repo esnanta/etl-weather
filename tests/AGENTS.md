@@ -7,7 +7,7 @@ Authoritative references:
 - `../AGENTS.md`
 - `../docs/AIRFLOW_BEST_PRACTICE.md`
 - `../docs/AIRFLOW_CODING_GUIDELINES.md`
-- `README_TESTING.md`
+- `README.md`
 
 ## Scope
 
@@ -209,5 +209,5 @@ Latest verified baseline:
 
 ```text
 119 unit/orchestration tests passed
-2 PostgreSQL integration tests skipped when no isolated database is configured
+2 PostgreSQL integration tests passed against an isolated test database
 ```
