@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import DAG, Param, get_current_context, task
+from airflow.sdk import DAG, Param, ParamsDict, get_current_context, task
 
 from orchestration.tasks.era5_land import (
     build_historical_request_specs,
@@ -24,20 +24,22 @@ with DAG(
     max_active_runs=1,
     max_active_tasks=2,
     tags={"cds", "era5-land", "historical-backfill"},
-    params={
-        "start_date": Param(
-            None,
-            type=["null", "string"],
-            format="date",
-            description="Inclusive historical start date (YYYY-MM-DD)",
-        ),
-        "end_date": Param(
-            None,
-            type=["null", "string"],
-            format="date",
-            description="Inclusive historical end date (YYYY-MM-DD)",
-        ),
-    },
+    params=ParamsDict(
+        {
+            "start_date": Param(
+                None,
+                type=["null", "string"],
+                format="date",
+                description="Inclusive historical start date (YYYY-MM-DD)",
+            ),
+            "end_date": Param(
+                None,
+                type=["null", "string"],
+                format="date",
+                description="Inclusive historical end date (YYYY-MM-DD)",
+            ),
+        }
+    ),
 ) as dag:
 
     @task(task_id="plan_monthly_requests", retries=0, execution_timeout=timedelta(minutes=5))
