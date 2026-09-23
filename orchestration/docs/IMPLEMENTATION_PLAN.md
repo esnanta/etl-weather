@@ -13,7 +13,7 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implemented and locally verified on 2026-09-21:
+Implemented and locally verified through 2026-09-23:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
@@ -24,7 +24,9 @@ Implemented and locally verified on 2026-09-21:
   PostgreSQL integration tests skipped because no isolated test database was
   configured;
 - local metadata migration and `cds_api` pool command verified without running
-  an external CDS request or historical backfill.
+  an external CDS request or historical backfill;
+- Airflow DAG constructor types made explicit for IDE/static inspection:
+  mutable `tags` and `ParamsDict` parameters.
 
 Still pending:
 
@@ -118,14 +120,14 @@ the project adopts shared storage through an explicit design decision.
 
 ## Stage 0 — Branch and Baseline Guard
 
-- [ ] Confirm that all reads and writes target branch `dev`.
-- [ ] Record the current `dev` commit before implementation.
-- [ ] Confirm that the working tree or remote branch contains no unexpected
+- [x] Confirm that all reads and writes target branch `dev`.
+- [x] Record the current `dev` commit before implementation.
+- [x] Confirm that the working tree or remote branch contains no unexpected
       overlapping changes.
-- [ ] Run the existing core unit-test baseline.
+- [x] Run the existing core unit-test baseline.
 - [ ] Run the isolated PostgreSQL integration baseline when the configured test
       database is available.
-- [ ] Do not modify scientific contracts, units, timestamps, request identity,
+- [x] Do not modify scientific contracts, units, timestamps, request identity,
       artifact layout, or database identity as part of Airflow setup.
 
 Exit condition: the pre-Airflow baseline is known and passing.
@@ -135,38 +137,38 @@ Exit condition: the pre-Airflow baseline is known and passing.
 The existing runtime methods return xarray and Pandas-backed objects. Those
 objects must not cross Airflow task boundaries or enter XCom.
 
-- [ ] Add a JSON-safe request specification serializer and parser.
-- [ ] Reuse `WeatherRequest`, `build_request()`, `validate_request()`, and
+- [x] Add a JSON-safe request specification serializer and parser.
+- [x] Reuse `WeatherRequest`, `build_request()`, `validate_request()`, and
       `build_request_key()`; do not create a second identity algorithm.
-- [ ] Add an Airflow-neutral extraction entrypoint for one monthly request.
-- [ ] Add an Airflow-neutral transformation entrypoint that rehydrates and
+- [x] Add an Airflow-neutral extraction entrypoint for one monthly request.
+- [x] Add an Airflow-neutral transformation entrypoint that rehydrates and
       validates the deterministic RAW checkpoint.
-- [ ] Add an Airflow-neutral load entrypoint that rehydrates and validates the
+- [x] Add an Airflow-neutral load entrypoint that rehydrates and validates the
       deterministic transformed checkpoint.
-- [ ] Delegate internally to `extract_or_resume()`,
+- [x] Delegate internally to `extract_or_resume()`,
       `transform_or_resume()`, and `load()`.
-- [ ] Return only small status/control metadata from each boundary.
-- [ ] Preserve the existing `run_monthly_batch()` CLI behavior.
-- [ ] Add unit tests for fresh and resumed cross-process handoff.
-- [ ] Confirm that core tests still run without importing Airflow.
+- [x] Return only small status/control metadata from each boundary.
+- [x] Preserve the existing `run_monthly_batch()` CLI behavior.
+- [x] Add unit tests for fresh and resumed cross-process handoff.
+- [x] Confirm that core tests still run without importing Airflow.
 
 Exit condition: each runtime boundary can execute in a separate process using
 only a request specification or deterministic artifact reference.
 
 ## Stage 2 — Orchestration Configuration Helpers
 
-- [ ] Centralize reusable non-secret request constants without coupling
+- [x] Centralize reusable non-secret request constants without coupling
       `pipeline/` to Airflow.
-- [ ] Preserve the active dataset `reanalysis-era5-land`.
-- [ ] Preserve provider variables `tp`, `t2m`, `swvl1`, `ssrd`, and
+- [x] Preserve the active dataset `reanalysis-era5-land`.
+- [x] Preserve provider variables `tp`, `t2m`, `swvl1`, `ssrd`, and
       `d2m`.
-- [ ] Preserve the Aceh bounding box: north `6.1`, south `1.9`, west
+- [x] Preserve the Aceh bounding box: north `6.1`, south `1.9`, west
       `94.9`, east `98.3`.
-- [ ] Implement one pure `Asia/Jakarta` interval-to-inclusive-date helper.
-- [ ] Reject empty, reversed, and non-local-midnight intervals.
-- [ ] Keep historical start and end dates explicit runtime inputs.
-- [ ] Use the existing monthly request splitter.
-- [ ] Test one-day, multi-day, cross-timezone, invalid-boundary, and ten-year
+- [x] Implement one pure `Asia/Jakarta` interval-to-inclusive-date helper.
+- [x] Reject empty, reversed, and non-local-midnight intervals.
+- [x] Keep historical start and end dates explicit runtime inputs.
+- [x] Use the existing monthly request splitter.
+- [x] Test one-day, multi-day, cross-timezone, invalid-boundary, and ten-year
       partition cases.
 
 Exit condition: explicit historical inputs deterministically produce the
@@ -177,27 +179,27 @@ expected monthly request specifications.
 Create one manual DAG, initially named
 `cds_era5_land_historical_backfill`.
 
-- [ ] Place the DAG in `orchestration/dags/`.
-- [ ] Place task wrappers in `orchestration/tasks/`.
-- [ ] Use `schedule=None`.
-- [ ] Set `catchup=False`.
-- [ ] Set a fixed timezone-aware start date in `Asia/Jakarta`.
-- [ ] Set `max_active_runs=1`.
-- [ ] Accept explicit inclusive start and end dates.
-- [ ] Validate the requested range before expansion.
-- [ ] Split the range into monthly requests with pipeline-owned code.
-- [ ] Use dynamic task mapping for monthly partitions.
-- [ ] Keep the dependency graph
+- [x] Place the DAG in `orchestration/dags/`.
+- [x] Place task wrappers in `orchestration/tasks/`.
+- [x] Use `schedule=None`.
+- [x] Set `catchup=False`.
+- [x] Set a fixed timezone-aware start date in `Asia/Jakarta`.
+- [x] Set `max_active_runs=1`.
+- [x] Accept explicit inclusive start and end dates.
+- [x] Validate the requested range before expansion.
+- [x] Split the range into monthly requests with pipeline-owned code.
+- [x] Use dynamic task mapping for monthly partitions.
+- [x] Keep the dependency graph
       `extract_or_resume -> transform_or_resume -> load`.
-- [ ] Assign extraction to the `cds_api` pool.
-- [ ] Start the `cds_api` pool with one slot.
-- [ ] Configure extraction for at most three attempts with bounded backoff.
-- [ ] Configure transformation with no automatic retry.
-- [ ] Configure loading for at most two attempts with bounded backoff.
-- [ ] Set finite execution timeouts for every boundary.
-- [ ] Let original failures reach Airflow.
-- [ ] Keep XCom payloads small and JSON-serializable.
-- [ ] Ensure `run_id`, task attempts, and wall-clock time never affect
+- [x] Assign extraction to the `cds_api` pool.
+- [x] Start the `cds_api` pool with one slot.
+- [x] Configure extraction for at most three attempts with bounded backoff.
+- [x] Configure transformation with no automatic retry.
+- [x] Configure loading for at most two attempts with bounded backoff.
+- [x] Set finite execution timeouts for every boundary.
+- [x] Let original failures reach Airflow.
+- [x] Keep XCom payloads small and JSON-serializable.
+- [x] Ensure `run_id`, task attempts, and wall-clock time never affect
       `request_key` or artifact paths.
 
 Exit condition: a single DagRun can manage a reviewed ten-year range while
@@ -208,22 +210,22 @@ exposing the status of each monthly partition.
 Airflow installation must use a separately pinned requirement/constraint
 strategy rather than being appended blindly to the pipeline dependency set.
 
-- [ ] Confirm the deployment Python version.
-- [ ] Select and pin a compatible Apache Airflow version.
-- [ ] Install Airflow using its matching official constraints file.
-- [ ] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
+- [x] Confirm the deployment Python version.
+- [x] Select and pin a compatible Apache Airflow version.
+- [x] Install Airflow using its matching official constraints file.
+- [x] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
       directory through a small activation script or documented environment
       setup.
-- [ ] Set `dags_folder` to `orchestration/dags/`.
-- [ ] Set `load_examples=False`.
-- [ ] Configure the initial local executor/development mode.
-- [ ] Create the `cds_api` pool with one slot.
-- [ ] Resolve CDS and PostgreSQL credentials through Airflow Connections,
+- [x] Set `dags_folder` to `orchestration/dags/`.
+- [x] Set `load_examples=False`.
+- [x] Configure the initial local executor/development mode.
+- [x] Create the `cds_api` pool with one slot.
+- [x] Resolve CDS and PostgreSQL credentials through Airflow Connections,
       environment-backed secrets, or the approved local secret boundary.
-- [ ] Never commit credentials, logs, `airflow.db`, generated PID files, or
+- [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
       serialized task data.
-- [ ] Update `.gitignore` for Airflow runtime state.
-- [ ] Verify the exact CLI commands against the pinned Airflow version.
+- [x] Update `.gitignore` for Airflow runtime state.
+- [x] Verify the exact CLI commands against the pinned Airflow version.
 
 Exit condition: the local Airflow environment parses the repository DAG
 without examples or committed runtime state.
@@ -233,38 +235,38 @@ without examples or committed runtime state.
 Use the supplied README only as a document-structure reference. Rewrite its
 project-specific content for this repository.
 
-- [ ] Explain that commands run from the repository root.
-- [ ] Document supported Python and Airflow versions.
-- [ ] Document installation with the matching official constraint URL.
-- [ ] Document `AIRFLOW_HOME` activation.
-- [ ] Document metadata database initialization/migration.
-- [ ] Document local startup and shutdown commands for the pinned version.
-- [ ] Document the orchestration directory structure.
-- [ ] Document the three-boundary task graph.
-- [ ] Document explicit historical date parameters with examples.
-- [ ] Document the `cds_api` pool and shared-filesystem assumption.
-- [ ] Document credentials without exposing secret values.
-- [ ] Document safe rerun/resume behavior.
-- [ ] Avoid an unguarded destructive database-reset command.
+- [x] Explain that commands run from the repository root.
+- [x] Document supported Python and Airflow versions.
+- [x] Document installation with the matching official constraint URL.
+- [x] Document `AIRFLOW_HOME` activation.
+- [x] Document metadata database initialization/migration.
+- [x] Document local startup and shutdown commands for the pinned version.
+- [x] Document the orchestration directory structure.
+- [x] Document the three-boundary task graph.
+- [x] Document explicit historical date parameters with examples.
+- [x] Document the `cds_api` pool and shared-filesystem assumption.
+- [x] Document credentials without exposing secret values.
+- [x] Document safe rerun/resume behavior.
+- [x] Avoid an unguarded destructive database-reset command.
 
 Exit condition: a developer can install, start, trigger, inspect, stop, and
 safely rerun the backfill from `orchestration/README.md`.
 
 ## Stage 6 — Airflow Tests
 
-- [ ] Verify DagBag import has no errors.
-- [ ] Verify DAG import performs no CDS, database, or artifact I/O.
-- [ ] Verify the DAG ID and three runtime boundary task IDs.
-- [ ] Verify dependency order.
-- [ ] Verify timezone, fixed start date, schedule, `catchup`, and
+- [x] Verify DagBag import has no errors.
+- [x] Verify DAG import performs no CDS, database, or artifact I/O.
+- [x] Verify the DAG ID and three runtime boundary task IDs.
+- [x] Verify dependency order.
+- [x] Verify timezone, fixed start date, schedule, `catchup`, and
       `max_active_runs`.
-- [ ] Verify extraction pool, retries, retry delays, and timeouts.
-- [ ] Verify monthly dynamic mapping inputs.
-- [ ] Verify XCom payload shape and size.
-- [ ] Verify wrappers delegate to pipeline runtime entrypoints.
-- [ ] Verify wrapper exceptions propagate.
-- [ ] Verify no Airflow import leaks into `pipeline/`.
-- [ ] Run all existing core unit tests without Airflow.
+- [x] Verify extraction pool, retries, retry delays, and timeouts.
+- [x] Verify monthly dynamic mapping inputs.
+- [x] Verify XCom payload shape and size.
+- [x] Verify wrappers delegate to pipeline runtime entrypoints.
+- [x] Verify wrapper exceptions propagate.
+- [x] Verify no Airflow import leaks into `pipeline/`.
+- [x] Run all existing core unit tests without Airflow.
 - [ ] Run PostgreSQL integration tests when the isolated database is available.
 
 Exit condition: orchestration tests and the unchanged core baseline pass.
