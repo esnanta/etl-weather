@@ -20,15 +20,16 @@ external Airflow metadata database and revalidate the deployment.
 
 ## Installation
 
-Create a dedicated local environment:
+Create or update the project environment, then activate it:
 
 ```bash
-python3.12 -m venv .venv-airflow
-source .venv-airflow/bin/activate
+./scripts/setup_environment.sh
+source myvenv/bin/activate
 ```
 
-Install Airflow with its matching official Python 3.12 constraints, then
-install the pipeline dependencies and verify the resolved environment:
+The setup script installs the pipeline dependencies from `requirements.txt`.
+Install Airflow separately from `requirements-airflow.txt` with its matching
+official Python 3.12 constraints, then verify the resolved environment:
 
 ```bash
 AIRFLOW_VERSION=3.3.2
@@ -36,7 +37,6 @@ PYTHON_VERSION=3.12
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
 pip install -r requirements-airflow.txt --constraint "${CONSTRAINT_URL}"
-pip install -r requirements.txt
 pip check
 ```
 
@@ -49,7 +49,7 @@ execution.
 Activate the Python environment and repository-specific Airflow settings:
 
 ```bash
-source .venv-airflow/bin/activate
+source myvenv/bin/activate
 source orchestration/activate.sh
 ```
 
