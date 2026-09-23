@@ -39,21 +39,25 @@ Still pending:
 The initial orchestration layout is:
 
 ```text
-orchestration/
-├── dags/
-├── docs/
-│   └── IMPLEMENTATION_PLAN.md
-├── logs/                 # local runtime state; ignored by Git
-├── tasks/
-├── airflow.cfg           # local Airflow configuration
-├── airflow.db            # local metadata database; ignored by Git
-└── README.md
+etl-weather/
+├── activate-airflow.sh
+└── orchestration/
+    ├── dags/
+    ├── docs/
+    │   └── IMPLEMENTATION_PLAN.md
+    ├── logs/                 # local runtime state; ignored by Git
+    ├── tasks/
+    ├── airflow.cfg           # local Airflow configuration
+    ├── airflow.db            # local metadata database; ignored by Git
+    └── README.md
 ```
 
 The structure may grow when a demonstrated operational need requires it.
 
 Responsibilities:
 
+- `activate-airflow.sh`: activates `myvenv` and anchors Airflow runtime state
+  to the repository's `orchestration/` directory.
 - `orchestration/dags/`: thin DAG declarations, scheduling, dependency wiring,
   retries, timeouts, pools, concurrency, and small XCom metadata.
 - `orchestration/tasks/`: thin Airflow task wrappers that call Airflow-neutral
@@ -213,8 +217,7 @@ strategy rather than being appended blindly to the pipeline dependency set.
 - [x] Select and pin a compatible Apache Airflow version.
 - [x] Install Airflow using its matching official constraints file.
 - [x] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
-      directory through a small activation script or documented environment
-      setup.
+      directory through the root `activate-airflow.sh` script.
 - [x] Set `dags_folder` to `orchestration/dags/`.
 - [x] Set `load_examples=False`.
 - [x] Configure the initial local executor/development mode.
