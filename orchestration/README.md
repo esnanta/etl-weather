@@ -63,7 +63,8 @@ and validate the deployment again.
 
    The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
    `POSTGRES_*` variables. The root activation script activates `myvenv` and
-   configures `AIRFLOW_HOME` and `PYTHONPATH` for this repository.
+   configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the absolute SQLite metadata
+   URL, the DAG folder, and `PYTHONPATH` for this repository.
 
 4. **Initialize Airflow:**
 
