@@ -67,7 +67,6 @@ etl-weather/
 │   ├── dags/
 │   ├── docs/
 │   ├── tasks/
-│   ├── activate.sh
 │   ├── airflow.cfg
 │   └── README.md
 ├── pipeline/
@@ -86,6 +85,7 @@ etl-weather/
 │   └── runtime.py
 ├── scripts/
 ├── tests/
+├── activate-airflow.sh
 ├── requirements-airflow.txt
 ├── requirements.txt
 └── README.md
@@ -185,10 +185,10 @@ pipeline/.
 Create and install the local Python environment with:
 
 ```bash
-./scripts/setup_environment.sh
+python3 -m venv myvenv
+source myvenv/bin/activate
+pip install -r requirements.txt
 ```
-
-The script creates the `myvenv` virtual environment when needed and installs the project dependencies from `requirements.txt`.
 
 Activate the environment in the current shell before running the pipeline or tests:
 
