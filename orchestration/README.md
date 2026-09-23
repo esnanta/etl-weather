@@ -24,12 +24,13 @@ and validate the deployment again.
 1. **Create and activate the project environment:**
 
    ```bash
-   ./scripts/setup_environment.sh
+   python3 -m venv myvenv
    source myvenv/bin/activate
+   pip install -r requirements.txt
    ```
 
-   The setup script creates `myvenv` when needed and installs the core pipeline
-   dependencies from `requirements.txt`.
+   Reuse the existing `myvenv` instead of recreating it when it has already
+   been configured.
 
 2. **Install Apache Airflow:**
 
@@ -57,12 +58,12 @@ and validate the deployment again.
    source .env
    set +a
 
-   source orchestration/activate.sh
+   source activate-airflow.sh
    ```
 
    The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
-   `POSTGRES_*` variables. The activation script configures `AIRFLOW_HOME`,
-   `AIRFLOW_CONFIG`, the DAG directory, and `PYTHONPATH`.
+   `POSTGRES_*` variables. The root activation script activates `myvenv` and
+   configures `AIRFLOW_HOME` and `PYTHONPATH` for this repository.
 
 4. **Initialize Airflow:**
 
@@ -90,13 +91,11 @@ For local development, run Airflow in standalone mode. This starts the
 required Airflow services in one process.
 
 ```bash
-source myvenv/bin/activate
-
 set -a
 source .env
 set +a
 
-source orchestration/activate.sh
+source activate-airflow.sh
 airflow standalone
 ```
 
@@ -110,13 +109,11 @@ For more granular control, open three terminals. Run the environment setup in
 each terminal before starting its service:
 
 ```bash
-source myvenv/bin/activate
-
 set -a
 source .env
 set +a
 
-source orchestration/activate.sh
+source activate-airflow.sh
 ```
 
 Then start one service per terminal:
@@ -146,18 +143,19 @@ terminal.
 ## Project Structure
 
 ```text
-orchestration/
-├── dags/
-│   └── cds_era5_land_historical_backfill.py
-├── docs/
-│   └── IMPLEMENTATION_PLAN.md
-├── logs/                    # generated; ignored by Git
-├── tasks/
-│   └── era5_land.py
-├── activate.sh
-├── airflow.cfg
-├── airflow.db               # generated; ignored by Git
-└── README.md
+etl-weather/
+├── activate-airflow.sh
+└── orchestration/
+    ├── dags/
+    │   └── cds_era5_land_historical_backfill.py
+    ├── docs/
+    │   └── IMPLEMENTATION_PLAN.md
+    ├── logs/                    # generated; ignored by Git
+    ├── tasks/
+    │   └── era5_land.py
+    ├── airflow.cfg
+    ├── airflow.db               # generated; ignored by Git
+    └── README.md
 ```
 
 ## Historical Backfill DAG
@@ -222,13 +220,11 @@ transform_or_resume [monthly]
 Keep Airflow running, then open another terminal and load the same environment:
 
 ```bash
-source myvenv/bin/activate
-
 set -a
 source .env
 set +a
 
-source orchestration/activate.sh
+source activate-airflow.sh
 ```
 
 Run a one-month smoke test before any longer period:
