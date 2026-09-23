@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import DAG, Param, ParamsDict, get_current_context, task
+from airflow.sdk import DAG, get_current_context, task
+from airflow.sdk.definitions.param import Param, ParamsDict
 
 from orchestration.tasks.era5_land import (
     build_historical_request_specs,
