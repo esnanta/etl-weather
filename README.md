@@ -260,4 +260,4 @@ Run the isolated PostgreSQL integration tests with:
 python -m pytest tests/integration/test_postgresql_idempotency.py -v
 ```
 
-The integration tests require the `TEST_POSTGRES_*` variables from `env-example`. Detailed testing contracts and expected behavior are documented in [tests/README_TESTING.md](./tests/README_TESTING.md).
+The integration tests require the `TEST_POSTGRES_*` variables from `env-example`. Detailed testing contracts and expected behavior are documented in [tests/README.md](./tests/README.md).
