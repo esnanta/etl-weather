@@ -34,11 +34,18 @@ Implemented and locally verified through 2026-09-24:
   validated RAW and transformed checkpoints resumed;
 - PostgreSQL confirmed the unchanged partition using matching request key,
   artifact path, checksum, and 16,430-row count, then skipped the database
-  write with `rows_processed=0`.
+  write with `rows_processed=0`;
+- a three-month January-March 2024 DagRun completed successfully in about
+  20 minutes 26 seconds, producing three RAW and three transformed artifacts;
+- PostgreSQL contained the expected 48,230 observations across the three
+  monthly partitions, with complete local-day ranges and recorded checksums;
+- the three-month artifacts occupied approximately 16 MB RAW and 1.5 MB
+  transformed storage. Peak task memory was not captured by this run.
 
 Still pending:
 
-- three-month rollout, capacity review, and selected full-range ETL run;
+- peak-memory measurement, final capacity review, and selected full-range ETL
+  run;
 - the later recurring operational DAG.
 
 ## Target Structure
@@ -286,9 +293,10 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 - [x] Run one monthly partition.
 - [x] Rerun the same month and confirm RAW/Parquet resume and database
       idempotency.
-- [ ] Run three consecutive monthly partitions.
-- [ ] Check artifact count, provenance, row counts, disk usage, memory, task
-      duration, and database load.
+- [x] Run three consecutive monthly partitions.
+- [x] Check artifact count, provenance, row counts, disk usage, task duration,
+      and database load.
+- [ ] Capture peak memory for extraction, transformation, and loading.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.
