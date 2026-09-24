@@ -19,16 +19,25 @@ CDS_END_DATE = "2022-01-03"
 CDS_VARIABLES = ["tp", "t2m", "swvl1", "ssrd", "d2m"]
 
 
-def build_cds_request() -> WeatherRequest:
-    _require_cds_api_key()
+def build_cds_request(
+    start_date: str = CDS_START_DATE,
+    end_date: str = CDS_END_DATE,
+    *,
+    require_api_key: bool = True,
+) -> WeatherRequest:
+    """Build the active CDS request for an explicit inclusive period."""
+    if require_api_key:
+        _require_cds_api_key()
     return WeatherRequest(
         source=DataSource.CDS,
         dataset=CDS_DATASET,
-        start_date=CDS_START_DATE,
-        end_date=CDS_END_DATE,
+        start_date=start_date,
+        end_date=end_date,
         variables=CDS_VARIABLES.copy(),
         bbox=ACEH_BBOX,
     )
+
+
 def _require_cds_api_key() -> None:
     load_dotenv()
     if not os.getenv("CDSAPI_KEY", "").strip():

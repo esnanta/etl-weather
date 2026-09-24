@@ -7,11 +7,11 @@ Authoritative references:
 - `../AGENTS.md`
 - `../docs/AIRFLOW_BEST_PRACTICE.md`
 - `../docs/AIRFLOW_CODING_GUIDELINES.md`
-- `README_TESTING.md`
+- `README.md`
 
 ## Scope
 
-Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical backfill.
+Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical ETL runs.
 
 Current path:
 
@@ -114,8 +114,10 @@ Tests must protect the boundaries that become critical during retry/backfill:
 - transformation failure for missing inputs or incomplete local days;
 - daily-climate repository negative cases and deterministic handoff.
 
-`tests/unit/test_runtime.py` owns orchestration-boundary behavior without Airflow.
+`tests/unit/test_runtime.py` owns pipeline runtime-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
+`tests/airflow_orchestration/` owns Airflow-neutral task helpers plus DAG parsing,
+graph, retry, timeout, pool, concurrency, and XCom-control metadata policy.
 
 ## Provenance Rules
 
@@ -180,7 +182,8 @@ The warning is intentionally left visible. Do not silence all `RuntimeWarning` m
 
 ## Airflow Testing
 
-When DAGs are added, test orchestration only: DAG parsing, task graph, schedule/data intervals, retries, concurrency/pools, and small metadata/artifact handoff.
+Airflow tests cover orchestration only: DAG parsing, task graph, schedule/data
+intervals, retries, concurrency/pools, and small metadata/artifact handoff.
 
 Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 
@@ -198,11 +201,13 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] retry and backfill boundary coverage
 [x] minimal artifact provenance
 [x] ARCO-only dependency removal
+[x] Airflow-neutral checkpoint rehydration boundaries
+[x] historical ETL DAG parsing and policy
 ```
 
 Latest verified baseline:
 
 ```text
-100 unit tests passed
-2 PostgreSQL integration tests passed
+119 unit/orchestration tests passed
+2 PostgreSQL integration tests passed against an isolated test database
 ```

@@ -23,7 +23,13 @@ from pipeline.model import (
 )
 from pipeline.storage import LocalDataStorage
 from pipeline.transformation import DefaultDataTransformer
-from pipeline.request import build_request, split_request_by_month, validate_request
+from pipeline.request import (
+    build_request,
+    build_request_key,
+    split_request_by_month,
+    validate_request,
+    weather_request_to_spec,
+)
 from pipeline.validation import validate_raw_dataset, validate_transformed_dataset
 
 logger = logging.getLogger(__name__)
@@ -120,6 +126,33 @@ class WeatherPipeline:
         """Load a transformed partition through an idempotent loader."""
         return self.loader.load(transformed_dataset, transformed_artifact)
 
+    def transform_from_checkpoint(
+        self,
+        request: WeatherRequest,
+    ) -> tuple[TransformedWeatherDataset, DatasetArtifact]:
+        """Rehydrate a validated RAW checkpoint and run the transform boundary."""
+        raw_artifact = self.storage.raw_artifact(request)
+        raw_dataset = self.storage.load_raw(raw_artifact, request)
+        validate_raw_dataset(raw_dataset)
+        loaded_dataset = LoadedWeatherDataset(
+            request=raw_dataset.request,
+            downloaded_at=raw_dataset.downloaded_at,
+            raw_data=self.storage.convert_to_dataframe(raw_artifact),
+        )
+        return self.transform_or_resume(loaded_dataset, raw_artifact)
+
+    def load_from_checkpoint(self, request: WeatherRequest) -> tuple[int, int]:
+        """Rehydrate a validated transformed checkpoint and run the load boundary."""
+        raw_artifact = self.storage.raw_artifact(request)
+        transformed_artifact = self.storage.transformed_artifact(request)
+        transformed_dataset = self.storage.load_transformed(
+            transformed_artifact,
+            request,
+            raw_artifact,
+        )
+        validate_transformed_dataset(transformed_dataset)
+        return self.load(transformed_dataset, transformed_artifact)
+
     def run(self, request: WeatherRequest) -> None:
         """Local wrapper that composes the same stage boundaries Airflow can call."""
         started_at = datetime.now()
@@ -167,6 +200,58 @@ def build_default_pipeline(request: WeatherRequest) -> WeatherPipeline:
         transformer=DefaultDataTransformer(),
         loader=PostgresDataLoader(),
     )
+
+
+def extract_request_partition(request: WeatherRequest) -> dict[str, object]:
+    """Run one extraction boundary and return small orchestration metadata."""
+    validate_request(request)
+    normalized = build_request(request)
+    pipeline = build_default_pipeline(normalized)
+    expected_artifact = pipeline.storage.raw_artifact(normalized)
+    resumed = pipeline.storage.exists(expected_artifact)
+    _, artifact, _ = pipeline.extract_or_resume(normalized)
+    return {
+        "boundary": "extract_or_resume",
+        "request": weather_request_to_spec(normalized),
+        "request_key": build_request_key(normalized),
+        "artifact_path": artifact.path.as_posix(),
+        "artifact_status": "resumed" if resumed else "created",
+    }
+
+
+def transform_request_partition(request: WeatherRequest) -> dict[str, object]:
+    """Run one checkpoint-backed transform and return control metadata."""
+    validate_request(request)
+    normalized = build_request(request)
+    pipeline = build_default_pipeline(normalized)
+    expected_artifact = pipeline.storage.transformed_artifact(normalized)
+    resumed = pipeline.storage.exists(expected_artifact)
+    _, artifact = pipeline.transform_from_checkpoint(normalized)
+    return {
+        "boundary": "transform_or_resume",
+        "request": weather_request_to_spec(normalized),
+        "request_key": build_request_key(normalized),
+        "artifact_path": artifact.path.as_posix(),
+        "artifact_status": "resumed" if resumed else "created",
+    }
+
+
+def load_request_partition(request: WeatherRequest) -> dict[str, object]:
+    """Run one checkpoint-backed load and return a small result summary."""
+    validate_request(request)
+    normalized = build_request(request)
+    pipeline = build_default_pipeline(normalized)
+    transformed_artifact = pipeline.storage.transformed_artifact(normalized)
+    daily_climate_id, rows_processed = pipeline.load_from_checkpoint(normalized)
+    return {
+        "boundary": "load",
+        "request": weather_request_to_spec(normalized),
+        "request_key": build_request_key(normalized),
+        "artifact_path": transformed_artifact.path.as_posix(),
+        "daily_climate_id": daily_climate_id,
+        "rows_processed": rows_processed,
+        "load_status": "skipped" if rows_processed == 0 else "processed",
+    }
 
 
 def run_monthly_batch(request: WeatherRequest) -> None:

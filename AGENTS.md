@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository contains a weather ETL pipeline that runs independently and is intended to be orchestrated by Apache Airflow later.
+This repository contains a weather ETL pipeline that runs independently and can also be orchestrated by Apache Airflow.
 
 Project and coding references:
 
@@ -29,7 +29,8 @@ Do not add another provider path without an explicit design decision, isolated a
 
 - Use English for code, comments, and identifiers.
 - Treat RAW data as immutable.
-- Put Airflow orchestration in `dags/`.
+- Put Airflow orchestration in `orchestration/`.
+- Put thin DAG declarations in `orchestration/dags/` and Airflow task wrappers in `orchestration/tasks/`.
 - Put ETL logic in `pipeline/`.
 - Use `scripts/` only for thin entrypoints and wrappers.
 - Keep the active provider and dataset identity explicit in requests, artifacts, logs, and database metadata.
@@ -56,7 +57,7 @@ Keep in `pipeline/`:
 - `request.py` for request validation, normalization, splitting, and identity;
 - `runtime.py` for ETL orchestration/composition only.
 
-Keep in future `dags/`:
+Keep in `orchestration/`:
 
 - schedules;
 - data intervals;
@@ -331,7 +332,7 @@ Tests must be pytest-based, deterministic, offline by default, small, readable, 
 - Do not treat missing values as zero.
 - Do not encode wet-day or clustering semantics into canonical daily climate data.
 - Do not make the daily-climate read path create database objects.
-- Do not place scientific transformations in future DAG files.
+- Do not place scientific transformations in DAG or Airflow task-wrapper files.
 - Do not pass full datasets through future XCom.
 
 ---

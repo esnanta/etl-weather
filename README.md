@@ -2,7 +2,7 @@
 
 ETL pipeline for downloading Copernicus Climate Data Store (CDS) ERA5-Land hourly data, transforming it into UTC+7 daily climate observations, storing deterministic NetCDF and Parquet artifacts, and loading the results idempotently into PostgreSQL.
 
-The pipeline runs independently from Apache Airflow. Airflow orchestration may be added later without moving scientific transformation logic out of `pipeline/`.
+The pipeline runs independently from Apache Airflow and can also be orchestrated through the explicit date-range ETL DAG in `orchestration/`. Airflow does not move scientific transformation logic out of `pipeline/`.
 
 ## Active Dataset
 
@@ -62,8 +62,13 @@ This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for
 
 ```text
 etl-weather/
-├── dags/
 ├── docs/
+├── orchestration/
+│   ├── dags/
+│   ├── docs/
+│   ├── tasks/
+│   ├── airflow.cfg
+│   └── README.md
 ├── pipeline/
 │   ├── contracts/
 │   ├── database/
@@ -80,6 +85,8 @@ etl-weather/
 │   └── runtime.py
 ├── scripts/
 ├── tests/
+├── activate-airflow.sh
+├── requirements-airflow.txt
 ├── requirements.txt
 └── README.md
 ```
@@ -91,7 +98,7 @@ The `pipeline/` package is organized by responsibility: provider/request contrac
 ```text
                               +-------------------------+
                               | scripts/run_pipeline_*  |
-                              |     / future Airflow    |
+                              | / Airflow task wrappers |
                               +------------+------------+
                                            |
                                            v
@@ -168,8 +175,9 @@ model.py                -> pipeline data models and artifact metadata
 interfaces.py           -> infrastructure boundaries used by runtime.py
 
 Key boundary:
-Airflow may orchestrate these same runtime stage boundaries later, but scientific
-transformation, storage, validation, and persistence remain inside pipeline/.
+Airflow orchestrates these same checkpoint-backed runtime stage boundaries, but
+scientific transformation, storage, validation, and persistence remain inside
+pipeline/.
 ```
 
 ## Environment Setup
@@ -177,10 +185,10 @@ transformation, storage, validation, and persistence remain inside pipeline/.
 Create and install the local Python environment with:
 
 ```bash
-./scripts/setup_environment.sh
+python3 -m venv myvenv
+source myvenv/bin/activate
+pip install -r requirements.txt
 ```
-
-The script creates the `myvenv` virtual environment when needed and installs the project dependencies from `requirements.txt`.
 
 Activate the environment in the current shell before running the pipeline or tests:
 
@@ -206,6 +214,13 @@ python scripts/run_pipeline_cds.py
 ```
 
 The dataset, period, variables, and bounding box for this entrypoint are defined explicitly in `scripts/config.py`. Long periods are split into monthly requests by the pipeline runtime.
+
+## Running with Apache Airflow
+
+The manually triggered ERA5-Land ETL DAG accepts an explicit inclusive
+date range and maps it into deterministic monthly partitions. Installation,
+configuration, task flow, and safe rollout instructions are documented in
+[`orchestration/README.md`](./orchestration/README.md).
 
 ## Data Layout
 
@@ -245,4 +260,4 @@ Run the isolated PostgreSQL integration tests with:
 python -m pytest tests/integration/test_postgresql_idempotency.py -v
 ```
 
-The integration tests require the `TEST_POSTGRES_*` variables from `env-example`. Detailed testing contracts and expected behavior are documented in [tests/README_TESTING.md](./tests/README_TESTING.md).
+The integration tests require the `TEST_POSTGRES_*` variables from `env-example`. Detailed testing contracts and expected behavior are documented in [tests/README.md](./tests/README.md).

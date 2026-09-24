@@ -235,7 +235,7 @@ feature contribution / subset evaluation
 
 ## Retry, Resume, and Provenance Verification
 
-The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical backfill.
+The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical ETL runs.
 
 Provenance coverage protects:
 
@@ -247,7 +247,7 @@ Provenance coverage protects:
 - metadata UPSERT of transformed artifact path/checksum;
 - runtime artifact handoff into transform/resume and database load.
 
-The current verified baseline is:
+The core baseline before Airflow implementation was:
 
 ```text
 100 unit tests passed
@@ -309,7 +309,7 @@ Do not add a broad `RuntimeWarning` filter. Warnings produced by scientific vali
 
 ## Airflow Testing
 
-Airflow tests begin when DAGs are implemented.
+Airflow tests live in `tests/airflow_orchestration/`.
 
 They should cover orchestration only:
 
@@ -328,6 +328,7 @@ Do not duplicate scientific transformation or modelling-data access tests inside
 
 ```bash
 python -m pytest tests/unit -q
+python -m pytest tests/airflow_orchestration -q
 python -m pytest tests/integration -v
 ```
 
@@ -349,8 +350,8 @@ python -m pytest \
 Latest verified baseline:
 
 ```text
-100 unit tests passed
-2 PostgreSQL integration tests passed
+119 unit/orchestration tests passed
+2 PostgreSQL integration tests passed against an isolated test database
 ```
 
 ---

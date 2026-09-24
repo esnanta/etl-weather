@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 from calendar import monthrange
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from typing import Any
 
-from pipeline.model import DataSource, WeatherRequest
+from pipeline.model import BoundingBox, DataSource, WeatherRequest
 from pipeline.providers.cds import get_source_dataset_profile
 
 
@@ -74,6 +76,81 @@ def build_request(request: WeatherRequest) -> WeatherRequest:
         variables=variables,
         bbox=request.bbox,
     )
+
+
+def weather_request_to_spec(request: WeatherRequest) -> dict[str, object]:
+    """Serialize a validated request into small JSON-safe control metadata."""
+    validate_request(request)
+    normalized = build_request(request)
+    return {
+        "source": normalized.source.value,
+        "dataset": normalized.dataset,
+        "start_date": normalized.start_date,
+        "end_date": normalized.end_date,
+        "variables": normalized.variables.copy(),
+        "bbox": {
+            "north_lat": normalized.bbox.north_lat,
+            "west_lon": normalized.bbox.west_lon,
+            "south_lat": normalized.bbox.south_lat,
+            "east_lon": normalized.bbox.east_lon,
+        },
+    }
+
+
+def weather_request_from_spec(spec: Mapping[str, Any]) -> WeatherRequest:
+    """Rebuild and validate a request from JSON-safe control metadata."""
+    if not isinstance(spec, Mapping):
+        raise ValueError("Weather request specification must be a mapping.")
+
+    try:
+        source_value = spec["source"]
+        dataset = spec["dataset"]
+        start_date = spec["start_date"]
+        end_date = spec["end_date"]
+        variables = spec["variables"]
+        bbox_spec = spec["bbox"]
+    except KeyError as error:
+        raise ValueError(
+            f"Weather request specification is missing '{error.args[0]}'."
+        ) from error
+
+    if not all(isinstance(value, str) for value in (source_value, dataset, start_date, end_date)):
+        raise ValueError("Weather request text fields must be strings.")
+    if not isinstance(variables, list) or not all(
+        isinstance(variable, str) for variable in variables
+    ):
+        raise ValueError("Weather request variables must be a list of strings.")
+    if not isinstance(bbox_spec, Mapping):
+        raise ValueError("Weather request bbox must be a mapping.")
+
+    coordinate_names = ("north_lat", "west_lon", "south_lat", "east_lon")
+    try:
+        coordinates = {name: bbox_spec[name] for name in coordinate_names}
+    except KeyError as error:
+        raise ValueError(
+            f"Weather request bbox is missing '{error.args[0]}'."
+        ) from error
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        for value in coordinates.values()
+    ):
+        raise ValueError("Weather request bbox coordinates must be numeric.")
+
+    try:
+        source = DataSource(source_value)
+    except ValueError as error:
+        raise ValueError(f"Unsupported data source '{source_value}'.") from error
+
+    request = WeatherRequest(
+        source=source,
+        dataset=dataset,
+        start_date=start_date,
+        end_date=end_date,
+        variables=variables.copy(),
+        bbox=BoundingBox(**coordinates),
+    )
+    validate_request(request)
+    return build_request(request)
 
 
 def _next_day(value: date) -> date:

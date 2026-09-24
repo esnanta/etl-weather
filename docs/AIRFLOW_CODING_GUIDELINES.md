@@ -12,7 +12,8 @@ Do not copy those contracts into DAG code or redefine them here.
 
 ## 1. Keep DAG Files Thin
 
-DAG files belong in `dags/` and should contain only:
+DAG files belong in `orchestration/dags/`, and thin Airflow task wrappers belong
+in `orchestration/tasks/`. They should contain only:
 
 - DAG metadata and schedule configuration;
 - Airflow task definitions;

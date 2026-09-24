@@ -29,3 +29,18 @@ def test_build_cds_request_uses_era5_land_contract(monkeypatch) -> None:
     assert request.bbox.west_lon == 94.9
     assert request.bbox.south_lat == 1.9
     assert request.bbox.east_lon == 98.3
+
+
+def test_build_cds_request_accepts_explicit_period_without_secret_check(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("CDSAPI_KEY", raising=False)
+
+    request = build_cds_request(
+        "2016-01-01",
+        "2025-12-31",
+        require_api_key=False,
+    )
+
+    assert request.start_date == "2016-01-01"
+    assert request.end_date == "2025-12-31"

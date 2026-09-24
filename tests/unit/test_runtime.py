@@ -316,3 +316,48 @@ def test_load_delegates_dataset_and_artifact_to_idempotent_loader() -> None:
     assert loader.calls == 1
     assert loader.dataset == storage.transformed_dataset_value
     assert loader.artifact == storage.transformed_artifact_value
+
+
+def test_transform_from_checkpoint_rehydrates_and_validates_raw(monkeypatch) -> None:
+    request, pipeline, extractor, storage, transformer, _ = _pipeline()
+    validation_calls = []
+    storage.existing_artifacts.add(storage.raw_artifact_value.path)
+    monkeypatch.setattr(
+        "pipeline.runtime.validate_raw_dataset",
+        lambda dataset: validation_calls.append(dataset),
+    )
+    monkeypatch.setattr(
+        "pipeline.runtime.validate_transformed_dataset",
+        lambda dataset: None,
+    )
+
+    transformed, artifact = pipeline.transform_from_checkpoint(request)
+
+    assert extractor.calls == 0
+    assert storage.load_raw_calls == 1
+    assert validation_calls == [storage.raw_dataset_value]
+    assert transformer.calls == 1
+    assert transformed == storage.transformed_dataset_value
+    assert artifact == storage.transformed_artifact_value
+
+
+def test_load_from_checkpoint_rehydrates_and_validates_transformed(monkeypatch) -> None:
+    request, pipeline, _, storage, _, loader = _pipeline()
+    validation_calls = []
+    storage.existing_artifacts.update(
+        {
+            storage.raw_artifact_value.path,
+            storage.transformed_artifact_value.path,
+        }
+    )
+    monkeypatch.setattr(
+        "pipeline.runtime.validate_transformed_dataset",
+        lambda dataset: validation_calls.append(dataset),
+    )
+
+    result = pipeline.load_from_checkpoint(request)
+
+    assert storage.load_transformed_calls == 1
+    assert validation_calls == [storage.transformed_dataset_value]
+    assert result == (7, 1)
+    assert loader.calls == 1
