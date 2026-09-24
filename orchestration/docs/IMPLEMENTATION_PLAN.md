@@ -30,12 +30,14 @@ Implemented and locally verified through 2026-09-24:
 - Airflow DAG constructor types made explicit for IDE/static inspection:
   mutable `tags` and `ParamsDict` parameters;
 - one-month live ETL run completed successfully on 2026-09-24;
-- same-month rerun completed successfully in 10.052 seconds; task-log
-  confirmation of checkpoint resume and skipped database write remains pending.
+- same-month rerun completed successfully in approximately ten seconds with
+  validated RAW and transformed checkpoints resumed;
+- PostgreSQL confirmed the unchanged partition using matching request key,
+  artifact path, checksum, and 16,430-row count, then skipped the database
+  write with `rows_processed=0`.
 
 Still pending:
 
-- task-log confirmation of the same-month idempotent rerun;
 - three-month rollout, capacity review, and selected full-range ETL run;
 - the later recurring operational DAG.
 
@@ -282,7 +284,7 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 ## Stage 7 — Controlled Historical ETL Rollout
 
 - [x] Run one monthly partition.
-- [ ] Rerun the same month and confirm RAW/Parquet resume and database
+- [x] Rerun the same month and confirm RAW/Parquet resume and database
       idempotency.
 - [ ] Run three consecutive monthly partitions.
 - [ ] Check artifact count, provenance, row counts, disk usage, memory, task
