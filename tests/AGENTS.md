@@ -11,7 +11,7 @@ Authoritative references:
 
 ## Scope
 
-Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical backfill.
+Core tests protect the ERA5-Land ETL pipeline and controlled daily-climate repository before Airflow orchestration and long historical ETL runs.
 
 Current path:
 
@@ -202,7 +202,7 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] minimal artifact provenance
 [x] ARCO-only dependency removal
 [x] Airflow-neutral checkpoint rehydration boundaries
-[x] historical backfill DAG parsing and policy
+[x] historical ETL DAG parsing and policy
 ```
 
 Latest verified baseline:

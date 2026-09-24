@@ -235,7 +235,7 @@ feature contribution / subset evaluation
 
 ## Retry, Resume, and Provenance Verification
 
-The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical backfill.
+The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical ETL runs.
 
 Provenance coverage protects:
 

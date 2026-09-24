@@ -2,7 +2,7 @@
 
 ETL pipeline for downloading Copernicus Climate Data Store (CDS) ERA5-Land hourly data, transforming it into UTC+7 daily climate observations, storing deterministic NetCDF and Parquet artifacts, and loading the results idempotently into PostgreSQL.
 
-The pipeline runs independently from Apache Airflow and can also be orchestrated through the historical backfill DAG in `orchestration/`. Airflow does not move scientific transformation logic out of `pipeline/`.
+The pipeline runs independently from Apache Airflow and can also be orchestrated through the explicit date-range ETL DAG in `orchestration/`. Airflow does not move scientific transformation logic out of `pipeline/`.
 
 ## Active Dataset
 
@@ -217,7 +217,7 @@ The dataset, period, variables, and bounding box for this entrypoint are defined
 
 ## Running with Apache Airflow
 
-The manually triggered historical backfill DAG accepts an explicit inclusive
+The manually triggered ERA5-Land ETL DAG accepts an explicit inclusive
 date range and maps it into deterministic monthly partitions. Installation,
 configuration, task flow, and safe rollout instructions are documented in
 [`orchestration/README.md`](./orchestration/README.md).

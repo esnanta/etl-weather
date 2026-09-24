@@ -13,18 +13,18 @@ from orchestration.tasks.era5_land import (
     transform_partition,
 )
 
-DAG_ID = "cds_era5_land_historical_backfill"
+DAG_ID = "cds_era5_land_etl"
 
 
 with DAG(
     dag_id=DAG_ID,
-    description="Explicit monthly ERA5-Land historical backfill",
+    description="Explicit date-range ERA5-Land ETL",
     schedule=None,
     start_date=pendulum.datetime(2026, 1, 1, tz="Asia/Jakarta"),
     catchup=False,
     max_active_runs=1,
     max_active_tasks=2,
-    tags={"cds", "era5-land", "historical-backfill"},
+    tags={"cds", "era5-land", "etl"},
     params=ParamsDict(
         {
             "start_date": Param(
@@ -43,8 +43,12 @@ with DAG(
     ),
 ) as dag:
 
-    @task(task_id="plan_monthly_requests", retries=0, execution_timeout=timedelta(minutes=5))
-    def plan_monthly_requests() -> list[dict[str, object]]:
+    @task(
+        task_id="build_monthly_requests",
+        retries=0,
+        execution_timeout=timedelta(minutes=5),
+    )
+    def build_monthly_requests() -> list[dict[str, object]]:
         context = get_current_context()
         params = context["params"]
         return build_historical_request_specs(
@@ -83,7 +87,7 @@ with DAG(
     def load(transform_result: dict[str, object]) -> dict[str, object]:
         return load_partition(transform_result)
 
-    monthly_specs = plan_monthly_requests()
+    monthly_specs = build_monthly_requests()
     extracted = extract_or_resume.expand(request_spec=monthly_specs)
     transformed = transform_or_resume.expand(extract_result=extracted)
     load.expand(transform_result=transformed)

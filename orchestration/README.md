@@ -16,7 +16,7 @@ coordinates execution and monitoring.
 
 The local configuration uses Apache Airflow 3.3.2, SQLite for Airflow metadata,
 and `LocalExecutor`. Before increasing concurrency for a complete historical
-backfill, move the Airflow metadata database to a supported external database
+ETL run, move the Airflow metadata database to a supported external database
 and validate the deployment again.
 
 ## Setup and Installation
@@ -159,7 +159,7 @@ etl-weather/
 ├── activate-airflow.sh
 └── orchestration/
     ├── dags/
-    │   └── cds_era5_land_historical_backfill.py
+    │   └── cds_era5_land_etl.py
     ├── docs/
     │   └── IMPLEMENTATION_PLAN.md
     ├── logs/                    # generated; ignored by Git
@@ -170,12 +170,12 @@ etl-weather/
     └── README.md
 ```
 
-## Historical Backfill DAG
+## ERA5-Land ETL DAG
 
 DAG ID:
 
 ```text
-cds_era5_land_historical_backfill
+cds_era5_land_etl
 ```
 
 The DAG has no schedule and does not infer a ten-year period from the current
@@ -193,7 +193,7 @@ only one extraction at a time.
 explicit start_date and end_date
                |
                v
-    plan_monthly_requests
+    build_monthly_requests
                |
                v
  extract_or_resume [monthly]
@@ -222,12 +222,12 @@ transform_or_resume [monthly]
 
 | Task | Input | Output |
 | --- | --- | --- |
-| `plan_monthly_requests` | Explicit inclusive dates | Monthly request specifications |
+| `build_monthly_requests` | Explicit inclusive dates | Monthly request specifications |
 | `extract_or_resume` | Monthly request specification | RAW artifact metadata |
 | `transform_or_resume` | RAW artifact metadata | Transformed artifact metadata |
 | `load` | Transformed artifact metadata | PostgreSQL load status |
 
-## Triggering a Backfill
+## Triggering the ETL
 
 Keep Airflow running, then open another terminal and load the same environment:
 
@@ -242,7 +242,7 @@ source activate-airflow.sh
 Run a one-month smoke test before any longer period:
 
 ```bash
-airflow dags trigger cds_era5_land_historical_backfill \
+airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2024-01-01","end_date":"2024-01-31"}'
 ```
 
@@ -252,14 +252,14 @@ months before selecting the complete ten-year range.
 Example of an explicit ten-year range:
 
 ```bash
-airflow dags trigger cds_era5_land_historical_backfill \
+airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2016-01-01","end_date":"2025-12-31"}'
 ```
 
 An alternative range can be supplied without changing source code:
 
 ```bash
-airflow dags trigger cds_era5_land_historical_backfill \
+airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2014-01-01","end_date":"2024-12-31"}'
 ```
 
@@ -317,5 +317,5 @@ maintenance.
 `orchestration/logs/`, `orchestration/airflow.db`, PID files, and generated
 authentication files are local runtime state and are ignored by Git. Database
 reset is a deliberate recovery operation, not part of normal shutdown, retry,
-or backfill execution. Do not remove `orchestration/airflow.db` while Airflow
+or historical ETL execution. Do not remove `orchestration/airflow.db` while Airflow
 services are running.

@@ -13,27 +13,30 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implemented and locally verified through 2026-09-23:
+Implemented and locally verified through 2026-09-24:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
-- manual monthly historical backfill DAG and thin task wrappers;
+- manual date-range ERA5-Land ETL DAG and thin task wrappers;
 - Airflow 3.3.2 dependency boundary and local activation/configuration;
 - DagBag, task graph, retry, timeout, pool, interval, and ten-year mapping tests;
 - 119 tests passed in the combined Airflow/pipeline environment;
 - two PostgreSQL integration tests passed against a configured isolated test
   database on 2026-09-23;
 - local metadata migration and `cds_api` pool command verified without running
-  an external CDS request or historical backfill;
+  an external CDS request or historical ETL run;
 - local standalone startup verified, followed by diagnosis of the first smoke
   run's pre-execution failure and configuration of a shared Airflow JWT secret;
 - Airflow DAG constructor types made explicit for IDE/static inspection:
-  mutable `tags` and `ParamsDict` parameters.
+  mutable `tags` and `ParamsDict` parameters;
+- one-month live ETL run completed successfully on 2026-09-24;
+- same-month rerun completed successfully in 10.052 seconds; task-log
+  confirmation of checkpoint resume and skipped database write remains pending.
 
 Still pending:
 
-- one-month live CDS smoke test and same-month idempotent rerun;
-- three-month rollout, capacity review, and selected full-range backfill;
+- task-log confirmation of the same-month idempotent rerun;
+- three-month rollout, capacity review, and selected full-range ETL run;
 - the later recurring operational DAG.
 
 ## Target Structure
@@ -70,9 +73,9 @@ Responsibilities:
   provenance, and database logic.
 - `scripts/`: local command-line entrypoints that remain usable without Airflow.
 
-## Initial Historical Backfill Design
+## Initial Historical ETL Design
 
-The first DAG is a manually triggered ERA5-Land historical backfill. The user
+The first DAG is a manually triggered ERA5-Land ETL. The user
 must provide an explicit inclusive period, for example:
 
 ```text
@@ -179,10 +182,9 @@ only a request specification or deterministic artifact reference.
 Exit condition: explicit historical inputs deterministically produce the
 expected monthly request specifications.
 
-## Stage 3 — Historical Backfill DAG
+## Stage 3 — Historical ETL DAG
 
-Create one manual DAG, initially named
-`cds_era5_land_historical_backfill`.
+Create one manual DAG named `cds_era5_land_etl`.
 
 - [x] Place the DAG in `orchestration/dags/`.
 - [x] Place task wrappers in `orchestration/tasks/`.
@@ -256,7 +258,7 @@ project-specific content for this repository.
 - [x] Avoid an unguarded destructive database-reset command.
 
 Exit condition: a developer can install, start, trigger, inspect, stop, and
-safely rerun the backfill from `orchestration/README.md`.
+safely rerun the historical ETL from `orchestration/README.md`.
 
 ## Stage 6 — Airflow Tests
 
@@ -277,9 +279,9 @@ safely rerun the backfill from `orchestration/README.md`.
 
 Exit condition: orchestration tests and the unchanged core baseline pass.
 
-## Stage 7 — Controlled Backfill Rollout
+## Stage 7 — Controlled Historical ETL Rollout
 
-- [ ] Run one monthly partition.
+- [x] Run one monthly partition.
 - [ ] Rerun the same month and confirm RAW/Parquet resume and database
       idempotency.
 - [ ] Run three consecutive monthly partitions.
@@ -297,8 +299,8 @@ verifiably resumable.
 
 ## Stage 8 — Later Operational DAG
 
-The daily operational DAG is deliberately deferred until the historical
-backfill is stable.
+The daily operational DAG is deliberately deferred until the historical ETL
+is stable.
 
 - [ ] Resolve the exact relationship between the scheduled Airflow interval and
       the configurable six-completed-local-day availability lag.

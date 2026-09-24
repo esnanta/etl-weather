@@ -8,7 +8,7 @@ airflow = pytest.importorskip("airflow")
 from airflow.models import DagBag
 
 
-DAG_ID = "cds_era5_land_historical_backfill"
+DAG_ID = "cds_era5_land_etl"
 DAG_FOLDER = Path(__file__).resolve().parents[2] / "orchestration" / "dags"
 
 
@@ -20,7 +20,7 @@ def dag():
     return dag_bag.dags[DAG_ID]
 
 
-def test_historical_dag_policy(dag) -> None:
+def test_etl_dag_policy(dag) -> None:
     assert dag.schedule is None
     assert dag.catchup is False
     assert dag.max_active_runs == 1
@@ -28,14 +28,14 @@ def test_historical_dag_policy(dag) -> None:
     assert dag.timezone.name == "Asia/Jakarta"
 
 
-def test_historical_dag_task_graph(dag) -> None:
+def test_etl_dag_task_graph(dag) -> None:
     assert set(dag.task_ids) == {
-        "plan_monthly_requests",
+        "build_monthly_requests",
         "extract_or_resume",
         "transform_or_resume",
         "load",
     }
-    assert dag.get_task("plan_monthly_requests").downstream_task_ids == {
+    assert dag.get_task("build_monthly_requests").downstream_task_ids == {
         "extract_or_resume"
     }
     assert dag.get_task("extract_or_resume").downstream_task_ids == {
@@ -44,7 +44,7 @@ def test_historical_dag_task_graph(dag) -> None:
     assert dag.get_task("transform_or_resume").downstream_task_ids == {"load"}
 
 
-def test_historical_dag_boundary_policies(dag) -> None:
+def test_etl_dag_boundary_policies(dag) -> None:
     extract = dag.get_task("extract_or_resume")
     transform = dag.get_task("transform_or_resume")
     load = dag.get_task("load")
