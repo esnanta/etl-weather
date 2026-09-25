@@ -116,8 +116,7 @@ Tests must protect the boundaries that become critical during retry/backfill:
 
 `tests/unit/test_runtime.py` owns pipeline runtime-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
-`tests/airflow_orchestration/` owns Airflow-neutral task helpers plus DAG parsing,
-graph, retry, timeout, pool, concurrency, and XCom-control metadata policy.
+`tests/airflow_orchestration/` owns Airflow-neutral task helpers plus quarterly campaign helpers/progress persistence, DAG parsing, graph, retry, timeout, pool, concurrency, and XCom-control metadata policy.
 
 ## Provenance Rules
 
@@ -165,6 +164,8 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
   observation UPSERT, and unchanged-partition load skipping.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
+- `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries, exact three-month request specs, and stable request-sensitive campaign identities.
+- `airflow_orchestration/test_campaign_progress.py`: separate operational PostgreSQL progress DDL and identity-preserving/invalidation UPSERT contract.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
 
 ## Dependency and Warning Policy
