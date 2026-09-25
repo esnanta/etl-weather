@@ -2,8 +2,8 @@ CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
 # The shared Airflow JWT secret is stored outside .env in the ignored
-# airflow-jwt-key.txt file. Generate/update it with:
-# ./generate-airflow-jwt-secret.sh
+# airflow-jwt-key.txt file. Further instructions for generating
+# the secret are in the orchestration/README.md file.
 
 # PostgreSQL database used by the pipeline.
 POSTGRES_HOST=localhost
