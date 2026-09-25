@@ -9,8 +9,8 @@ from sqlalchemy.engine import Engine
 
 from orchestration.campaign import CAMPAIGN_KEY, CampaignQuarter
 
-CAMPAIGN_PROGRESS_SCHEMA = "orchestration"
-CAMPAIGN_PROGRESS_TABLE = "era5_land_quarterly_campaign_progress"
+CAMPAIGN_PROGRESS_SCHEMA = "climate"
+CAMPAIGN_PROGRESS_TABLE = "quarterly_campaign"
 _ALLOWED_STATUSES = ("pending", "failed", "complete")
 
 
@@ -32,7 +32,7 @@ def _table_name() -> str:
 
 
 def create_campaign_progress_table(engine: Engine) -> None:
-    """Create operational campaign state outside the canonical climate tables."""
+    """Create quarterly campaign progress in the existing climate database."""
     table = _table_name()
     with engine.begin() as connection:
         connection.execute(
