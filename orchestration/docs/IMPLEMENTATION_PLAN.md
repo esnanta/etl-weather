@@ -52,7 +52,7 @@ Implementation progress through 2026-09-25:
 
 Still pending:
 
-- quarterly campaign foundation added: deterministic 2016–2025 quarter helpers, exact three-month request identities, and a PostgreSQL-backed operational progress repository in the existing climate database as `climate.quarterly_campaign`; it is not yet wired into the DAG or scheduler;
+- quarterly campaign foundation added: deterministic 2016–2025 quarter helpers, exact three-month request identities, and a PostgreSQL-backed operational progress repository in the existing climate database as `climate.quarterly_progress`; it is not yet wired into the DAG or scheduler;
 - implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
@@ -391,7 +391,7 @@ Scheduling and selection:
 Durable progress and recovery:
 
 - [ ] Use the existing PostgreSQL climate database for durable operational progress,
-      stored in `climate.quarterly_campaign`; do not create a separate database.
+      stored in `climate.quarterly_progress`; do not create a separate database.
       Keep the table logically separate from the canonical daily climate tables;
       SQLite metadata remains local development state. Document storage setup, backup, and restart
       behavior before enabling automatic mode.
