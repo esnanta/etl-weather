@@ -3,9 +3,12 @@ from __future__ import annotations
 import logging
 import os
 import resource
+import shutil
+import tempfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -13,6 +16,52 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_TIMEZONE = ZoneInfo("Asia/Jakarta")
 AVAILABILITY_LAG_DAYS = 6
+DISK_WARNING_GIB = 5
+GIB = 1024**3
+
+
+def warn_low_disk_space(boundary: str) -> None:
+    """Warn about low space on artifact and temporary-data filesystems."""
+    data_directory = Path(__file__).resolve().parents[2] / "data"
+    artifact_path = data_directory if data_directory.is_dir() else data_directory.parent
+    locations = [("artifacts", artifact_path)]
+    try:
+        locations.append(("temporary", Path(tempfile.gettempdir())))
+    except OSError as exc:
+        logger.warning(
+            "[DISK] temporary directory unavailable | boundary=%s | error=%s",
+            boundary,
+            exc,
+        )
+    checked_devices: set[int] = set()
+    for location, path in locations:
+        try:
+            device = path.stat().st_dev
+            if device in checked_devices:
+                continue
+            available_bytes = shutil.disk_usage(path).free
+            checked_devices.add(device)
+        except OSError as exc:
+            logger.warning(
+                "[DISK] free space check unavailable | boundary=%s | "
+                "location=%s | path=%s | error=%s",
+                boundary,
+                location,
+                path,
+                exc,
+            )
+            continue
+
+        if available_bytes < DISK_WARNING_GIB * GIB:
+            logger.warning(
+                "[DISK] low free space | boundary=%s | location=%s | "
+                "path=%s | available_gib=%.2f | threshold_gib=%d",
+                boundary,
+                location,
+                path,
+                available_bytes / GIB,
+                DISK_WARNING_GIB,
+            )
 
 
 @contextmanager
@@ -107,6 +156,7 @@ def extract_partition(request_spec: Mapping[str, Any]) -> dict[str, object]:
     request = weather_request_from_spec(request_spec)
     logger.info("Starting extraction for %s through %s", request.start_date, request.end_date)
     with measure_peak_memory("extract_or_resume"):
+        warn_low_disk_space("extract_or_resume")
         return extract_request_partition(request)
 
 
@@ -121,6 +171,7 @@ def transform_partition(
     request = weather_request_from_spec(request_spec)
     logger.info("Starting transformation for request_key=%s", extract_result["request_key"])
     with measure_peak_memory("transform_or_resume"):
+        warn_low_disk_space("transform_or_resume")
         return transform_request_partition(request)
 
 
@@ -133,6 +184,7 @@ def load_partition(transform_result: Mapping[str, Any]) -> dict[str, object]:
     request = weather_request_from_spec(request_spec)
     logger.info("Starting database load for request_key=%s", transform_result["request_key"])
     with measure_peak_memory("load"):
+        warn_low_disk_space("load")
         return load_request_partition(request)
 
 

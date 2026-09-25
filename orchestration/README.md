@@ -250,6 +250,34 @@ airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2024-01-01","end_date":"2024-03-31"}'
 ```
 
+For example, to process the following new month explicitly:
+
+```bash
+airflow dags trigger cds_era5_land_etl \
+  --conf '{"start_date":"2024-04-01","end_date":"2024-04-30"}'
+```
+
+### Check DagRun Status
+
+`airflow dags trigger` creates a **new** DagRun and returns immediately. The
+`queued` state printed by this command is its initial state, not the final
+result. Every repeated trigger creates another DagRun, even when the date range
+and its checkpoints are identical. Check the existing runs rather than
+triggering the same period again to see whether it finished:
+
+```bash
+source activate-airflow.sh
+airflow dags list-runs cds_era5_land_etl
+```
+
+Match the `run_id` returned by the trigger to the `run_id` in this list, then
+read its current `state` (`queued`, `running`, `success`, or `failed`).
+Alternatively, open **Dags → cds_era5_land_etl → Runs** in the Airflow UI and
+select that exact run to inspect its mapped task statuses and logs. A
+`success` on one run does not change the initial `queued` state printed by
+a later trigger. The current DAG has `max_active_runs=1`, so another run can
+wait while one is active.
+
 ### Verified Three-Month Rollout
 
 The January-March 2024 rollout was verified on 2026-09-24. January had already
@@ -319,15 +347,43 @@ two fields to estimate memory allocated by a task. The metric excludes memory
 in separate child processes and reports a process peak rather than total host
 or concurrent-worker memory. The process ID helps correlate measurements.
 
-The January–March 2024 rollout above preceded this instrumentation, so it has
-no recorded memory measurements. Rerun that explicit period to collect
-per-partition task logs before estimating capacity for a longer range. Existing
-checkpoints will be revalidated and unchanged database partitions can be
-skipped, so such a rerun measures **resume** behavior. Measure a fresh
-partition separately to assess download and transformation capacity. Compare
-the highest observed task-process peak and the number of concurrent tasks with
-the host's available RAM; leave headroom for PostgreSQL and Airflow services.
-Memory metrics stay in the task logs and do not enter XCom.
+The January–March 2024 rollout preceded this instrumentation and has no
+recorded memory measurements. An April 2024 fresh run on 2026-09-25 supplied
+these task-process peak RSS measurements:
+
+| April boundary | Peak RSS (MiB) | Outcome |
+| --- | ---: | --- |
+| `extract_or_resume` | 517.59 | RAW created and validated |
+| `transform_or_resume` | 572.22 | Parquet created; 15,900 daily observations |
+| `load` | 307.30 | 15,900 observations processed |
+
+The April run succeeded in about 33 minutes 36 seconds. Seven CDS download
+read timeouts were recovered, so this wall-clock duration is not a stable
+throughput estimate. A subsequent run resumed April RAW with a peak RSS of
+457.25 MiB. These are per-process high-water marks, not host-wide peak RAM;
+assess concurrent tasks along with Airflow, PostgreSQL, and system overhead
+before increasing concurrency. Memory metrics stay in task logs and do not
+enter XCom.
+
+## Disk Space Warnings
+
+Before each mapped `extract_or_resume`, `transform_or_resume`, and `load`
+boundary, the worker checks available space on the filesystem holding the
+repository `data/` directory and on its temporary-file filesystem. If both
+locations share one filesystem, it checks that filesystem once. When less than
+5 GiB is available, task logs emit a warning such as:
+
+```text
+[DISK] low free space | boundary=extract_or_resume | location=artifacts | path=/path/to/data | available_gib=3.60 | threshold_gib=5
+```
+
+If the worker cannot determine free space, it logs
+`[DISK] free space check unavailable` (or
+`[DISK] temporary directory unavailable`). These warnings do not fail the
+task or prevent a later write from running out of space. The check is local
+to the worker: a remote PostgreSQL server or its separate storage volume must
+be monitored independently. The threshold is an operational early warning,
+not a capacity guarantee for a particular date range.
 
 ## Safe Retry and Resume
 

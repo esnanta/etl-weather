@@ -42,12 +42,17 @@ Implementation progress through 2026-09-25:
 - PostgreSQL contained the expected 48,230 observations across the three
   monthly partitions, with complete local-day ranges and recorded checksums;
 - the three-month artifacts occupied approximately 16 MB RAW and 1.5 MB
-  transformed storage. Peak task memory was not captured by this run.
+  transformed storage. Peak task memory was not captured by this run;
+- an April 2024 fresh run completed on 2026-09-25 in approximately 33 minutes
+  36 seconds, despite seven recovered CDS download read timeouts;
+- April task-process peak RSS was 517.59 MiB for extraction, 572.22 MiB for
+  transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
+- subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
+  resume, with one resumed extraction peak RSS of 457.25 MiB.
 
 Still pending:
 
-- live peak-memory measurement, final capacity review, and selected full-range ETL
-  run;
+- final capacity review and selected full-range ETL run;
 - the later recurring operational DAG.
 
 ## Target Structure
@@ -299,6 +304,32 @@ safely rerun the historical ETL from `orchestration/README.md`.
 
 Exit condition: orchestration tests and the unchanged core baseline pass.
 
+## Capacity Snapshot — 2026-09-25
+
+On the local host, `free -h` reported 15 GiB total RAM, 6.6 GiB available,
+and no swap in use. The measured peak RSS for one fresh monthly task process
+was 572.22 MiB during transformation. With `max_active_tasks=2`, concurrent
+task memory, Airflow services, PostgreSQL, and the operating system must be
+considered together; these per-process peaks do not measure host-wide peak RAM.
+
+`df -h data` reported the `/home` filesystem at 99% usage with only 3.6 GiB
+available. Existing `data/` occupies 23 MiB for January–April 2024, while
+`orchestration/airflow.db` is about 1 MiB. A simple 120/4 scaling of those
+four months suggests roughly 690 MiB of NetCDF/Parquet artifacts for 120
+months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
+Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
+during April make elapsed-time extrapolation unreliable.
+
+These measurements describe the local development host; the full pipeline
+is intended to run on a cloud server. The cloud host's artifact and temporary
+filesystems and the PostgreSQL storage volume must be measured independently.
+Do not run the full range on the current local /home filesystem at 99% usage.
+Mapped tasks now log a non-blocking warning below 5 GiB available on their
+local artifact or temporary filesystem; this does not measure remote
+PostgreSQL storage. Keep the final date range explicit. The local Airflow
+metadata database uses SQLite for development; review migration to an
+external database before increasing concurrency for a full-range run.
+
 ## Stage 7 — Controlled Historical ETL Rollout
 
 - [x] Run one monthly partition.
@@ -308,7 +339,9 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 - [x] Check artifact count, provenance, row counts, disk usage, task duration,
       and database load.
 - [x] Instrument extraction, transformation, and loading to log process peak RSS.
-- [ ] Capture peak memory from fresh and resumed live task runs.
+- [x] Capture peak memory from fresh and resumed live task runs.
+- [x] Warn in mapped-task logs when local artifact or temporary disk space
+      falls below 5 GiB or cannot be measured.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.

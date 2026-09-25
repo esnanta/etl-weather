@@ -1,8 +1,10 @@
 import logging
+from types import SimpleNamespace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from orchestration.tasks import era5_land
 from orchestration.tasks.era5_land import (
     build_historical_request_specs,
     extract_partition,
@@ -131,5 +133,46 @@ def test_peak_memory_is_logged_when_partition_fails(
             extract_partition(spec)
     assert any(
         "[METRIC] task memory | boundary=extract_or_resume" in record.message
+        for record in caplog.records
+    )
+
+
+def test_disk_warning_reports_low_space_without_failing_task(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(
+        era5_land.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=4 * era5_land.GIB),
+    )
+    with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
+        era5_land.warn_low_disk_space("transform_or_resume")
+    warnings = [record.message for record in caplog.records if "[DISK]" in record.message]
+    assert len(warnings) >= 1
+    assert all("boundary=transform_or_resume" in message for message in warnings)
+    assert any("available_gib=4.00" in message for message in warnings)
+
+    caplog.clear()
+    monkeypatch.setattr(
+        era5_land.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=6 * era5_land.GIB),
+    )
+    era5_land.warn_low_disk_space("transform_or_resume")
+    assert not any("[DISK]" in record.message for record in caplog.records)
+
+
+def test_disk_warning_reports_unavailable_measurement(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def unavailable(path: object) -> None:
+        raise OSError("measurement failed")
+
+    monkeypatch.setattr(era5_land.shutil, "disk_usage", unavailable)
+    with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
+        era5_land.warn_low_disk_space("extract_or_resume")
+    assert any(
+        "[DISK] free space check unavailable" in record.message
+        and "boundary=extract_or_resume" in record.message
         for record in caplog.records
     )
