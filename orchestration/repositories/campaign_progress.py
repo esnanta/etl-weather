@@ -10,7 +10,7 @@ from sqlalchemy.engine import Engine
 from orchestration.campaign import CAMPAIGN_KEY, CampaignQuarter
 
 CAMPAIGN_PROGRESS_SCHEMA = "climate"
-CAMPAIGN_PROGRESS_TABLE = "quarterly_campaign"
+CAMPAIGN_PROGRESS_TABLE = "quarterly_progress"
 _ALLOWED_STATUSES = ("pending", "failed", "complete")
 
 
