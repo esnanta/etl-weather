@@ -1,9 +1,11 @@
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 from orchestration.tasks.era5_land import (
     build_historical_request_specs,
+    extract_partition,
     inclusive_local_dates,
     load_partition,
     transform_partition,
@@ -80,3 +82,54 @@ def test_load_partition_rejects_missing_request_metadata() -> None:
     with pytest.raises(ValueError, match="missing a request"):
         load_partition({"boundary": "transform_or_resume"})
 
+
+def test_partition_boundaries_log_peak_memory_without_changing_xcom(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from pipeline import runtime
+
+    spec = build_historical_request_specs(
+        "2024-01-01", "2024-01-31", current_local_date=date(2026, 9, 21)
+    )[0]
+    extract_result = {"boundary": "extract_or_resume", "request": spec, "request_key": "key"}
+    transform_result = {
+        "boundary": "transform_or_resume", "request": spec, "request_key": "key"
+    }
+    load_result = {"boundary": "load", "request": spec, "request_key": "key"}
+    monkeypatch.setattr(runtime, "extract_request_partition", lambda request: extract_result)
+    monkeypatch.setattr(runtime, "transform_request_partition", lambda request: transform_result)
+    monkeypatch.setattr(runtime, "load_request_partition", lambda request: load_result)
+
+    with caplog.at_level(logging.INFO, logger="orchestration.tasks.era5_land"):
+        assert extract_partition(spec) is extract_result
+        assert transform_partition(extract_result) is transform_result
+        assert load_partition(transform_result) is load_result
+
+    memory_logs = [record.message for record in caplog.records if "[METRIC] task memory" in record.message]
+    assert len(memory_logs) == 3
+    for boundary, message in zip(("extract_or_resume", "transform_or_resume", "load"), memory_logs):
+        assert f"boundary={boundary}" in message
+        assert "process_peak_rss_mib=" in message
+        assert "peak_before_mib=" in message
+
+
+def test_peak_memory_is_logged_when_partition_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from pipeline import runtime
+
+    spec = build_historical_request_specs(
+        "2024-01-01", "2024-01-31", current_local_date=date(2026, 9, 21)
+    )[0]
+
+    def fail_extraction(request: object) -> None:
+        raise RuntimeError("extract failed")
+
+    monkeypatch.setattr(runtime, "extract_request_partition", fail_extraction)
+    with caplog.at_level(logging.INFO, logger="orchestration.tasks.era5_land"):
+        with pytest.raises(RuntimeError, match="extract failed"):
+            extract_partition(spec)
+    assert any(
+        "[METRIC] task memory | boundary=extract_or_resume" in record.message
+        for record in caplog.records
+    )
