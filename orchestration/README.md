@@ -178,14 +178,19 @@ DAG ID:
 cds_era5_land_etl
 ```
 
-The DAG has no schedule and does not infer a ten-year period from the current
-date. Every run requires explicit inclusive `start_date` and `end_date`
-parameters. The pipeline validates the range and splits it into deterministic
-monthly partitions.
+The currently implemented baseline is manually triggered with explicit
+inclusive `start_date` and `end_date` parameters. Stage 8 extends this same
+DAG with a bounded scheduled quarterly campaign for 2016-01-01 through
+2025-12-31 while preserving explicit manual recovery through the same DAG.
 
-Ten complete calendar years produce 120 mapped partitions. The DAG initially
-limits itself to two active task instances, while the `cds_api` pool allows
-only one extraction at a time.
+The scheduled campaign consists of 40 calendar quarters and 120 monthly
+partitions in total, but each automatic DagRun selects at most one incomplete
+quarter and maps exactly its three monthly partitions. It does not infer a
+rolling ten-year range from the current date. The DAG retains
+`max_active_runs=1`; mapped task concurrency remains bounded, and the
+one-slot `cds_api` pool allows only one extraction submission at a time.
+
+Until Stage 8 is implemented and verified, the DAG remains manual-only.
 
 ## Task Flow
 
@@ -311,22 +316,25 @@ This case demonstrates that a wider explicit date range can combine an
 idempotently resumed partition with newly downloaded partitions. Timings and
 storage are operational samples, not fixed CDS service guarantees.
 
-Example of an explicit ten-year range:
+For Stage 8, manual recovery remains explicit but should normally target the
+smallest useful scope, such as one failed month or one affected quarter:
 
 ```bash
 airflow dags trigger cds_era5_land_etl \
-  --conf '{"start_date":"2016-01-01","end_date":"2025-12-31"}'
+  --conf '{"start_date":"2016-01-01","end_date":"2016-03-31"}'
 ```
 
-An alternative range can be supplied without changing source code:
+A manual annual range remains an operator option when deliberately needed:
 
 ```bash
 airflow dags trigger cds_era5_land_etl \
-  --conf '{"start_date":"2014-01-01","end_date":"2024-12-31"}'
+  --conf '{"start_date":"2016-01-01","end_date":"2016-12-31"}'
 ```
 
-The second example spans eleven complete calendar years and therefore creates
-132 monthly partitions. Airflow always processes the exact supplied range.
+The scheduled 2016-2025 campaign must not be started as one unpaced
+120-month DagRun. After Stage 8 is enabled, scheduled runs select the earliest
+eligible incomplete quarter from durable campaign progress. Manual repairs and
+scheduled runs share the same DAG and `max_active_runs=1`.
 
 ## Peak Memory in Task Logs
 
@@ -400,9 +408,10 @@ stable secret with `./generate-airflow-jwt-secret.sh`, and restart Airflow.
 Separate random secrets prevent Airflow components from authenticating task
 execution; they do not indicate a CDS or pipeline-data failure.
 
-Before a complete historical run, inspect artifact counts, provenance, row
-counts, disk usage, memory, task duration, and database behavior. Diagnose a
-failed mapped partition before rerunning it.
+Before enabling the full quarterly campaign, inspect artifact counts,
+provenance, row counts, disk usage, memory, task duration, database behavior,
+and durable campaign progress on the target runtime. Diagnose a failed mapped
+partition before manual repair or allowing that quarter to advance.
 
 ## Tests
 
