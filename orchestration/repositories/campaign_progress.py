@@ -71,7 +71,7 @@ def seed_campaign_progress(
     table = _table_name()
     statement = text(
         f"""
-        INSERT INTO {table}
+        INSERT INTO {table} AS current_progress
             (campaign_key, year, quarter, configuration_identity)
         VALUES
             (:campaign_key, :year, :quarter, :configuration_identity)
