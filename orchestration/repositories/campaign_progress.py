@@ -79,23 +79,23 @@ def seed_campaign_progress(
         DO UPDATE SET
             configuration_identity = EXCLUDED.configuration_identity,
             status = CASE
-                WHEN {table}.configuration_identity = EXCLUDED.configuration_identity
-                    THEN {table}.status
+                WHEN current_progress.configuration_identity = EXCLUDED.configuration_identity
+                    THEN current_progress.status
                 ELSE 'pending'
             END,
             failure_count = CASE
-                WHEN {table}.configuration_identity = EXCLUDED.configuration_identity
-                    THEN {table}.failure_count
+                WHEN current_progress.configuration_identity = EXCLUDED.configuration_identity
+                    THEN current_progress.failure_count
                 ELSE 0
             END,
             last_failure = CASE
-                WHEN {table}.configuration_identity = EXCLUDED.configuration_identity
-                    THEN {table}.last_failure
+                WHEN current_progress.configuration_identity = EXCLUDED.configuration_identity
+                    THEN current_progress.last_failure
                 ELSE NULL
             END,
             completed_at = CASE
-                WHEN {table}.configuration_identity = EXCLUDED.configuration_identity
-                    THEN {table}.completed_at
+                WHEN current_progress.configuration_identity = EXCLUDED.configuration_identity
+                    THEN current_progress.completed_at
                 ELSE NULL
             END,
             updated_at = CURRENT_TIMESTAMP
