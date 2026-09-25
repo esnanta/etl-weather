@@ -26,24 +26,26 @@ and validate the deployment again.
    ```bash
    python3 -m venv myvenv
    source myvenv/bin/activate
-   pip install -r requirements.txt
    ```
 
    Reuse the existing `myvenv` instead of recreating it when it has already
    been configured.
 
-2. **Install Apache Airflow:**
+2. **Install project and Apache Airflow dependencies:**
 
-   Airflow dependencies remain separately pinned in
-   `requirements-airflow.txt`, but are installed into the same `myvenv`
-   environment so DAG tasks can execute the pipeline.
+   The project uses one dependency manifest: `requirements.txt`. Airflow's
+   official constraints apply only to the initial Airflow installation. The
+   complete manifest is then installed without those constraints, while its
+   explicit `apache-airflow==3.3.2` pin prevents an accidental Airflow upgrade
+   or downgrade.
 
    ```bash
    AIRFLOW_VERSION=3.3.2
    PYTHON_VERSION=3.12
    CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
-   pip install -r requirements-airflow.txt --constraint "${CONSTRAINT_URL}"
+   pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
+   pip install -r requirements.txt
    pip check
    airflow version
    ```

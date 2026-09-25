@@ -86,7 +86,6 @@ etl-weather/
 ├── scripts/
 ├── tests/
 ├── activate-airflow.sh
-├── requirements-airflow.txt
 ├── requirements.txt
 └── README.md
 ```
@@ -182,12 +181,26 @@ pipeline/.
 
 ## Environment Setup
 
-Create and install the local Python environment with:
+Create and activate the local Python environment:
 
 ```bash
 python3 -m venv myvenv
 source myvenv/bin/activate
+```
+
+The project uses one dependency manifest, `requirements.txt`. Install the
+pinned Airflow version first with its matching official constraints, then
+install the complete project manifest without applying the Airflow constraints
+to unrelated project packages:
+
+```bash
+AIRFLOW_VERSION=3.3.2
+PYTHON_VERSION=3.12
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
 pip install -r requirements.txt
+pip check
 ```
 
 Activate the environment in the current shell before running the pipeline or tests:

@@ -223,11 +223,14 @@ exposing the status of each monthly partition.
 
 ## Stage 4 — Local Airflow Environment
 
-Airflow installation must use a separately pinned requirement/constraint
-strategy rather than being appended blindly to the pipeline dependency set.
+Airflow and pipeline dependencies use the single `requirements.txt` manifest.
+The pinned Airflow version must still be installed first with its matching
+official constraints, because those constraints are specific to the Airflow
+installation step and do not govern every project package.
 
 - [x] Confirm the deployment Python version.
 - [x] Select and pin a compatible Apache Airflow version.
+- [x] Keep the Airflow and pipeline dependency pins in one `requirements.txt`.
 - [x] Install Airflow using its matching official constraints file.
 - [x] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
       directory through the root `activate-airflow.sh` script.
