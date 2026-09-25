@@ -320,12 +320,15 @@ months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
 Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
 during April make elapsed-time extrapolation unreliable.
 
-Do not trigger the full historical range while the relevant filesystems are
-this full. Identify PostgreSQL's data filesystem, measure its current database
-size, and free or provision adequate storage before completing the capacity
-review. Keep the final date range explicit. The Airflow metadata database
-currently uses SQLite for local development; review migration to an external
-database before increasing concurrency for a full-range run.
+These measurements describe the local development host; the full pipeline
+is intended to run on a cloud server. The cloud host's artifact and temporary
+filesystems and the PostgreSQL storage volume must be measured independently.
+Do not run the full range on the current local /home filesystem at 99% usage.
+Mapped tasks now log a non-blocking warning below 5 GiB available on their
+local artifact or temporary filesystem; this does not measure remote
+PostgreSQL storage. Keep the final date range explicit. The local Airflow
+metadata database uses SQLite for development; review migration to an
+external database before increasing concurrency for a full-range run.
 
 ## Stage 7 — Controlled Historical ETL Rollout
 
@@ -337,6 +340,8 @@ database before increasing concurrency for a full-range run.
       and database load.
 - [x] Instrument extraction, transformation, and loading to log process peak RSS.
 - [x] Capture peak memory from fresh and resumed live task runs.
+- [x] Warn in mapped-task logs when local artifact or temporary disk space
+      falls below 5 GiB or cannot be measured.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.
