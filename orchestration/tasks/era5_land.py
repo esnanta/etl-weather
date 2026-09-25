@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+import os
+import resource
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -10,6 +13,24 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_TIMEZONE = ZoneInfo("Asia/Jakarta")
 AVAILABILITY_LAG_DAYS = 6
+
+
+@contextmanager
+def measure_peak_memory(boundary: str) -> Iterator[None]:
+    """Log the process RSS high-water mark even when a boundary fails."""
+    before_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    try:
+        yield
+    finally:
+        after_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        logger.info(
+            "[METRIC] task memory | boundary=%s | pid=%d | "
+            "process_peak_rss_mib=%.2f | peak_before_mib=%.2f",
+            boundary,
+            os.getpid(),
+            after_kib / 1024,
+            before_kib / 1024,
+        )
 
 
 def inclusive_local_dates(
@@ -85,7 +106,8 @@ def extract_partition(request_spec: Mapping[str, Any]) -> dict[str, object]:
 
     request = weather_request_from_spec(request_spec)
     logger.info("Starting extraction for %s through %s", request.start_date, request.end_date)
-    return extract_request_partition(request)
+    with measure_peak_memory("extract_or_resume"):
+        return extract_request_partition(request)
 
 
 def transform_partition(
@@ -98,7 +120,8 @@ def transform_partition(
     request_spec = _request_spec_from_result(extract_result, "extract_or_resume")
     request = weather_request_from_spec(request_spec)
     logger.info("Starting transformation for request_key=%s", extract_result["request_key"])
-    return transform_request_partition(request)
+    with measure_peak_memory("transform_or_resume"):
+        return transform_request_partition(request)
 
 
 def load_partition(transform_result: Mapping[str, Any]) -> dict[str, object]:
@@ -109,7 +132,8 @@ def load_partition(transform_result: Mapping[str, Any]) -> dict[str, object]:
     request_spec = _request_spec_from_result(transform_result, "transform_or_resume")
     request = weather_request_from_spec(request_spec)
     logger.info("Starting database load for request_key=%s", transform_result["request_key"])
-    return load_request_partition(request)
+    with measure_peak_memory("load"):
+        return load_request_partition(request)
 
 
 def _request_spec_from_result(
