@@ -75,7 +75,8 @@ def test_seed_preserves_matching_identity_and_invalidates_changed_identity() -> 
 
     sql = "\n".join(engine.connection.statements)
     assert "ON CONFLICT (campaign_key, year, quarter)" in sql
-    assert "THEN orchestration.era5_land_quarterly_campaign_progress.status" in sql
+    assert "INSERT INTO orchestration.era5_land_quarterly_campaign_progress AS current_progress" in sql
+    assert "THEN current_progress.status" in sql
     assert "ELSE 'pending'" in sql
     assert "ELSE 0" in sql
     assert len(engine.connection.params) == 2
