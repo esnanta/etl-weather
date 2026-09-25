@@ -55,6 +55,7 @@ The initial orchestration layout is:
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── airflow-jwt-key.txt         # generated locally; ignored by Git
 ├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/
@@ -73,8 +74,8 @@ Responsibilities:
 
 - `activate-airflow.sh`: activates `myvenv` and anchors Airflow runtime state
   to the repository's `orchestration/` directory.
-- `generate-airflow-jwt-secret.sh`: creates or atomically rotates the shared
-  Airflow JWT secret in the untracked `.env` file.
+- `generate-airflow-jwt-secret.sh`: creates or atomically rotates the protected
+  Airflow JWT secret file without placing the value in `.env`.
 - `orchestration/dags/`: thin DAG declarations, scheduling, dependency wiring,
   retries, timeouts, pools, concurrency, and small XCom metadata.
 - `orchestration/tasks/`: thin Airflow task wrappers that call Airflow-neutral
@@ -243,10 +244,10 @@ installation step and do not govern every project package.
 - [x] Create the `cds_api` pool with one slot.
 - [x] Resolve CDS and PostgreSQL credentials through Airflow Connections,
       environment-backed secrets, or the approved local secret boundary.
-- [x] Require one environment-backed `api_auth/jwt_secret` shared by the
-      scheduler, task runner, and API server.
+- [x] Require one file-backed `api_auth/jwt_secret` shared by the scheduler,
+      task runner, and API server through the supported `_CMD` configuration.
 - [x] Provide a separate script that securely creates or rotates the shared
-      JWT secret in `.env` without printing its value.
+      JWT secret file without printing its value.
 - [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
       serialized task data.
 - [x] Update `.gitignore` for Airflow runtime state.

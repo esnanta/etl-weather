@@ -61,26 +61,27 @@ and validate the deployment again.
    ```
 
    The script generates `openssl rand -hex 32`, then creates or atomically
-   updates `AIRFLOW__API_AUTH__JWT_SECRET` in `.env` without printing the
-   secret. It removes duplicate definitions and sets `.env` permission to
-   `600`. Running it again intentionally rotates the secret, so stop and
-   restart every Airflow component after doing so. Do not run it during normal
-   activation; the scheduler, task runner, and API server must use one stable
-   value.
+   replaces the ignored root file `airflow-jwt-key.txt` without printing the
+   secret. The file permission is set to `600`. Running the script again
+   intentionally rotates the secret, so stop and restart every Airflow
+   component after doing so. Do not run it during normal activation; the
+   scheduler, task runner, and API server must use one stable value.
 
    ```bash
    source activate-airflow.sh
    ```
 
-   The project expects `CDSAPI_URL`, `CDSAPI_KEY`,
-   `AIRFLOW__API_AUTH__JWT_SECRET`, and the pipeline `POSTGRES_*` variables.
+   The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
+   `POSTGRES_*` variables in `.env`.
    When the root `.env` file exists, `activate-airflow.sh` automatically loads
    and exports its values, preserving the shell's previous `allexport` state.
-   The script then refuses to continue without the shared JWT secret,
-   activates `myvenv`, and configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the
-   absolute SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this
-   repository. Therefore, the separate `set -a`, `source .env`, and `set +a`
-   commands are no longer required.
+   The script then activates `myvenv`, validates the presence and permission
+   of `airflow-jwt-key.txt`, and sets
+   `AIRFLOW__API_AUTH__JWT_SECRET_CMD` so Airflow reads the shared secret from
+   that file. It also configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the absolute
+   SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this repository.
+   Therefore, the separate `set -a`, `source .env`, and `set +a` commands are
+   no longer required.
 
 4. **Initialize Airflow:**
 
@@ -154,6 +155,7 @@ terminal.
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── airflow-jwt-key.txt             # generated; ignored by Git; mode 600
 ├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/

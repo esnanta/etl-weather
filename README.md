@@ -86,6 +86,7 @@ etl-weather/
 ├── scripts/
 ├── tests/
 ├── activate-airflow.sh
+├── airflow-jwt-key.txt         # generated locally; ignored by Git
 ├── generate-airflow-jwt-secret.sh
 ├── requirements.txt
 └── README.md
@@ -223,9 +224,10 @@ Generate the shared Airflow JWT secret without printing it to the terminal:
 ./generate-airflow-jwt-secret.sh
 ```
 
-The script creates or atomically updates
-`AIRFLOW__API_AUTH__JWT_SECRET` in `.env` and restricts the file permission to
-the current user.
+The script creates or atomically replaces the ignored `airflow-jwt-key.txt`
+file and restricts its permission to the current user. `activate-airflow.sh`
+then configures Airflow to read this file through
+`AIRFLOW__API_AUTH__JWT_SECRET_CMD`; the secret is not stored in `.env`.
 
 PostgreSQL and isolated integration-test settings are also documented in `env-example`.
 
