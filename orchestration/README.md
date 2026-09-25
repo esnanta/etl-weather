@@ -365,6 +365,26 @@ assess concurrent tasks along with Airflow, PostgreSQL, and system overhead
 before increasing concurrency. Memory metrics stay in task logs and do not
 enter XCom.
 
+## Disk Space Warnings
+
+Before each mapped `extract_or_resume`, `transform_or_resume`, and `load`
+boundary, the worker checks available space on the filesystem holding the
+repository `data/` directory and on its temporary-file filesystem. If both
+locations share one filesystem, it checks that filesystem once. When less than
+5 GiB is available, task logs emit a warning such as:
+
+```text
+[DISK] low free space | boundary=extract_or_resume | location=artifacts | path=/path/to/data | available_gib=3.60 | threshold_gib=5
+```
+
+If the worker cannot determine free space, it logs
+`[DISK] free space check unavailable` (or
+`[DISK] temporary directory unavailable`). These warnings do not fail the
+task or prevent a later write from running out of space. The check is local
+to the worker: a remote PostgreSQL server or its separate storage volume must
+be monitored independently. The threshold is an operational early warning,
+not a capacity guarantee for a particular date range.
+
 ## Safe Retry and Resume
 
 - A valid existing RAW NetCDF checkpoint is resumed and validated.
