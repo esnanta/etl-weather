@@ -300,6 +300,35 @@ airflow dags trigger cds_era5_land_etl \
 The second example spans eleven complete calendar years and therefore creates
 132 monthly partitions. Airflow always processes the exact supplied range.
 
+## Peak Memory in Task Logs
+
+Each mapped `extract_or_resume`, `transform_or_resume`, and `load` task
+logs a `[METRIC] task memory` line after its runtime boundary, including when
+that boundary raises an exception. For example:
+
+```text
+[METRIC] task memory | boundary=transform_or_resume | pid=12345 | process_peak_rss_mib=842.31 | peak_before_mib=215.42
+```
+
+`process_peak_rss_mib` is the operating system's peak resident memory
+(`ru_maxrss`) for the task **process**, reported in MiB on Linux.
+`peak_before_mib` is the same high-water mark immediately before the boundary.
+These are process high-water marks: if a worker process has previously reached a
+higher peak, the final value can reflect that earlier work. Do not subtract the
+two fields to estimate memory allocated by a task. The metric excludes memory
+in separate child processes and reports a process peak rather than total host
+or concurrent-worker memory. The process ID helps correlate measurements.
+
+The January–March 2024 rollout above preceded this instrumentation, so it has
+no recorded memory measurements. Rerun that explicit period to collect
+per-partition task logs before estimating capacity for a longer range. Existing
+checkpoints will be revalidated and unchanged database partitions can be
+skipped, so such a rerun measures **resume** behavior. Measure a fresh
+partition separately to assess download and transformation capacity. Compare
+the highest observed task-process peak and the number of concurrent tasks with
+the host's available RAM; leave headroom for PostgreSQL and Airflow services.
+Memory metrics stay in the task logs and do not enter XCom.
+
 ## Safe Retry and Resume
 
 - A valid existing RAW NetCDF checkpoint is resumed and validated.
