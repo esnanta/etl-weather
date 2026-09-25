@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterable, Mapping, Any
 
 CAMPAIGN_KEY = "era5_land_2016_2025"
@@ -35,9 +35,7 @@ class CampaignQuarter:
         if self.quarter == 4:
             return date(self.year, 12, 31)
         next_quarter_month = self.quarter * 3 + 1
-        return date(self.year, next_quarter_month, 1).fromordinal(
-            date(self.year, next_quarter_month, 1).toordinal() - 1
-        )
+        return date(self.year, next_quarter_month, 1) - timedelta(days=1)
 
     @property
     def label(self) -> str:
@@ -91,3 +89,19 @@ def build_configuration_identity(
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def build_campaign_expected_identities(
+    *,
+    current_local_date: date | None = None,
+) -> dict[CampaignQuarter, str]:
+    """Build the current expected request identity for all 40 campaign quarters."""
+    return {
+        quarter: build_configuration_identity(
+            build_quarter_request_specs(
+                quarter,
+                current_local_date=current_local_date,
+            )
+        )
+        for quarter in iter_campaign_quarters()
+    }
