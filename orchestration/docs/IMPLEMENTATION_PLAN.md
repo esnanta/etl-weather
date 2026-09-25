@@ -42,12 +42,17 @@ Implementation progress through 2026-09-25:
 - PostgreSQL contained the expected 48,230 observations across the three
   monthly partitions, with complete local-day ranges and recorded checksums;
 - the three-month artifacts occupied approximately 16 MB RAW and 1.5 MB
-  transformed storage. Peak task memory was not captured by this run.
+  transformed storage. Peak task memory was not captured by this run;
+- an April 2024 fresh run completed on 2026-09-25 in approximately 33 minutes
+  36 seconds, despite seven recovered CDS download read timeouts;
+- April task-process peak RSS was 517.59 MiB for extraction, 572.22 MiB for
+  transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
+- subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
+  resume, with one resumed extraction peak RSS of 457.25 MiB.
 
 Still pending:
 
-- live peak-memory measurement, final capacity review, and selected full-range ETL
-  run;
+- final capacity review and selected full-range ETL run;
 - the later recurring operational DAG.
 
 ## Target Structure
@@ -308,7 +313,7 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 - [x] Check artifact count, provenance, row counts, disk usage, task duration,
       and database load.
 - [x] Instrument extraction, transformation, and loading to log process peak RSS.
-- [ ] Capture peak memory from fresh and resumed live task runs.
+- [x] Capture peak memory from fresh and resumed live task runs.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.
