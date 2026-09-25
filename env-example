@@ -1,7 +1,8 @@
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-# Shared by all Airflow components. Generate once with: openssl rand -hex 32
+# Shared by all Airflow components. Generate/update with:
+# ./generate-airflow-jwt-secret.sh
 # Keep the same value across scheduler/API-server restarts; never commit it.
 AIRFLOW__API_AUTH__JWT_SECRET=YOUR_RANDOM_AIRFLOW_JWT_SECRET
 

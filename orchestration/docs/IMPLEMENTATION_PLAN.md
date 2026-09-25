@@ -55,6 +55,7 @@ The initial orchestration layout is:
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/
     ├── docs/
@@ -72,6 +73,8 @@ Responsibilities:
 
 - `activate-airflow.sh`: activates `myvenv` and anchors Airflow runtime state
   to the repository's `orchestration/` directory.
+- `generate-airflow-jwt-secret.sh`: creates or atomically rotates the shared
+  Airflow JWT secret in the untracked `.env` file.
 - `orchestration/dags/`: thin DAG declarations, scheduling, dependency wiring,
   retries, timeouts, pools, concurrency, and small XCom metadata.
 - `orchestration/tasks/`: thin Airflow task wrappers that call Airflow-neutral
@@ -242,6 +245,8 @@ installation step and do not govern every project package.
       environment-backed secrets, or the approved local secret boundary.
 - [x] Require one environment-backed `api_auth/jwt_secret` shared by the
       scheduler, task runner, and API server.
+- [x] Provide a separate script that securely creates or rotates the shared
+      JWT secret in `.env` without printing its value.
 - [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
       serialized task data.
 - [x] Update `.gitignore` for Airflow runtime state.

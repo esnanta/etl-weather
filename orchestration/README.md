@@ -53,16 +53,20 @@ and validate the deployment again.
 3. **Load credentials and activate the Airflow configuration:**
 
    Store local values in the untracked `.env` file. Never put credentials in
-   DAG parameters, source files, XCom, or logs. Generate the shared Airflow JWT
-   secret once, then save the generated value as
-   `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`:
+   DAG parameters, source files, XCom, or logs. Generate and save the shared
+   Airflow JWT secret with the repository script:
 
    ```bash
-   openssl rand -hex 32
+   ./generate-airflow-jwt-secret.sh
    ```
 
-   Do not generate a new value every time Airflow starts. Airflow's scheduler,
-   task runner, and API server must use the same value.
+   The script generates `openssl rand -hex 32`, then creates or atomically
+   updates `AIRFLOW__API_AUTH__JWT_SECRET` in `.env` without printing the
+   secret. It removes duplicate definitions and sets `.env` permission to
+   `600`. Running it again intentionally rotates the secret, so stop and
+   restart every Airflow component after doing so. Do not run it during normal
+   activation; the scheduler, task runner, and API server must use one stable
+   value.
 
    ```bash
    source activate-airflow.sh
@@ -150,6 +154,7 @@ terminal.
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/
     │   └── cds_era5_land_etl.py
@@ -304,9 +309,9 @@ The second example spans eleven complete calendar years and therefore creates
 
 If a task log stops at `Pre Execute` while standalone startup warns that
 `api_auth/jwt_secret` is empty, stop all Airflow components, configure one
-stable `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`, and restart Airflow. Separate
-random secrets prevent Airflow components from authenticating task execution;
-they do not indicate a CDS or pipeline-data failure.
+stable secret with `./generate-airflow-jwt-secret.sh`, and restart Airflow.
+Separate random secrets prevent Airflow components from authenticating task
+execution; they do not indicate a CDS or pipeline-data failure.
 
 Before a complete historical run, inspect artifact counts, provenance, row
 counts, disk usage, memory, task duration, and database behavior. Diagnose a

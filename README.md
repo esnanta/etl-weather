@@ -86,6 +86,7 @@ etl-weather/
 ├── scripts/
 ├── tests/
 ├── activate-airflow.sh
+├── generate-airflow-jwt-secret.sh
 ├── requirements.txt
 └── README.md
 ```
@@ -215,6 +216,16 @@ Copy `env-example` to `.env`, then set the CDS credentials:
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 ```
+
+Generate the shared Airflow JWT secret without printing it to the terminal:
+
+```bash
+./generate-airflow-jwt-secret.sh
+```
+
+The script creates or atomically updates
+`AIRFLOW__API_AUTH__JWT_SECRET` in `.env` and restricts the file permission to
+the current user.
 
 PostgreSQL and isolated integration-test settings are also documented in `env-example`.
 
