@@ -304,6 +304,29 @@ safely rerun the historical ETL from `orchestration/README.md`.
 
 Exit condition: orchestration tests and the unchanged core baseline pass.
 
+## Capacity Snapshot — 2026-09-25
+
+On the local host, `free -h` reported 15 GiB total RAM, 6.6 GiB available,
+and no swap in use. The measured peak RSS for one fresh monthly task process
+was 572.22 MiB during transformation. With `max_active_tasks=2`, concurrent
+task memory, Airflow services, PostgreSQL, and the operating system must be
+considered together; these per-process peaks do not measure host-wide peak RAM.
+
+`df -h data` reported the `/home` filesystem at 99% usage with only 3.6 GiB
+available. Existing `data/` occupies 23 MiB for January–April 2024, while
+`orchestration/airflow.db` is about 1 MiB. A simple 120/4 scaling of those
+four months suggests roughly 690 MiB of NetCDF/Parquet artifacts for 120
+months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
+Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
+during April make elapsed-time extrapolation unreliable.
+
+Do not trigger the full historical range while the relevant filesystems are
+this full. Identify PostgreSQL's data filesystem, measure its current database
+size, and free or provision adequate storage before completing the capacity
+review. Keep the final date range explicit. The Airflow metadata database
+currently uses SQLite for local development; review migration to an external
+database before increasing concurrency for a full-range run.
+
 ## Stage 7 — Controlled Historical ETL Rollout
 
 - [x] Run one monthly partition.
