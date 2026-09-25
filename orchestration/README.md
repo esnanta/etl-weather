@@ -63,19 +63,18 @@ and validate the deployment again.
    task runner, and API server must use the same value.
 
    ```bash
-   set -a
-   source .env
-   set +a
-
    source activate-airflow.sh
    ```
 
    The project expects `CDSAPI_URL`, `CDSAPI_KEY`,
    `AIRFLOW__API_AUTH__JWT_SECRET`, and the pipeline `POSTGRES_*` variables.
-   The root activation script refuses to start without the shared JWT secret,
+   When the root `.env` file exists, `activate-airflow.sh` automatically loads
+   and exports its values, preserving the shell's previous `allexport` state.
+   The script then refuses to continue without the shared JWT secret,
    activates `myvenv`, and configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the
    absolute SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this
-   repository.
+   repository. Therefore, the separate `set -a`, `source .env`, and `set +a`
+   commands are no longer required.
 
 4. **Initialize Airflow:**
 
@@ -103,10 +102,6 @@ For local development, run Airflow in standalone mode. This starts the
 required Airflow services in one process.
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 airflow standalone
 ```
@@ -121,10 +116,6 @@ For more granular control, open three terminals. Run the environment setup in
 each terminal before starting its service:
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 ```
 
@@ -232,10 +223,6 @@ transform_or_resume [monthly]
 Keep Airflow running, then open another terminal and load the same environment:
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 ```
 
@@ -248,6 +235,44 @@ airflow dags trigger cds_era5_land_etl \
 
 After the one-month run and its identical rerun succeed, test three consecutive
 months before selecting the complete ten-year range.
+
+```bash
+airflow dags trigger cds_era5_land_etl \
+  --conf '{"start_date":"2024-01-01","end_date":"2024-03-31"}'
+```
+
+### Verified Three-Month Rollout
+
+The January-March 2024 rollout was verified on 2026-09-24. January had already
+completed before this run, so its valid RAW NetCDF and transformed Parquet
+checkpoints were resumed and validated. Its unchanged PostgreSQL partition had
+also previously been confirmed idempotent: the request key, artifact path,
+checksum, and 16,430-row count matched, so the database write was skipped.
+
+The three-month DagRun therefore downloaded only the two missing monthly RAW
+partitions, February and March. The one-slot `cds_api` pool downloaded them
+serially. All three mapped extraction, transformation, and load task instances
+completed successfully in approximately 20 minutes 26 seconds.
+
+| Measurement | Before | After | Added by missing months |
+| --- | ---: | ---: | ---: |
+| RAW directory (`du -sh`) | 5.9 MB | 16 MB | approximately 10.1 MB |
+| Transformed directory (`du -sh`) | 532 KB | 1.5 MB | approximately 1.0 MB |
+| RAW file payload | January already present | 3 monthly files | 10,221,652 bytes |
+| Parquet file payload | January already present | 3 monthly files | 921,253 bytes |
+
+PostgreSQL contained the expected local-day observations after the run:
+
+| Partition | Local days | Observation rows |
+| --- | ---: | ---: |
+| January 2024 | 31 | 16,430 |
+| February 2024 | 29 | 15,370 |
+| March 2024 | 31 | 16,430 |
+| **Total** | **91** | **48,230** |
+
+This case demonstrates that a wider explicit date range can combine an
+idempotently resumed partition with newly downloaded partitions. Timings and
+storage are operational samples, not fixed CDS service guarantees.
 
 Example of an explicit ten-year range:
 
@@ -287,8 +312,8 @@ failed mapped partition before rerunning it.
 
 ## Tests
 
-Activate `myvenv`, load `.env`, and activate the Airflow configuration before
-running Airflow-specific tests.
+Run `source activate-airflow.sh` before Airflow-specific tests. It activates
+`myvenv`, loads `.env`, and configures the repository-local Airflow runtime.
 
 Core and Airflow-neutral orchestration helpers:
 

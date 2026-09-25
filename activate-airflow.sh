@@ -1,7 +1,27 @@
 #!/usr/bin/env bash
 # source activate-airflow.sh
 
-source myvenv/bin/activate
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    _AIRFLOW_ALLEXPORT_WAS_SET=0
+    [[ $- == *a* ]] && _AIRFLOW_ALLEXPORT_WAS_SET=1
+
+    set -a
+    # shellcheck disable=SC1091
+    if ! source "$PROJECT_ROOT/.env"; then
+        [[ $_AIRFLOW_ALLEXPORT_WAS_SET -eq 0 ]] && set +a
+        unset _AIRFLOW_ALLEXPORT_WAS_SET
+        echo "ERROR: Failed to load $PROJECT_ROOT/.env." >&2
+        return 1 2>/dev/null || exit 1
+    fi
+
+    [[ $_AIRFLOW_ALLEXPORT_WAS_SET -eq 0 ]] && set +a
+    unset _AIRFLOW_ALLEXPORT_WAS_SET
+fi
+
+# shellcheck disable=SC1091
+source "$PROJECT_ROOT/myvenv/bin/activate"
 
 if [[ -z "${AIRFLOW__API_AUTH__JWT_SECRET:-}" ]]; then
     echo "ERROR: AIRFLOW__API_AUTH__JWT_SECRET is not set." >&2
@@ -9,8 +29,6 @@ if [[ -z "${AIRFLOW__API_AUTH__JWT_SECRET:-}" ]]; then
     echo "Then store it in the untracked .env file before starting Airflow." >&2
     return 1 2>/dev/null || exit 1
 fi
-
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export AIRFLOW_HOME="$PROJECT_ROOT/orchestration"
 export AIRFLOW_CONFIG="$AIRFLOW_HOME/airflow.cfg"
