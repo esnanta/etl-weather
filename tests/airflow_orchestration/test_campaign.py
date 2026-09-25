@@ -6,6 +6,7 @@ from orchestration.campaign import (
     CAMPAIGN_END_YEAR,
     CAMPAIGN_START_YEAR,
     CampaignQuarter,
+    build_campaign_expected_identities,
     build_configuration_identity,
     build_quarter_request_specs,
     iter_campaign_quarters,
@@ -74,3 +75,13 @@ def test_configuration_identity_is_stable_and_request_sensitive() -> None:
 
     assert first == second
     assert first != build_configuration_identity(changed)
+
+
+def test_campaign_expected_identities_cover_all_forty_quarters() -> None:
+    identities = build_campaign_expected_identities(
+        current_local_date=date(2026, 9, 25)
+    )
+
+    assert len(identities) == 40
+    assert set(identities) == set(iter_campaign_quarters())
+    assert all(len(identity) == 64 for identity in identities.values())
