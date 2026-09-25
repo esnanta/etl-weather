@@ -52,8 +52,9 @@ Implementation progress through 2026-09-25:
 
 Still pending:
 
-- final capacity review and selected full-range ETL run;
-- the later recurring operational DAG.
+- implement and verify the agreed bounded 2016–2025 quarterly campaign in the existing DAG, including durable progress, configurable CDS pacing, and manual recovery;
+- review capacity before enabling the schedule and monitor the 40-quarter campaign;
+- decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
 
@@ -93,9 +94,12 @@ Responsibilities:
   provenance, and database logic.
 - `scripts/`: local command-line entrypoints that remain usable without Airflow.
 
-## Initial Historical ETL Design
+## Initial Historical ETL Design (Implemented Baseline)
 
-The first DAG is a manually triggered ERA5-Land ETL. The user
+This section records the implemented manual baseline before the quarterly
+campaign agreed on 2026-09-25. Stage 8 supersedes the proposed full-range
+rollout without changing completed stages 0–6. The first DAG is a manually
+triggered ERA5-Land ETL. The user
 must provide an explicit inclusive period, for example:
 
 ```text
@@ -229,8 +233,10 @@ Create one manual DAG named `cds_era5_land_etl`.
 - [x] Ensure `run_id`, task attempts, and wall-clock time never affect
       `request_key` or artifact paths.
 
-Exit condition: a single DagRun can manage a reviewed ten-year range while
-exposing the status of each monthly partition.
+Exit condition (completed baseline): a single manual DagRun can accept a reviewed
+explicit range and expose the status of its monthly partitions. Stage 8 adds
+automatic scheduling in bounded quarters; a full ten-year DagRun is no longer
+the planned rollout.
 
 ## Stage 4 — Local Airflow Environment
 
@@ -330,7 +336,7 @@ PostgreSQL storage. Keep the final date range explicit. The local Airflow
 metadata database uses SQLite for development; review migration to an
 external database before increasing concurrency for a full-range run.
 
-## Stage 7 — Controlled Historical ETL Rollout
+## Stage 7 — Controlled Pilot (Completed)
 
 - [x] Run one monthly partition.
 - [x] Rerun the same month and confirm RAW/Parquet resume and database
@@ -342,32 +348,135 @@ external database before increasing concurrency for a full-range run.
 - [x] Capture peak memory from fresh and resumed live task runs.
 - [x] Warn in mapped-task logs when local artifact or temporary disk space
       falls below 5 GiB or cannot be measured.
-- [ ] Estimate storage and runtime for the selected ten-year period.
-- [ ] Review the exact ten-year start and end dates.
-- [ ] Trigger the complete historical DagRun.
-- [ ] Monitor failed mapped partitions.
-- [ ] Rerun only failed partitions after diagnosing the failure.
-- [ ] Record the completed range and any operational limits discovered.
+- [x] Record the successful January–March 2024 three-month pilot and the
+      subsequent April fresh and resumed runs.
 
-Exit condition: the selected explicit ten-year period is complete and
-verifiably resumable.
+Exit condition (met): monthly resume and a three-month run have been verified.
+The former proposal to trigger one complete ten-year DagRun has been replaced
+by Stage 8.
 
-## Stage 8 — Later Operational DAG
+## Stage 8 — Scheduled Quarterly Historical Campaign (Planned)
 
-The daily operational DAG is deliberately deferred until the historical ETL
-is stable.
+**Agreed scope (2026-09-25):** extend the existing
+`cds_era5_land_etl` DAG with automatic and explicit manual modes.
+The campaign covers 2016-01-01 through 2025-12-31: 40 calendar
+quarters and 120 monthly partitions. Airflow lists **one DAG**.
+Each automatic DagRun selects at most one quarter and maps its three
+monthly `extract_or_resume -> transform_or_resume -> load` chains.
+The 40 quarters are campaign progress, not 40 DAG definitions;
+manual recovery also uses the same DAG. A manual annual range is an
+optional operator input, not a separate DAG per year.
 
-- [ ] Resolve the exact relationship between the scheduled Airflow interval and
-      the configurable six-completed-local-day availability lag.
-- [ ] Keep `catchup=False` and `max_active_runs=1`.
-- [ ] Reuse the same three runtime boundaries and small metadata handoff.
-- [ ] Add freshness and last-success observability.
-- [ ] Add bounded alerts that identify the failed logical period without
-      exposing secrets.
+Scheduling and selection:
+
+- [ ] Define an unambiguous mode contract: a scheduled run chooses the next
+      eligible incomplete quarter; a manual run requires explicit inclusive
+      dates, with a single failed month or quarter the recommended recovery
+      scope. Reject incomplete date pairs and ambiguous mode inputs.
+- [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
+      select quarters in calendar order from 2016 Q1 through 2025 Q4,
+      and map exactly three whole calendar months per automatic run.
+- [ ] Schedule at a configurable two-hour cadence in `Asia/Jakarta`;
+      retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
+      ticks must not skip quarters; a run longer than two hours must not
+      overlap the next run.
+- [ ] Keep manual triggers available through the same DAG; document that
+      manual and automatic runs share `max_active_runs=1` and can queue
+      behind one another.
+- [ ] After all 40 quarters are verified complete, make scheduled ticks
+      safe no-ops and document pausing the DAG. Do not infer new periods
+      beyond 2025 from the wall clock.
+
+Durable progress and recovery:
+
+- [ ] Choose a durable operational progress store shared by scheduler,
+      workers, and manual runs (prefer a separate PostgreSQL campaign table
+      from the canonical climate tables; SQLite metadata is local
+      development state). Document storage setup, backup, and restart
+      behavior before enabling automatic mode.
+- [ ] Key completion to year, quarter, and the expected request identity
+      (source, dataset, variables, bounding box, and exact monthly periods)
+      so changed configuration cannot reuse an unrelated completion mark.
+- [ ] Mark a quarter complete only after all three corresponding monthly
+      loads succeed and their expected persisted partitions are verified.
+      Persist completion atomically; a task success alone must not move
+      the campaign past an incomplete quarter.
+- [ ] Reconcile valid manual repairs with the same monthly completion
+      evidence. A manual range may complete an affected quarter once all
+      its months are verified, but partial manual success must never mark
+      an incomplete quarter complete.
+- [ ] Select the earliest incomplete quarter on every scheduled run so
+      restarts, missed ticks, and retries cannot silently skip a period.
+      Guard concurrent progress updates even when `max_active_runs=1`.
+- [ ] Bound repeated automatic failures for the same quarter; log/alert
+      with year, quarter, month, and reason, then require diagnosis and
+      manual repair instead of repeatedly submitting bad requests.
+      Resume from validated checkpoints without overwriting RAW files.
+
+CDS request pacing:
+
+- [ ] Keep the one-slot `cds_api` pool. Document that it limits
+      concurrent extraction but does not enforce time between requests.
+- [ ] Add a configurable minimum interval between actual CDS API
+      submissions, shared by automatic and manual modes, including any
+      additional retrievals within one monthly extraction and retries.
+      Start with a conservative 15–30 minute *operational setting*
+      for evaluation, not a claimed Copernicus quota. Check how the
+      extraction adapter submits requests before selecting an exact default.
+- [ ] Persist/coordinate the last submission timestamp across runs and
+      workers; avoid holding a worker or pool slot idle for a long wait
+      when Airflow can defer or reschedule it. Preserve a one-slot limit
+      at submission, and make recovery after process termination safe.
+- [ ] Review CDS queue time, provider errors, retries, and successful
+      submissions; make both the inter-request interval and two-hour
+      campaign cadence adjustable without editing scientific contracts.
+
+Observability, validation, and rollout:
+
+- [ ] Log the selected year/quarter, three months, mode, attempt, CDS
+      pacing decision, completed/remaining quarters, and failure reason.
+      Provide a readable 2016–2025 summary (e.g. 2016: 3/4 quarters)
+      without creating annual DAGs or sending large payloads through XCom.
+- [ ] Update Airflow policy docs and README examples that currently say
+      `schedule=None` or recommend triggering all 120 months in one
+      DagRun; document manual quarter/month/year examples and status checks.
+- [ ] Add focused offline tests for mode selection, 2016–2025 quarter
+      boundaries, stable progress and configuration identity, missed ticks,
+      incomplete/failing loads, manual repair, terminal no-op, spacing of
+      successive CDS submissions, and no overlapping active runs.
+- [ ] Run `python -m pytest tests/airflow_orchestration -q` and affected
+      core/integration tests. Pilot scheduled and manual recovery runs
+      before enabling the entire campaign.
+- [ ] Review artifact and PostgreSQL capacity on the target runtime,
+      including temporary downloads, logs, and overlapping task memory.
+      Do not extrapolate April wall time as a guaranteed CDS throughput.
+- [ ] Track all 40 quarter statuses, failed months, last successful load,
+      request pacing, and elapsed time during the campaign. Confirm
+      2016–2025 completeness against expected monthly partitions and
+      database records before declaring the campaign finished.
+
+Exit condition: one DAG can schedule and recover the bounded 40-quarter
+campaign; every completed quarter has three verified monthly loads,
+its progress survives restarts, and additional ticks cannot submit
+data after 2025.
+
+## Stage 9 — Future Ongoing Ingestion (Deferred)
+
+The quarterly 2016–2025 campaign has a fixed end date. Ingesting
+newer periods after 2025 requires its own decision about data
+availability, timing, and operations. This stage does not authorize
+a second DAG or expand the historical campaign.
+
+- [ ] Resolve the relationship between a future ingestion interval and
+      the six-completed-local-day availability lag.
+- [ ] Decide whether to extend the existing DAG's mode contract or use
+      a different design after reviewing campaign results.
+- [ ] Define freshness, last-success observability, bounded alerts,
+      and retry behavior for periods outside the fixed campaign.
 - [ ] Test delayed availability, retry, resume, and idempotency.
 
-Exit condition: recurring ingestion is enabled without changing the historical
-or scientific data contracts.
+Exit condition: an explicitly approved ongoing-ingestion design
+respects the scientific and historical campaign contracts.
 
 ## Explicit Non-Goals
 
@@ -376,6 +485,8 @@ or scientific data contracts.
 - No scientific transformation or SQL persistence in DAG/task-wrapper files.
 - No Airflow imports in `pipeline/`.
 - No scheduler catchup as the ten-year bootstrap mechanism.
+- No unpaced full-range 120-month DagRun for the 2016–2025 campaign.
+- No 40 quarterly DAG definitions or ten yearly manual DAG definitions.
 - No implicit rolling ten-year range.
 - No distributed workers with isolated local artifact storage.
 - No restoration of inactive ARCO paths.
