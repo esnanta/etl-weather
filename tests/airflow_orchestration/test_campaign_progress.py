@@ -52,7 +52,7 @@ def test_campaign_progress_ddl_uses_climate_schema() -> None:
     assert "CREATE SCHEMA IF NOT EXISTS climate" in sql
     assert (
         "CREATE TABLE IF NOT EXISTS "
-        "climate.quarterly_campaign" in sql
+        "climate.quarterly_progress" in sql
     )
     assert "PRIMARY KEY (campaign_key, year, quarter)" in sql
     assert "configuration_identity TEXT NOT NULL" in sql
@@ -75,7 +75,7 @@ def test_seed_preserves_matching_identity_and_invalidates_changed_identity() -> 
 
     sql = "\n".join(engine.connection.statements)
     assert "ON CONFLICT (campaign_key, year, quarter)" in sql
-    assert "INSERT INTO climate.quarterly_campaign AS current_progress" in sql
+    assert "INSERT INTO climate.quarterly_progress AS current_progress" in sql
     assert "THEN current_progress.status" in sql
     assert "ELSE 'pending'" in sql
     assert "ELSE 0" in sql
