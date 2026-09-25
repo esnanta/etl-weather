@@ -13,7 +13,7 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implemented and locally verified through 2026-09-24:
+Implementation progress through 2026-09-25:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
@@ -35,6 +35,8 @@ Implemented and locally verified through 2026-09-24:
 - PostgreSQL confirmed the unchanged partition using matching request key,
   artifact path, checksum, and 16,430-row count, then skipped the database
   write with `rows_processed=0`;
+- task-process peak RSS instrumentation added to all three mapped ETL boundaries;
+  measurements are logged on success and failure without changing XCom;
 - a three-month January-March 2024 DagRun completed successfully in about
   20 minutes 26 seconds, producing three RAW and three transformed artifacts;
 - PostgreSQL contained the expected 48,230 observations across the three
@@ -44,7 +46,7 @@ Implemented and locally verified through 2026-09-24:
 
 Still pending:
 
-- peak-memory measurement, final capacity review, and selected full-range ETL
+- live peak-memory measurement, final capacity review, and selected full-range ETL
   run;
 - the later recurring operational DAG.
 
@@ -305,7 +307,8 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 - [x] Run three consecutive monthly partitions.
 - [x] Check artifact count, provenance, row counts, disk usage, task duration,
       and database load.
-- [ ] Capture peak memory for extraction, transformation, and loading.
+- [x] Instrument extraction, transformation, and loading to log process peak RSS.
+- [ ] Capture peak memory from fresh and resumed live task runs.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.
