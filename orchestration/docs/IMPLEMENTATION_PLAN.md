@@ -52,7 +52,8 @@ Implementation progress through 2026-09-25:
 
 Still pending:
 
-- implement and verify the agreed bounded 2016–2025 quarterly campaign in the existing DAG, including durable progress, configurable CDS pacing, and manual recovery;
+- quarterly campaign foundation added: deterministic 2016–2025 quarter helpers, exact three-month request identities, and a PostgreSQL-backed operational progress repository in the separate `orchestration` schema; it is not yet wired into the DAG or scheduler;
+- implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
