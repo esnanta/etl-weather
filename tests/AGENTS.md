@@ -165,7 +165,7 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
 - `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries, exact three-month request specs, and stable request-sensitive campaign identities.
-- `airflow_orchestration/test_campaign_progress.py`: separate operational PostgreSQL progress DDL and identity-preserving/invalidation UPSERT contract.
+- `airflow_orchestration/test_campaign_progress.py`: `climate.quarterly_campaign` PostgreSQL progress DDL and identity-preserving/invalidation UPSERT contract.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
 
 ## Dependency and Warning Policy
