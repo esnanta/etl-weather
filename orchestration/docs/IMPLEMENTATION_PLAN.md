@@ -13,7 +13,7 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implemented and locally verified through 2026-09-24:
+Implementation progress through 2026-09-25:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
@@ -34,11 +34,20 @@ Implemented and locally verified through 2026-09-24:
   validated RAW and transformed checkpoints resumed;
 - PostgreSQL confirmed the unchanged partition using matching request key,
   artifact path, checksum, and 16,430-row count, then skipped the database
-  write with `rows_processed=0`.
+  write with `rows_processed=0`;
+- task-process peak RSS instrumentation added to all three mapped ETL boundaries;
+  measurements are logged on success and failure without changing XCom;
+- a three-month January-March 2024 DagRun completed successfully in about
+  20 minutes 26 seconds, producing three RAW and three transformed artifacts;
+- PostgreSQL contained the expected 48,230 observations across the three
+  monthly partitions, with complete local-day ranges and recorded checksums;
+- the three-month artifacts occupied approximately 16 MB RAW and 1.5 MB
+  transformed storage. Peak task memory was not captured by this run.
 
 Still pending:
 
-- three-month rollout, capacity review, and selected full-range ETL run;
+- live peak-memory measurement, final capacity review, and selected full-range ETL
+  run;
 - the later recurring operational DAG.
 
 ## Target Structure
@@ -48,6 +57,8 @@ The initial orchestration layout is:
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── airflow-jwt-key.txt         # generated locally; ignored by Git
+├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/
     ├── docs/
@@ -65,6 +76,8 @@ Responsibilities:
 
 - `activate-airflow.sh`: activates `myvenv` and anchors Airflow runtime state
   to the repository's `orchestration/` directory.
+- `generate-airflow-jwt-secret.sh`: creates or atomically rotates the protected
+  Airflow JWT secret file without placing the value in `.env`.
 - `orchestration/dags/`: thin DAG declarations, scheduling, dependency wiring,
   retries, timeouts, pools, concurrency, and small XCom metadata.
 - `orchestration/tasks/`: thin Airflow task wrappers that call Airflow-neutral
@@ -216,11 +229,14 @@ exposing the status of each monthly partition.
 
 ## Stage 4 — Local Airflow Environment
 
-Airflow installation must use a separately pinned requirement/constraint
-strategy rather than being appended blindly to the pipeline dependency set.
+Airflow and pipeline dependencies use the single `requirements.txt` manifest.
+The pinned Airflow version must still be installed first with its matching
+official constraints, because those constraints are specific to the Airflow
+installation step and do not govern every project package.
 
 - [x] Confirm the deployment Python version.
 - [x] Select and pin a compatible Apache Airflow version.
+- [x] Keep the Airflow and pipeline dependency pins in one `requirements.txt`.
 - [x] Install Airflow using its matching official constraints file.
 - [x] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
       directory through the root `activate-airflow.sh` script.
@@ -230,8 +246,10 @@ strategy rather than being appended blindly to the pipeline dependency set.
 - [x] Create the `cds_api` pool with one slot.
 - [x] Resolve CDS and PostgreSQL credentials through Airflow Connections,
       environment-backed secrets, or the approved local secret boundary.
-- [x] Require one environment-backed `api_auth/jwt_secret` shared by the
-      scheduler, task runner, and API server.
+- [x] Require one file-backed `api_auth/jwt_secret` shared by the scheduler,
+      task runner, and API server through the supported `_CMD` configuration.
+- [x] Provide a separate script that securely creates or rotates the shared
+      JWT secret file without printing its value.
 - [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
       serialized task data.
 - [x] Update `.gitignore` for Airflow runtime state.
@@ -286,9 +304,11 @@ Exit condition: orchestration tests and the unchanged core baseline pass.
 - [x] Run one monthly partition.
 - [x] Rerun the same month and confirm RAW/Parquet resume and database
       idempotency.
-- [ ] Run three consecutive monthly partitions.
-- [ ] Check artifact count, provenance, row counts, disk usage, memory, task
-      duration, and database load.
+- [x] Run three consecutive monthly partitions.
+- [x] Check artifact count, provenance, row counts, disk usage, task duration,
+      and database load.
+- [x] Instrument extraction, transformation, and loading to log process peak RSS.
+- [ ] Capture peak memory from fresh and resumed live task runs.
 - [ ] Estimate storage and runtime for the selected ten-year period.
 - [ ] Review the exact ten-year start and end dates.
 - [ ] Trigger the complete historical DagRun.

@@ -6,6 +6,8 @@
 
 # Environment variables
 .env
+/airflow-jwt-key.txt
+/.airflow-jwt-key.txt.tmp.*
 
 # Python cache
 __pycache__/

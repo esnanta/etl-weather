@@ -26,24 +26,26 @@ and validate the deployment again.
    ```bash
    python3 -m venv myvenv
    source myvenv/bin/activate
-   pip install -r requirements.txt
    ```
 
    Reuse the existing `myvenv` instead of recreating it when it has already
    been configured.
 
-2. **Install Apache Airflow:**
+2. **Install project and Apache Airflow dependencies:**
 
-   Airflow dependencies remain separately pinned in
-   `requirements-airflow.txt`, but are installed into the same `myvenv`
-   environment so DAG tasks can execute the pipeline.
+   The project uses one dependency manifest: `requirements.txt`. Airflow's
+   official constraints apply only to the initial Airflow installation. The
+   complete manifest is then installed without those constraints, while its
+   explicit `apache-airflow==3.3.2` pin prevents an accidental Airflow upgrade
+   or downgrade.
 
    ```bash
    AIRFLOW_VERSION=3.3.2
    PYTHON_VERSION=3.12
    CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
-   pip install -r requirements-airflow.txt --constraint "${CONSTRAINT_URL}"
+   pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
+   pip install -r requirements.txt
    pip check
    airflow version
    ```
@@ -51,31 +53,35 @@ and validate the deployment again.
 3. **Load credentials and activate the Airflow configuration:**
 
    Store local values in the untracked `.env` file. Never put credentials in
-   DAG parameters, source files, XCom, or logs. Generate the shared Airflow JWT
-   secret once, then save the generated value as
-   `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`:
+   DAG parameters, source files, XCom, or logs. Generate and save the shared
+   Airflow JWT secret with the repository script:
 
    ```bash
-   openssl rand -hex 32
+   ./generate-airflow-jwt-secret.sh
    ```
 
-   Do not generate a new value every time Airflow starts. Airflow's scheduler,
-   task runner, and API server must use the same value.
+   The script generates `openssl rand -hex 32`, then creates or atomically
+   replaces the ignored root file `airflow-jwt-key.txt` without printing the
+   secret. The file permission is set to `600`. Running the script again
+   intentionally rotates the secret, so stop and restart every Airflow
+   component after doing so. Do not run it during normal activation; the
+   scheduler, task runner, and API server must use one stable value.
 
    ```bash
-   set -a
-   source .env
-   set +a
-
    source activate-airflow.sh
    ```
 
-   The project expects `CDSAPI_URL`, `CDSAPI_KEY`,
-   `AIRFLOW__API_AUTH__JWT_SECRET`, and the pipeline `POSTGRES_*` variables.
-   The root activation script refuses to start without the shared JWT secret,
-   activates `myvenv`, and configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the
-   absolute SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this
-   repository.
+   The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
+   `POSTGRES_*` variables in `.env`.
+   When the root `.env` file exists, `activate-airflow.sh` automatically loads
+   and exports its values, preserving the shell's previous `allexport` state.
+   The script then activates `myvenv`, validates the presence and permission
+   of `airflow-jwt-key.txt`, and sets
+   `AIRFLOW__API_AUTH__JWT_SECRET_CMD` so Airflow reads the shared secret from
+   that file. It also configures `AIRFLOW_HOME`, `AIRFLOW_CONFIG`, the absolute
+   SQLite metadata URL, the DAG folder, and `PYTHONPATH` for this repository.
+   Therefore, the separate `set -a`, `source .env`, and `set +a` commands are
+   no longer required.
 
 4. **Initialize Airflow:**
 
@@ -103,10 +109,6 @@ For local development, run Airflow in standalone mode. This starts the
 required Airflow services in one process.
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 airflow standalone
 ```
@@ -121,10 +123,6 @@ For more granular control, open three terminals. Run the environment setup in
 each terminal before starting its service:
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 ```
 
@@ -157,6 +155,8 @@ terminal.
 ```text
 etl-weather/
 ├── activate-airflow.sh
+├── airflow-jwt-key.txt             # generated; ignored by Git; mode 600
+├── generate-airflow-jwt-secret.sh
 └── orchestration/
     ├── dags/
     │   └── cds_era5_land_etl.py
@@ -232,10 +232,6 @@ transform_or_resume [monthly]
 Keep Airflow running, then open another terminal and load the same environment:
 
 ```bash
-set -a
-source .env
-set +a
-
 source activate-airflow.sh
 ```
 
@@ -248,6 +244,44 @@ airflow dags trigger cds_era5_land_etl \
 
 After the one-month run and its identical rerun succeed, test three consecutive
 months before selecting the complete ten-year range.
+
+```bash
+airflow dags trigger cds_era5_land_etl \
+  --conf '{"start_date":"2024-01-01","end_date":"2024-03-31"}'
+```
+
+### Verified Three-Month Rollout
+
+The January-March 2024 rollout was verified on 2026-09-24. January had already
+completed before this run, so its valid RAW NetCDF and transformed Parquet
+checkpoints were resumed and validated. Its unchanged PostgreSQL partition had
+also previously been confirmed idempotent: the request key, artifact path,
+checksum, and 16,430-row count matched, so the database write was skipped.
+
+The three-month DagRun therefore downloaded only the two missing monthly RAW
+partitions, February and March. The one-slot `cds_api` pool downloaded them
+serially. All three mapped extraction, transformation, and load task instances
+completed successfully in approximately 20 minutes 26 seconds.
+
+| Measurement | Before | After | Added by missing months |
+| --- | ---: | ---: | ---: |
+| RAW directory (`du -sh`) | 5.9 MB | 16 MB | approximately 10.1 MB |
+| Transformed directory (`du -sh`) | 532 KB | 1.5 MB | approximately 1.0 MB |
+| RAW file payload | January already present | 3 monthly files | 10,221,652 bytes |
+| Parquet file payload | January already present | 3 monthly files | 921,253 bytes |
+
+PostgreSQL contained the expected local-day observations after the run:
+
+| Partition | Local days | Observation rows |
+| --- | ---: | ---: |
+| January 2024 | 31 | 16,430 |
+| February 2024 | 29 | 15,370 |
+| March 2024 | 31 | 16,430 |
+| **Total** | **91** | **48,230** |
+
+This case demonstrates that a wider explicit date range can combine an
+idempotently resumed partition with newly downloaded partitions. Timings and
+storage are operational samples, not fixed CDS service guarantees.
 
 Example of an explicit ten-year range:
 
@@ -266,6 +300,35 @@ airflow dags trigger cds_era5_land_etl \
 The second example spans eleven complete calendar years and therefore creates
 132 monthly partitions. Airflow always processes the exact supplied range.
 
+## Peak Memory in Task Logs
+
+Each mapped `extract_or_resume`, `transform_or_resume`, and `load` task
+logs a `[METRIC] task memory` line after its runtime boundary, including when
+that boundary raises an exception. For example:
+
+```text
+[METRIC] task memory | boundary=transform_or_resume | pid=12345 | process_peak_rss_mib=842.31 | peak_before_mib=215.42
+```
+
+`process_peak_rss_mib` is the operating system's peak resident memory
+(`ru_maxrss`) for the task **process**, reported in MiB on Linux.
+`peak_before_mib` is the same high-water mark immediately before the boundary.
+These are process high-water marks: if a worker process has previously reached a
+higher peak, the final value can reflect that earlier work. Do not subtract the
+two fields to estimate memory allocated by a task. The metric excludes memory
+in separate child processes and reports a process peak rather than total host
+or concurrent-worker memory. The process ID helps correlate measurements.
+
+The January–March 2024 rollout above preceded this instrumentation, so it has
+no recorded memory measurements. Rerun that explicit period to collect
+per-partition task logs before estimating capacity for a longer range. Existing
+checkpoints will be revalidated and unchanged database partitions can be
+skipped, so such a rerun measures **resume** behavior. Measure a fresh
+partition separately to assess download and transformation capacity. Compare
+the highest observed task-process peak and the number of concurrent tasks with
+the host's available RAM; leave headroom for PostgreSQL and Airflow services.
+Memory metrics stay in the task logs and do not enter XCom.
+
 ## Safe Retry and Resume
 
 - A valid existing RAW NetCDF checkpoint is resumed and validated.
@@ -277,9 +340,9 @@ The second example spans eleven complete calendar years and therefore creates
 
 If a task log stops at `Pre Execute` while standalone startup warns that
 `api_auth/jwt_secret` is empty, stop all Airflow components, configure one
-stable `AIRFLOW__API_AUTH__JWT_SECRET` in `.env`, and restart Airflow. Separate
-random secrets prevent Airflow components from authenticating task execution;
-they do not indicate a CDS or pipeline-data failure.
+stable secret with `./generate-airflow-jwt-secret.sh`, and restart Airflow.
+Separate random secrets prevent Airflow components from authenticating task
+execution; they do not indicate a CDS or pipeline-data failure.
 
 Before a complete historical run, inspect artifact counts, provenance, row
 counts, disk usage, memory, task duration, and database behavior. Diagnose a
@@ -287,8 +350,8 @@ failed mapped partition before rerunning it.
 
 ## Tests
 
-Activate `myvenv`, load `.env`, and activate the Airflow configuration before
-running Airflow-specific tests.
+Run `source activate-airflow.sh` before Airflow-specific tests. It activates
+`myvenv`, loads `.env`, and configures the repository-local Airflow runtime.
 
 Core and Airflow-neutral orchestration helpers:
 
