@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from orchestration.campaign import (
+    CampaignBlocked,
     matching_campaign_progress_definition,
     select_earliest_incomplete_quarter,
 )
@@ -19,6 +20,7 @@ from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
+    release_pipeline_progress_claim,
     update_pipeline_progress_detail,
 )
 from orchestration.tasks.era5_land import (
@@ -54,6 +56,7 @@ def _progress_engine() -> Iterator[Engine]:
 def prepare_monthly_jobs(
     run_type: str,
     conf: Mapping[str, Any] | None,
+    run_id: str | None = None,
 ) -> list[dict[str, object]]:
     """Resolve one run and initialize its exact progress identity."""
     mode = resolve_run_mode(run_type, conf)
@@ -63,9 +66,20 @@ def prepare_monthly_jobs(
         create_daily_climate_detail_table(engine)
         create_pipeline_progress_tables(engine)
         if mode.mode == "scheduled":
-            selected = select_earliest_incomplete_quarter(engine)
+            if not run_id:
+                raise ValueError("Scheduled DagRuns require a non-empty run_id.")
+            selected = select_earliest_incomplete_quarter(
+                engine, claim_owner=run_id
+            )
             if selected is None:
                 logger.info("No eligible incomplete campaign quarter remains.")
+                return []
+            if isinstance(selected, CampaignBlocked):
+                logger.warning(
+                    "Scheduled campaign selection blocked; quarter=%s; reason=%s",
+                    selected.quarter.label,
+                    selected.reason,
+                )
                 return []
             progress_id = selected.progress_id
             specs = list(selected.request_specs)
@@ -86,7 +100,7 @@ def prepare_monthly_jobs(
                 progress_id,
             )
         return [
-            {"request_spec": spec, "progress_id": progress_id}
+            {"request_spec": spec, "progress_id": progress_id, "run_mode": mode.mode}
             for spec in specs
         ]
 
@@ -95,6 +109,9 @@ def _record(progress_id: int, request_key: str, **fields: Any) -> None:
     with _progress_engine() as engine:
         update_pipeline_progress_detail(engine, progress_id, request_key, **fields)
         reconcile_pipeline_progress(engine, progress_id)
+        release_pipeline_progress_claim(
+            engine, progress_id, require_complete=True
+        )
 
 
 def _record_failure(progress_id: int, request_key: str, boundary: str, error: Exception) -> None:
@@ -127,6 +144,7 @@ def _require_request_key(result: Mapping[str, Any], expected: str) -> None:
 def extract_with_progress(
     request_spec: dict[str, object],
     progress_id: int,
+    run_mode: str,
 ) -> dict[str, object]:
     from pipeline.request import build_request_key, weather_request_from_spec
 
@@ -146,7 +164,7 @@ def extract_with_progress(
     except Exception as error:
         _record_failure(progress_id, request_key, "extract", error)
         raise
-    return {**result, "progress_id": progress_id}
+    return {**result, "progress_id": progress_id, "run_mode": run_mode}
 
 
 def transform_with_progress(extract_result: dict[str, object]) -> dict[str, object]:
@@ -168,7 +186,11 @@ def transform_with_progress(extract_result: dict[str, object]) -> dict[str, obje
     except Exception as error:
         _record_failure(progress_id, request_key, "transform", error)
         raise
-    return {**result, "progress_id": progress_id}
+    return {
+        **result,
+        "progress_id": progress_id,
+        "run_mode": extract_result["run_mode"],
+    }
 
 
 def _persisted_row_count(
@@ -211,6 +233,8 @@ def _reconcile_campaign_repair(
     transformed_sha256: str,
     transformed_size: int,
     row_count: int,
+    *,
+    manual_repair: bool,
 ) -> None:
     """Apply a validated whole-month load to its exact campaign quarter."""
     from pipeline.request import weather_request_from_spec
@@ -225,6 +249,10 @@ def _reconcile_campaign_repair(
     with _progress_engine() as engine:
         campaign_id = initialize_pipeline_progress(engine, definition)
         if campaign_id == progress_id:
+            if manual_repair:
+                release_pipeline_progress_claim(
+                    engine, campaign_id, require_complete=False
+                )
             return
         raw_artifact = raw_artifact_for_request(
             weather_request_from_spec(request_spec)
@@ -249,6 +277,10 @@ def _reconcile_campaign_repair(
             row_count=row_count,
         )
         reconcile_pipeline_progress(engine, campaign_id)
+        if manual_repair:
+            release_pipeline_progress_claim(
+                engine, campaign_id, require_complete=False
+            )
     logger.info(
         "Reconciled campaign repair; progress_id=%d; request_key=%s",
         campaign_id,
@@ -277,9 +309,14 @@ def load_with_progress(transform_result: dict[str, object]) -> dict[str, object]
         if not isinstance(request_spec, Mapping):
             raise ValueError("Load control metadata is missing a request specification.")
         _reconcile_campaign_repair(
-            progress_id, request_spec, request_key, path, checksum, size, row_count
+            progress_id, request_spec, request_key, path, checksum, size, row_count,
+            manual_repair=transform_result["run_mode"] == "manual",
         )
     except Exception as error:
         _record_failure(progress_id, request_key, "load", error)
         raise
-    return {**result, "progress_id": progress_id}
+    return {
+        **result,
+        "progress_id": progress_id,
+        "run_mode": transform_result["run_mode"],
+    }
