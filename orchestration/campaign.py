@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Iterable, Mapping, Any
 
 CAMPAIGN_KEY = "era5_land_2016_2025"
 CAMPAIGN_START_YEAR = 2016
@@ -68,40 +65,3 @@ def build_quarter_request_specs(
             f"{quarter.label} must resolve to exactly three monthly partitions."
         )
     return specs
-
-
-def build_configuration_identity(
-    request_specs: Iterable[Mapping[str, Any]],
-) -> str:
-    """Hash the exact monthly request identities expected for one quarter."""
-    from pipeline.request import build_request_key, weather_request_from_spec
-
-    request_keys = [
-        build_request_key(weather_request_from_spec(spec))
-        for spec in request_specs
-    ]
-    if len(request_keys) != 3:
-        raise ValueError("Quarter configuration identity requires exactly three requests.")
-
-    payload = {
-        "campaign_key": CAMPAIGN_KEY,
-        "request_keys": request_keys,
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def build_campaign_expected_identities(
-    *,
-    current_local_date: date | None = None,
-) -> dict[CampaignQuarter, str]:
-    """Build the current expected request identity for all 40 campaign quarters."""
-    return {
-        quarter: build_configuration_identity(
-            build_quarter_request_specs(
-                quarter,
-                current_local_date=current_local_date,
-            )
-        )
-        for quarter in iter_campaign_quarters()
-    }

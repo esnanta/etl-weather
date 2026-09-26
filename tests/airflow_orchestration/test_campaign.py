@@ -6,8 +6,6 @@ from orchestration.campaign import (
     CAMPAIGN_END_YEAR,
     CAMPAIGN_START_YEAR,
     CampaignQuarter,
-    build_campaign_expected_identities,
-    build_configuration_identity,
     build_quarter_request_specs,
     iter_campaign_quarters,
 )
@@ -57,31 +55,3 @@ def test_quarter_request_specs_map_exactly_three_whole_months() -> None:
         ("2024-02-01", "2024-02-29"),
         ("2024-03-01", "2024-03-31"),
     ]
-
-
-def test_configuration_identity_is_stable_and_request_sensitive() -> None:
-    specs = build_quarter_request_specs(
-        CampaignQuarter(2024, 1),
-        current_local_date=date(2026, 9, 25),
-    )
-    first = build_configuration_identity(specs)
-    second = build_configuration_identity(specs)
-
-    changed = [dict(spec) for spec in specs]
-    changed[0] = {
-        **changed[0],
-        "bbox": {**changed[0]["bbox"], "north_lat": 6.0},
-    }
-
-    assert first == second
-    assert first != build_configuration_identity(changed)
-
-
-def test_campaign_expected_identities_cover_all_forty_quarters() -> None:
-    identities = build_campaign_expected_identities(
-        current_local_date=date(2026, 9, 25)
-    )
-
-    assert len(identities) == 40
-    assert set(identities) == set(iter_campaign_quarters())
-    assert all(len(identity) == 64 for identity in identities.values())
