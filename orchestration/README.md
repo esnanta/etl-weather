@@ -339,7 +339,67 @@ and its artifacts, then use an explicit whole-month manual recovery to
 validate and release the claim. Do not clear a claim while its DagRun is active.
 The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
-disabled pending a live pacing pilot, operational review, and rollout.
+disabled pending the post-change retry pilot, operational review, and rollout.
+
+## Progress Backup and Restart Recovery
+
+The local Airflow metadata database is SQLite, while the campaign truth is in
+PostgreSQL. Keep the PostgreSQL database, the shared `data/` artifacts, and
+Airflow metadata together when preparing a recoverable snapshot. The PostgreSQL
+backup must include both `climate.pipeline_progress` /
+`climate.pipeline_progress_detail` and `climate.cds_submission_pacing`,
+as well as `climate_data.daily_climate` /
+`climate_data.daily_climate_detail`. A progress-only restore cannot prove
+completed loads and a missing pacing clock can permit an early CDS submission.
+
+For a coordinated maintenance backup:
+
+1. Pause the DAG and wait for every active task and deferred extraction to
+   finish. Stop the scheduler, triggerer, and API server before copying local runtime state.
+   Do not treat a paused DAG as proof that running tasks have stopped.
+2. Back up the complete PostgreSQL database with `pg_dump -Fc` using a
+   PostgreSQL account authorized to read both schemas. Set `PGHOST`,
+   `PGPORT`, `PGUSER`, and `PGDATABASE` from the deployment configuration;
+   use a protected `PGPASSFILE` or another approved password source instead
+   of putting a password in the command line:
+
+   ```bash
+   pg_dump -Fc --file=/secure-backups/climate-and-progress.dump
+   ```
+
+3. Copy `data/` (including RAW, transformed, and any unfinished
+   `.cds_retrieval_chunks/`), the local Airflow metadata state, and the
+   protected JWT secret to a protected backup location. Keep the artifact paths
+   and worker mount layout consistent for restore. Record the snapshot time
+   and verify that the dump and copied files can be read.
+
+Restore into an **isolated empty database and isolated artifact directory**
+first, using `pg_restore --dbname=<empty-test-database>
+--single-transaction /secure-backups/climate-and-progress.dump`; restore the
+artifact copy and check representative RAW and transformed checksums. This is
+a restore drill, not a command to overwrite the live database. A live restore
+requires a maintenance window, a reviewed database cutover, and a consistent
+artifact snapshot. The Airflow SQLite metadata file alone does not restore
+campaign truth.
+
+After a restart, keep the schedule disabled until PostgreSQL, the shared
+artifact paths, and the triggerer are reachable. Inspect the latest DagRun
+and any quarter with a non-null `selection_owner`. A terminated run can leave
+an owner claim and a `running` detail; this intentionally prevents a new
+automatic submission. Do not delete progress rows, reset the pacing row, or
+clear a claim by hand while the original DagRun might still be active.
+After confirming it has ended, trigger an explicit whole-month manual repair
+for the affected month. The normal boundaries validate or resume checkpoints,
+verify the persisted load, reconcile the quarter, and release its claim when
+no failed detail remains. A `failed` detail also blocks automatic selection
+until repaired. A successful Airflow task state alone does not mark a quarter
+complete; reconciliation verifies all three monthly details against persisted
+observations. Once repair is complete, review the quarter status and resume
+scheduled processing only after the operational rollout checks pass.
+
+PostgreSQL's [`pg_dump`](https://www.postgresql.org/docs/16/app-pgdump.html)
+and [`pg_restore`](https://www.postgresql.org/docs/16/app-pgrestore.html)
+documentation describes the archive and restore commands.
 
 ## Task Flow
 

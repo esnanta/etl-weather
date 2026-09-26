@@ -73,8 +73,8 @@ Still pending:
 - the existing DAG uses the mode contract, exact progress identity, mapped
   boundary status, persisted load proof, and live-verified CDS pacing; its
   schedule remains disabled;
-- document PostgreSQL progress/pacing backup and restart recovery, then review
-  target-host disk, database, memory, and triggerer capacity before scheduling;
+- PostgreSQL progress/pacing backup and restart recovery are documented;
+  review target-host disk, database, memory, and triggerer capacity before scheduling;
 - implement a configurable Asia/Jakarta scheduler cadence, complete campaign
   observability/docs, and pilot scheduled selection plus manual recovery before
   enabling the bounded campaign;
@@ -452,8 +452,9 @@ Durable progress and recovery:
       become complete only when every expected detail partition is complete
       and valid. Partial manual repair must update only the affected detail and
       may complete the parent only after all expected partitions verify.
-- [ ] Document storage setup, backup, restart, and reconciliation behavior
-      before enabling automatic mode.
+- [x] Document storage setup, backup, restart, and reconciliation behavior
+      before enabling automatic mode. The runbook covers coordinated PostgreSQL
+      and artifact snapshots, pacing state, stale claims, and manual repair.
 - [x] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
 - [x] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
 - [x] Reconcile valid manual repairs with the same monthly completion
