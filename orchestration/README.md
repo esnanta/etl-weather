@@ -358,6 +358,30 @@ The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
 disabled pending scheduled-selection and recovery pilots and final rollout checks.
 
+## Campaign Progress Summary
+
+After the progress tables exist, run this read-only command from the repository
+root with the normal database environment:
+
+```bash
+source activate-airflow.sh
+python scripts/report_campaign_progress.py
+```
+
+It lists completed quarters per year (for example, `2016: 3/4 quarters
+complete`), totals for the fixed 40-quarter campaign, failed quarter reasons,
+and the most recent recorded valid load. The command matches each current
+quarter's exact source, dataset, dates, and configuration identity; unrelated
+manual ranges and old configurations are excluded. A missing quarter appears
+as incomplete. This is a snapshot of persisted progress, not a new
+reconciliation or a provider request. Scheduled selection still reconciles
+its earliest unfinished quarter against persisted observation evidence.
+
+The selection task also logs the selected year and quarter, the three month
+labels, the run mode, progress ID, and a reason when automatic selection is
+blocked. CDS pacing decisions remain in the mapped extraction log. The
+summary stays in the terminal/logs and is never placed in XCom.
+
 ## Campaign Host Capacity and Post-Change CDS Pilot
 
 Run this read-only snapshot on the actual Airflow host, from the repository

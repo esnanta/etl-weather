@@ -90,9 +90,10 @@ def prepare_monthly_jobs(
             progress_id = selected.progress_id
             specs = list(selected.request_specs)
             logger.info(
-                "Selected scheduled campaign quarter %s; progress_id=%d",
+                "Selected scheduled campaign quarter %s; mode=scheduled; progress_id=%d; months=%s",
                 selected.quarter.label,
                 progress_id,
+                ", ".join(str(spec["start_date"])[:7] for spec in specs),
             )
         else:
             specs = build_historical_request_specs(mode.start_date, mode.end_date)
@@ -100,10 +101,11 @@ def prepare_monthly_jobs(
                 engine, build_pipeline_progress_definition(specs)
             )
             logger.info(
-                "Selected manual range %s through %s; progress_id=%d",
+                "Selected manual range %s through %s; mode=manual; progress_id=%d; months=%s",
                 mode.start_date,
                 mode.end_date,
                 progress_id,
+                ", ".join(str(spec["start_date"])[:7] for spec in specs),
             )
         return [
             {"request_spec": spec, "progress_id": progress_id, "run_mode": mode.mode}

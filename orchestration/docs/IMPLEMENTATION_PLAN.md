@@ -88,8 +88,9 @@ Still pending:
   keep the measured local disk headroom visible during the campaign. Future
   deployment capacity checks belong to that deployment, not the Stage 8 code gate;
 - the configurable Asia/Jakarta scheduler cadence is implemented but disabled
-  by default; complete campaign observability/docs and pilot scheduled selection
-  plus manual recovery before enabling the bounded campaign;
+  by default; a read-only exact-identity 2016–2025 summary is available.
+  Complete remaining campaign observability and pilot scheduled selection plus
+  manual recovery before enabling the bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -537,10 +538,13 @@ CDS request pacing:
 
 Observability, validation, and rollout:
 
+- [x] Provide a read-only exact-identity campaign report with yearly completion
+      counts, failed quarters, and last recorded valid load. Keep its output out
+      of XCom and exclude unrelated manual ranges/configurations.
 - [ ] Log the selected year/quarter, three months, mode, attempt, CDS
       pacing decision, completed/remaining quarters, and failure reason.
-      Provide a readable 2016–2025 summary (e.g. 2016: 3/4 quarters)
-      without creating annual DAGs or sending large payloads through XCom.
+      Use the read-only 2016–2025 summary without creating annual DAGs or
+      sending large payloads through XCom.
 - [ ] Update Airflow policy docs and README examples that currently say
       `schedule=None` or recommend triggering all 120 months in one
       DagRun; document manual quarter/month/year examples and status checks.
