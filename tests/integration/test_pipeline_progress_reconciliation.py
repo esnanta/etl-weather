@@ -140,6 +140,12 @@ def test_completion_requires_matching_persisted_partition() -> None:
             get_pipeline_progress_by_id(engine, progress_id).validation_status
             == "valid"
         )
+        completed_at = get_pipeline_progress_by_id(engine, progress_id).completed_at
+        reconcile_pipeline_progress(engine, progress_id)
+        assert (
+            get_pipeline_progress_by_id(engine, progress_id).completed_at
+            == completed_at
+        )
         assert initialize_pipeline_progress(engine, definition) == progress_id
         assert status() == ("complete", 1)
 
