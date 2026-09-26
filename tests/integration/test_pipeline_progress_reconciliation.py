@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -14,6 +15,8 @@ from orchestration.repositories.pipeline_progress import (
     get_pipeline_progress_by_id,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
+    release_pipeline_progress_claim,
+    try_claim_pipeline_progress,
     update_pipeline_progress_detail,
 )
 from pipeline.database import (
@@ -242,6 +245,32 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
         create_pipeline_progress_tables(engine)
         tables_ready = True
         progress_id = initialize_pipeline_progress(engine, definition)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            claims = list(
+                executor.map(
+                    lambda owner: try_claim_pipeline_progress(
+                        engine, progress_id, owner
+                    ),
+                    ("scheduled__one", "scheduled__two"),
+                )
+            )
+        assert claims.count(True) == 1
+        assert claims.count(False) == 1
+        assert release_pipeline_progress_claim(
+            engine, progress_id, require_complete=False
+        )
+        update_pipeline_progress_detail(
+            engine, progress_id, partitions[0].request_key,
+            extract_status="failed", validation_status="failed",
+            last_error="ValidationError",
+        )
+        reconcile_pipeline_progress(engine, progress_id)
+        assert get_pipeline_progress_by_id(
+            engine, progress_id
+        ).failed_partition_count == 1
+        assert not try_claim_pipeline_progress(
+            engine, progress_id, "scheduled__next"
+        )
         for number, partition in enumerate(partitions, start=1):
             update_pipeline_progress_detail(
                 engine, progress_id, partition.request_key,
