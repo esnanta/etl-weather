@@ -398,7 +398,12 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
                     WHERE partition.extract_status = 'running'
                        OR partition.transform_status = 'running'
                        OR partition.load_status = 'running'
-                ) AS running_count
+                ) AS running_count,
+                COUNT(partition.id) FILTER (
+                    WHERE partition.extract_status <> 'pending'
+                       OR partition.transform_status <> 'pending'
+                       OR partition.load_status <> 'pending'
+                ) AS attempted_count
             FROM {parent} AS batch
             LEFT JOIN {detail} AS partition
               ON partition.pipeline_progress_id = batch.id
@@ -450,12 +455,16 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
                     LIMIT 1
                 )
             END,
-            started_at = COALESCE(progress.started_at, CURRENT_TIMESTAMP),
+            started_at = CASE
+                WHEN detail_state.attempted_count > 0
+                    THEN COALESCE(progress.started_at, CURRENT_TIMESTAMP)
+                ELSE progress.started_at
+            END,
             completed_at = CASE
                 WHEN detail_state.actual_count = progress.expected_partition_count
                  AND detail_state.completed_count = progress.expected_partition_count
                  AND detail_state.failed_count = 0
-                    THEN CURRENT_TIMESTAMP
+                    THEN COALESCE(progress.completed_at, CURRENT_TIMESTAMP)
                 ELSE NULL
             END,
             updated_at = CURRENT_TIMESTAMP
