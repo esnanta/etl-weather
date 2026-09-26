@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from orchestration.campaign import CampaignQuarter
+from orchestration.campaign import CampaignBlocked, CampaignQuarter
 from orchestration.tasks import progress
 from orchestration.tasks.era5_land import build_historical_request_specs
 
@@ -43,6 +43,7 @@ def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -
 
     assert len(jobs) == 1
     assert jobs[0]["progress_id"] == 42
+    assert jobs[0]["run_mode"] == "manual"
     assert jobs[0]["request_spec"]["start_date"] == "2024-01-01"
     assert definitions[0].expected_partition_count == 1
 
@@ -51,9 +52,12 @@ def test_scheduled_terminal_run_maps_no_partitions(monkeypatch) -> None:
     monkeypatch.setattr(progress, "_progress_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter", lambda engine: None
+        progress, "select_earliest_incomplete_quarter",
+        lambda engine, claim_owner: None,
     )
-    assert progress.prepare_monthly_jobs("scheduled", None) == []
+    assert progress.prepare_monthly_jobs(
+        "scheduled", None, "scheduled__one"
+    ) == []
 
 
 def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
@@ -68,15 +72,33 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
         request_specs=tuple(specs),
     )
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter", lambda engine: selected
+        progress, "select_earliest_incomplete_quarter",
+        lambda engine, claim_owner: selected,
     )
 
-    jobs = progress.prepare_monthly_jobs("scheduled", {})
+    jobs = progress.prepare_monthly_jobs("scheduled", {}, "scheduled__one")
     assert len(jobs) == 3
     assert all(job["progress_id"] == 19 for job in jobs)
+    assert all(job["run_mode"] == "scheduled" for job in jobs)
     assert [job["request_spec"]["start_date"] for job in jobs] == [
         "2024-01-01", "2024-02-01", "2024-03-01"
     ]
+
+
+def test_blocked_scheduled_run_maps_no_partitions(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    _skip_schema_setup(monkeypatch)
+    monkeypatch.setattr(
+        progress, "select_earliest_incomplete_quarter",
+        lambda engine, claim_owner: CampaignBlocked(
+            CampaignQuarter(2024, 1), 19, "Manual repair required"
+        ),
+    )
+    with caplog.at_level("WARNING"):
+        assert progress.prepare_monthly_jobs(
+            "scheduled", None, "scheduled__next"
+        ) == []
+    assert "Manual repair required" in caplog.text
 
 
 def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
@@ -112,19 +134,23 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
     )
     monkeypatch.setattr(
         progress, "_reconcile_campaign_repair",
-        lambda *args: repairs.append(args),
+        lambda *args, **kwargs: repairs.append((args, kwargs)),
     )
 
     result = progress.load_with_progress(
-        {"progress_id": 42, "request_key": "monthly-key", "request": _spec()}
+        {
+            "progress_id": 42, "request_key": "monthly-key",
+            "request": _spec(), "run_mode": "manual",
+        }
     )
     assert result["progress_id"] == 42
     assert updates[0] == {"load_status": "running", "validation_status": "pending"}
     assert updates[-1]["load_status"] == "complete"
     assert updates[-1]["validation_status"] == "valid"
     assert updates[-1]["row_count"] == 15
-    assert repairs[0][0] == 42
-    assert repairs[0][2] == "monthly-key"
+    assert repairs[0][0][0] == 42
+    assert repairs[0][0][2] == "monthly-key"
+    assert repairs[0][1]["manual_repair"] is True
 
 
 def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
@@ -229,6 +255,7 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     assert definition is not None
     updates = []
     reconciled = []
+    released = []
     monkeypatch.setattr(progress, "_progress_engine", _engine)
     monkeypatch.setattr(
         progress, "initialize_pipeline_progress",
@@ -250,9 +277,15 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
         progress, "reconcile_pipeline_progress",
         lambda engine, progress_id: reconciled.append(progress_id),
     )
+    monkeypatch.setattr(
+        progress, "release_pipeline_progress_claim",
+        lambda engine, progress_id, require_complete:
+            released.append((progress_id, require_complete)),
+    )
     progress._reconcile_campaign_repair(
         42, _spec(), definition.partitions[0].request_key,
         "transformed.parquet", "parquet-sha", 100, 15,
+        manual_repair=True,
     )
 
     assert updates[0][0] == 91
@@ -262,6 +295,7 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     assert updates[0][2]["validation_status"] == "valid"
     assert updates[0][2]["row_count"] == 15
     assert reconciled == [91]
+    assert released == [(91, False)]
 
 
 def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
@@ -274,5 +308,25 @@ def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
 
     monkeypatch.setattr(progress, "_progress_engine", unexpected)
     progress._reconcile_campaign_repair(
-        42, partial, "partial-key", "path", "sha", 100, 15
+        42, partial, "partial-key", "path", "sha", 100, 15,
+        manual_repair=True,
     )
+
+
+def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None:
+    released = []
+    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(
+        progress, "initialize_pipeline_progress",
+        lambda engine, definition: 42,
+    )
+    monkeypatch.setattr(
+        progress, "release_pipeline_progress_claim",
+        lambda engine, progress_id, require_complete:
+            released.append((progress_id, require_complete)),
+    )
+    progress._reconcile_campaign_repair(
+        42, _spec(), "monthly-key", "path", "sha", 100, 15,
+        manual_repair=True,
+    )
+    assert released == [(42, False)]
