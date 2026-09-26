@@ -370,10 +370,23 @@ optional operator input, not a separate DAG per year.
 
 Scheduling and selection:
 
-- [ ] Define an unambiguous mode contract: a scheduled run chooses the next
-      eligible incomplete quarter; a manual run requires explicit inclusive
-      dates, with a single failed month or quarter the recommended recovery
-      scope. Reject incomplete date pairs and ambiguous mode inputs.
+- [x] Define an unambiguous mode contract in `orchestration/mode.py` before
+      DAG integration. A scheduled run will select the next eligible incomplete
+      quarter; a manual run requires explicit inclusive dates. Reject incomplete
+      date pairs and ambiguous mode inputs.
+
+The mode contract uses Airflow's DagRun `run_type` as its sole mode authority.
+No `mode` parameter is accepted. `scheduled` runs require empty `dag_run.conf`
+and return no operator dates; a later selection step will use persisted progress
+to choose the earliest eligible incomplete quarter. `manual` runs require
+`dag_run.conf` to contain exactly `start_date` and `end_date` as canonical
+`YYYY-MM-DD` strings, inclusive and in ascending order. The existing request
+builder still validates the historical range and six-day availability lag.
+Unsupported run types, extra keys, incomplete pairs, invalid dates, and
+scheduled configuration fail explicitly. A single failed month or quarter is
+the recommended manual repair scope. Manual dates are not silently replaced
+by scheduler-selected dates. The contract is implemented and tested, but the
+DAG still has `schedule=None` and does not call it yet.
 - [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
