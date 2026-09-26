@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING
+from calendar import monthrange
+from typing import TYPE_CHECKING, Any, Mapping
 from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
+    from orchestration.progress import PipelineProgressDefinition
 
 CAMPAIGN_KEY = "era5_land_2016_2025"
 CAMPAIGN_START_YEAR = 2016
@@ -97,6 +99,33 @@ def initialize_campaign_progress(
         definition = build_pipeline_progress_definition(specs)
         progress_ids.append(initialize_pipeline_progress(engine, definition))
     return tuple(progress_ids)
+
+
+def matching_campaign_progress_definition(
+    request_spec: Mapping[str, Any],
+) -> PipelineProgressDefinition | None:
+    """Match one exact calendar-month request to the current campaign identity."""
+    from orchestration.progress import build_pipeline_progress_definition
+    from pipeline.request import build_request_key, weather_request_from_spec
+
+    request = weather_request_from_spec(request_spec)
+    start = date.fromisoformat(request.start_date)
+    end = date.fromisoformat(request.end_date)
+    if not CAMPAIGN_START_YEAR <= start.year <= CAMPAIGN_END_YEAR:
+        return None
+    if (
+        start.day != 1
+        or end != date(start.year, start.month, monthrange(start.year, start.month)[1])
+    ):
+        return None
+
+    quarter = CampaignQuarter(start.year, (start.month - 1) // 3 + 1)
+    specs = build_quarter_request_specs(quarter, current_local_date=date.max)
+    definition = build_pipeline_progress_definition(specs)
+    request_key = build_request_key(request)
+    if request_key not in {partition.request_key for partition in definition.partitions}:
+        return None
+    return definition
 
 
 def select_earliest_incomplete_quarter(
