@@ -251,8 +251,9 @@ submissions. Set `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` in the runtime environmen
 the default is `1800` seconds (30 minutes), an operational starting point rather
 than a provider quota. A dedicated `climate.cds_submission_pacing` row uses the
 PostgreSQL clock and a row lock to coordinate manual and scheduled attempts
-across workers. It is reserved immediately before each `client.retrieve`,
-including extra local-day context chunks and Airflow retries. The one-slot
+across workers. The CDS HTTP session reserves it immediately before each
+submission POST, including internal library retries, extra local-day context
+chunks, and Airflow retries. Status polling and downloads do not reserve slots. The one-slot
 `cds_api` pool continues to limit concurrent extraction.
 
 When a slot is not ready, the extraction operator defers to the triggerer and

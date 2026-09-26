@@ -14,6 +14,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
 import xarray as xr
 from dotenv import load_dotenv
 
@@ -39,6 +40,24 @@ logger = logging.getLogger(__name__)
 CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
+
+
+class _PacedSubmissionSession(requests.Session):
+    """Reserve a durable slot for each provider POST, including library retries."""
+
+    def __init__(
+        self,
+        request: WeatherRequest,
+        before_submission: Callable[[WeatherRequest], None],
+    ) -> None:
+        super().__init__()
+        self._chunk_request = request
+        self._before_submission = before_submission
+
+    def request(self, method: str, url: str, *args, **kwargs):
+        if method.upper() == "POST":
+            self._before_submission(self._chunk_request)
+        return super().request(method, url, *args, **kwargs)
 
 
 class CdsSubmissionDeferred(Exception):
@@ -174,7 +193,10 @@ def _download_cds(
     cdsapi_url, cdsapi_key = _resolve_cds_credentials()
     profile = get_source_dataset_profile(request.source, request.dataset)
     payload = _build_cds_request_payload(request)
-    client = cdsapi.Client(url=cdsapi_url, key=cdsapi_key, quiet=True)
+    client_options = {"url": cdsapi_url, "key": cdsapi_key, "quiet": True}
+    if before_submission is not None:
+        client_options["session"] = _PacedSubmissionSession(request, before_submission)
+    client = cdsapi.Client(**client_options)
 
     temp_path = Path(tempfile.gettempdir()) / (
         f"cds_{request.start_date}_{request.end_date}_"
@@ -191,8 +213,6 @@ def _download_cds(
         purpose,
     )
     try:
-        if before_submission is not None:
-            before_submission(request)
         client.retrieve(profile["api_dataset"], payload, str(temp_path))
         with xr.open_dataset(temp_path) as opened_dataset:
             dataset = opened_dataset.load()

@@ -99,16 +99,23 @@ def test_corrupt_chunk_identity_fails_closed(
         )
 
 
-def test_guard_precedes_actual_retrieve(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = []
+def test_guard_precedes_actual_post(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
 
     class FakeClient:
         def __init__(self, **kwargs):
-            pass
+            self.session = kwargs["session"]
 
         def retrieve(self, *args):
-            calls.append(args)
+            self.session.post("https://cds.example/resources/reanalysis-era5-land")
 
+    def transport(_session, method, url, *args, **kwargs):
+        calls.append(method)
+        return None
+
+    import requests
+
+    monkeypatch.setattr(requests.Session, "request", transport)
     monkeypatch.setitem(sys.modules, "cdsapi", SimpleNamespace(Client=FakeClient))
     monkeypatch.setattr(cds, "_resolve_cds_credentials", lambda: ("url", "key"))
 
@@ -123,3 +130,35 @@ def test_guard_precedes_actual_retrieve(monkeypatch: pytest.MonkeyPatch) -> None
             purpose="target period", before_submission=denied,
         )
     assert calls == []
+
+
+def test_internal_post_retry_requires_new_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import requests
+
+    events: list[str] = []
+
+    def transport(_session, method, url, *args, **kwargs):
+        events.append(method.upper())
+        return None
+
+    monkeypatch.setattr(requests.Session, "request", transport)
+    request = _request("2024-02-01", "2024-02-01")
+
+    def reserve(chunk: WeatherRequest) -> None:
+        assert chunk is request
+        events.append("reserve")
+        if events.count("reserve") == 2:
+            raise cds.CdsSubmissionDeferred(
+                datetime(2026, 9, 26, tzinfo=timezone.utc)
+            )
+
+    session = cds._PacedSubmissionSession(request, reserve)
+    session.get("https://cds.example/status")
+    session.get("https://cdn.example/download.nc")
+    session.post("https://cds.example/resources/reanalysis-era5-land")
+    with pytest.raises(cds.CdsSubmissionDeferred):
+        session.post("https://cds.example/resources/reanalysis-era5-land")
+
+    assert events == ["GET", "GET", "reserve", "POST", "reserve"]

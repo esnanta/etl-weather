@@ -501,18 +501,16 @@ CDS request pacing:
 
 - [x] Keep the one-slot `cds_api` pool. Document that it limits
       concurrent extraction but does not enforce time between requests.
-- [x] Add a configurable minimum interval before each top-level CDS
-      `client.retrieve`, shared by automatic and manual modes, including
-      additional chunks and Airflow task retries. The 30-minute default is
+- [x] Add a configurable minimum interval before each CDS submission POST,
+      shared by automatic and manual modes, including internal library retries,
+      additional chunks, and Airflow task retries. The 30-minute default is
       an operational starting point, not a claimed Copernicus quota.
-- [ ] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
-      With the adapter's UID:key credential format, `Client.retrieve` calls
-      `_api`, whose `robust` wrapper retries the POST on connection/read
-      timeouts and retriable HTTP status codes. The current database gate
-      surrounds each top-level `client.retrieve`, so these internal POST
-      retries can occur before the 30-minute interval. Preserve safe status
-      polling and download retries while enforcing pacing at real submissions;
-      add offline tests before scheduling.
+- [x] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
+      Its `robust` wrapper can retry submissions after timeouts or retriable
+      HTTP responses. A dedicated requests session now reserves a durable slot
+      before every POST, including internal retries. GET polling and downloads
+      do not reserve slots. Offline tests cover deferral before transport and
+      reservation on a second POST attempt.
 - [x] Persist/coordinate the last submission timestamp across runs and
       workers; avoid holding a worker or pool slot idle for a long wait
       when Airflow can defer or reschedule it. Preserve a one-slot limit
