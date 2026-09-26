@@ -194,11 +194,11 @@ Until Stage 8 is implemented and verified, the DAG remains manual-only.
 
 ### Scheduled and Manual Mode Contract
 
-`orchestration/mode.py` now defines the contract for the later DAG integration.
+`orchestration/mode.py` defines the contract used by the existing DAG.
 Airflow's DagRun `run_type` determines the mode; operators do not pass a
 `mode` parameter. A scheduled DagRun must have empty `dag_run.conf`. It will
 select the earliest eligible incomplete 2016–2025 quarter from durable
-progress once selection is connected. It does not take dates from Airflow's
+progress when scheduled operation is enabled. It does not take dates from Airflow's
 scheduled data interval.
 
 A manual DagRun must provide exactly two inclusive dates in `dag_run.conf`:
@@ -215,9 +215,9 @@ For recovery, prefer one failed month or quarter. Manual ranges may also be
 chosen explicitly for other historical work; they never cause the scheduler
 to skip incomplete campaign quarters without verified progress evidence.
 
-This helper is not yet called by the DAG. The current trigger examples and
-`schedule=None` remain the operating behavior until progress selection and
-DAG wiring are implemented and tested.
+The DAG now reads `dag_run.run_type` and `dag_run.conf` through this contract.
+It remains manual-only with `schedule=None` until failure controls, provider
+pacing, and scheduled operation are reviewed.
 
 ### Scheduler Cadence vs CDS Submission Interval
 
@@ -248,9 +248,9 @@ Neither cadence nor provider pacing belongs to the durable identity of
 
 ### Generic Progress Persistence Foundation
 
-Stage 8 now has a cadence-neutral PostgreSQL persistence foundation. It is not
-wired into the DAG yet; scheduled/manual mode integration remains a later Stage
-8 step. Scheduler state is not stored using quarter-specific table names. The
+Stage 8 has cadence-neutral PostgreSQL progress integrated into the existing
+DAG. The schedule is still disabled while recovery and provider pacing remain
+under development. Scheduler state is not stored using quarter-specific table names. The
 implemented model remains in the existing climate database:
 
 ```text
@@ -279,8 +279,8 @@ The existing quarter helper remains scheduler policy for the bounded
 2016-2025 campaign; quarter number is not part of the durable persistence
 identity. Parent completion is derived from persisted detail evidence: every
 expected partition must have complete extract/transform/load state and valid
-validation state. This persistence foundation does not yet change the current
-manual-only DAG behavior.
+validation state. The current DAG records each mapped boundary against the selected progress ID,
+while its schedule remains disabled.
 
 The campaign helper can now seed all 40 quarter batches idempotently. Parent
 reconciliation requires each completed monthly detail to match a canonical
@@ -295,13 +295,18 @@ monthly request specifications. It returns no selection once all 40 are verified
 complete, or when the next quarter has not cleared the six-day availability
 boundary. It selects only the exact initialized campaign batch IDs, so unrelated
 manual ranges and configuration identities cannot displace a campaign quarter.
-The selector is not yet invoked by the DAG; failure limits and concurrent
-selection control remain subsequent Stage 8 work.
+The DAG invokes this selector for scheduled run provenance, although
+`schedule=None` prevents scheduled DagRuns today. Manual triggers create or
+reuse their exact range identity. Each mapped boundary records status and
+artifact identity; loading becomes valid only after matching PostgreSQL
+metadata and a positive observation count are verified. Failure limits,
+manual repair of an affected quarter, and concurrent selection control remain
+subsequent Stage 8 work.
 
 ## Task Flow
 
 ```text
-explicit start_date and end_date
+manual dates or scheduled quarter
                |
                v
     build_monthly_requests
@@ -354,7 +359,7 @@ airflow dags trigger cds_era5_land_etl \
 ```
 
 After the one-month run and its identical rerun succeed, test three consecutive
-months before selecting the complete ten-year range.
+months. Do not submit all 120 campaign months in one DagRun.
 
 ```bash
 airflow dags trigger cds_era5_land_etl \
