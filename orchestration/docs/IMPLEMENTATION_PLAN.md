@@ -377,7 +377,7 @@ Scheduling and selection:
 - [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
-- [ ] Schedule at a configurable two-hour cadence in `Asia/Jakarta`;
+- [ ] Schedule at a configurable cadence in `Asia/Jakarta` (for example 30 minutes, one hour, or two hours);
       retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
       ticks must not skip quarters; a run longer than two hours must not
       overlap the next run.
@@ -432,6 +432,35 @@ Durable progress and recovery:
       manual repair instead of repeatedly submitting bad requests.
       Resume from validated checkpoints without overwriting RAW files.
 
+Scheduler cadence and CDS submission interval are separate controls:
+
+```text
+scheduler cadence
+        =
+seberapa sering Airflow mencoba menjalankan pipeline
+
+CDS submission interval
+        =
+jarak minimum antar request aktual ke CDS
+```
+
+Scheduler cadence is runtime orchestration policy and must be configurable
+without changing progress-table identity or scientific contracts. The initial
+campaign may use 30 minutes, one hour, two hours, or another reviewed value.
+It controls how often Airflow attempts to start/select work. With
+`max_active_runs=1`, a new run must not overlap an active run.
+
+CDS submission interval is an independent provider-pacing control. It governs
+minimum time between actual CDS retrieval submissions, including retries or
+multiple monthly partitions within one logical progress range. The Airflow
+schedule and the one-slot `cds_api` pool do not by themselves guarantee this
+minimum elapsed time between provider submissions.
+
+Neither value is part of `climate.pipeline_progress` or
+`climate.pipeline_progress_detail` durable identity. They may be recorded as
+runtime/observability metadata when useful, but changing cadence or pacing must
+not invalidate otherwise identical request/progress identity.
+
 CDS request pacing:
 
 - [ ] Keep the one-slot `cds_api` pool. Document that it limits
@@ -447,8 +476,7 @@ CDS request pacing:
       when Airflow can defer or reschedule it. Preserve a one-slot limit
       at submission, and make recovery after process termination safe.
 - [ ] Review CDS queue time, provider errors, retries, and successful
-      submissions; make both the inter-request interval and two-hour
-      campaign cadence adjustable without editing scientific contracts.
+      submissions; make both the inter-request interval and scheduler cadence adjustable independently without editing scientific contracts.
 
 Observability, validation, and rollout:
 
