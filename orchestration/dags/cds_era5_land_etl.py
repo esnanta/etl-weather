@@ -90,5 +90,5 @@ with DAG(
         max_retry_delay=timedelta(hours=1),
         execution_timeout=timedelta(hours=6),
     ).expand_kwargs(monthly_jobs)
-    transformed = transform_or_resume.expand(extract_result=extracted)
+    transformed = transform_or_resume.expand(extract_result=extracted.output)
     load.expand(transform_result=transformed)
