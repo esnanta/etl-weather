@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, text
 from orchestration.progress import PipelineProgressDefinition, ProgressPartition
 from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
+    get_pipeline_progress_by_id,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
     update_pipeline_progress_detail,
@@ -94,6 +95,10 @@ def test_completion_requires_matching_persisted_partition() -> None:
 
         reconcile_pipeline_progress(engine, progress_id)
         assert status() == ("pending", 0)
+        assert (
+            get_pipeline_progress_by_id(engine, progress_id).validation_status
+            == "pending"
+        )
 
         timestamp = datetime(2024, 1, 2, tzinfo=UTC)
         with engine.begin() as connection:
@@ -131,6 +136,10 @@ def test_completion_requires_matching_persisted_partition() -> None:
 
         reconcile_pipeline_progress(engine, progress_id)
         assert status() == ("complete", 1)
+        assert (
+            get_pipeline_progress_by_id(engine, progress_id).validation_status
+            == "valid"
+        )
         assert initialize_pipeline_progress(engine, definition) == progress_id
         assert status() == ("complete", 1)
 
