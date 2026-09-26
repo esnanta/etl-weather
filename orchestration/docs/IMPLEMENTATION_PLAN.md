@@ -87,9 +87,9 @@ Still pending:
 - PostgreSQL progress/pacing backup and restart recovery are documented;
   keep the measured local disk headroom visible during the campaign. Future
   deployment capacity checks belong to that deployment, not the Stage 8 code gate;
-- implement a configurable Asia/Jakarta scheduler cadence, complete campaign
-  observability/docs, and pilot scheduled selection plus manual recovery before
-  enabling the bounded campaign;
+- the configurable Asia/Jakarta scheduler cadence is implemented but disabled
+  by default; complete campaign observability/docs and pilot scheduled selection
+  plus manual recovery before enabling the bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -420,14 +420,16 @@ Unsupported run types, extra keys, incomplete pairs, invalid dates, and
 scheduled configuration fail explicitly. A single failed month or quarter is
 the recommended manual repair scope. Manual dates are not silently replaced
 by scheduler-selected dates. The contract is implemented and used by the DAG. Its schedule remains
-`None` pending the scheduled rollout.
+`None` by default pending the scheduled rollout.
 - [x] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
-- [ ] Schedule at a configurable cadence in `Asia/Jakarta` (for example 30 minutes, one hour, or two hours);
-      retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
-      ticks must not skip quarters; a run longer than two hours must not
-      overlap the next run.
+- [x] Configure Jakarta-local campaign ticks at 30 minutes, one hour, or
+      two hours, independently of CDS pacing. Default to disabled and retain
+      `catchup=False` and `max_active_runs=1`; test the enabled DAG policy.
+- [ ] Pilot scheduled selection and recovery before enabling the schedule in
+      deployment. Skipped ticks must not skip quarters; a run longer than two
+      hours must not overlap the next run.
 - [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.

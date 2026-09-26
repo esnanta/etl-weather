@@ -12,6 +12,7 @@ import pendulum
 from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
+from orchestration.schedule import campaign_schedule
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
 from orchestration.tasks.progress import (
     load_with_progress,
@@ -25,7 +26,7 @@ DAG_ID = "cds_era5_land_etl"
 with DAG(
     dag_id=DAG_ID,
     description="ERA5-Land ETL with durable partition progress",
-    schedule=None,
+    schedule=campaign_schedule(),
     start_date=pendulum.datetime(2026, 1, 1, tz="Asia/Jakarta"),
     catchup=False,
     max_active_runs=1,

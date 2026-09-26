@@ -198,7 +198,8 @@ rolling ten-year range from the current date. The DAG retains
 `max_active_runs=1`; mapped task concurrency remains bounded, and the
 one-slot `cds_api` pool allows only one extraction submission at a time.
 
-Until Stage 8 is implemented and verified, the DAG remains manual-only.
+The campaign cadence is configured but disabled by default; the DAG remains
+manual-only during Stage 8 verification.
 
 ### Scheduled and Manual Mode Contract
 
@@ -224,8 +225,9 @@ chosen explicitly for other historical work; they never cause the scheduler
 to skip incomplete campaign quarters without verified progress evidence.
 
 The DAG now reads `dag_run.run_type` and `dag_run.conf` through this contract.
-It remains manual-only with `schedule=None` until failure controls, provider
-pacing, and scheduled operation are reviewed.
+It remains manual-only by default because
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` resolves to `schedule=None`. Scheduled
+operation still requires the planned pilots and rollout review.
 
 ### Scheduler Cadence vs CDS Submission Interval
 
@@ -241,10 +243,25 @@ CDS submission interval
 jarak minimum antar request aktual ke CDS
 ```
 
-Scheduler cadence controls how often Airflow attempts to select/start work. It
-must be configurable independently of the persisted progress model; changing
-from two hours to one hour or 30 minutes must not require a database migration
-or change request identity. `max_active_runs=1` remains the overlap guard.
+Scheduler cadence controls how often Airflow attempts to select/start work.
+`orchestration/schedule.py` reads `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and
+`ERA5_CAMPAIGN_SCHEDULE_CADENCE` from the DAG parser's environment.
+The explicit enable value is `true`; the default is `false` and resolves to
+`schedule=None`. The default cadence after enabling is `2h`:
+
+| Cadence value | Jakarta-local cron tick |
+| --- | --- |
+| `30m` | `*/30 * * * *` |
+| `1h` | `0 * * * *` |
+| `2h` | `0 */2 * * *` |
+
+The DAG's timezone-aware start date is in `Asia/Jakarta`, so these ticks
+follow the Jakarta clock. Set the same environment on every DAG parser and
+restart/reparse the DAG after changing it. The toggle is prepared for the
+scheduled pilot; do not enable it solely to inspect the configuration.
+Changing cadence does not require a database migration or change request
+identity. `max_active_runs=1` remains the overlap guard; a tick does not
+select a fixed calendar quarter or change the 30-minute CDS submission gate.
 
 CDS submission interval controls provider pacing between actual retrieval
 submissions. Set `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` in the runtime environment;
