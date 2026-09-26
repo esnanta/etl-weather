@@ -119,7 +119,7 @@ services with `Ctrl+C` in the terminal running Airflow.
 
 ### Alternative: Running Services Individually
 
-For more granular control, open three terminals. Run the environment setup in
+For more granular control, open four terminals. Run the environment setup in
 each terminal before starting its service:
 
 ```bash
@@ -145,6 +145,14 @@ Then start one service per terminal:
    ```bash
    airflow dag-processor
    ```
+
+4. **Terminal 4 — Triggerer**
+
+   ```bash
+   airflow triggerer
+   ```
+
+   The triggerer wakes extraction tasks after a CDS pacing deferral.
 
 The Airflow 3 CLI uses `api-server`; the older `airflow webserver` command does
 not apply to the pinned version. Stop each service with `Ctrl+C` in its own
@@ -239,9 +247,22 @@ from two hours to one hour or 30 minutes must not require a database migration
 or change request identity. `max_active_runs=1` remains the overlap guard.
 
 CDS submission interval controls provider pacing between actual retrieval
-submissions. It remains independent from the DAG schedule and the one-slot
-`cds_api` pool, because those controls limit run/task concurrency but do not
-by themselves guarantee a minimum elapsed interval between CDS submissions.
+submissions. Set `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` in the runtime environment;
+the default is `1800` seconds (30 minutes), an operational starting point rather
+than a provider quota. A dedicated `climate.cds_submission_pacing` row uses the
+PostgreSQL clock and a row lock to coordinate manual and scheduled attempts
+across workers. It is reserved immediately before each `client.retrieve`,
+including extra local-day context chunks and Airflow retries. The one-slot
+`cds_api` pool continues to limit concurrent extraction.
+
+When a slot is not ready, the extraction operator defers to the triggerer and
+rechecks the database clock on wakeup. Completed retrieval chunks are saved
+atomically under `data/.cds_retrieval_chunks/<request_key>/` and reused after
+deferral. After the validated final RAW checkpoint is written, its chunk cache
+is removed. If a cached chunk is damaged or its identity is wrong, extraction
+fails for inspection rather than silently downloading it again. The task does
+not count a pacing wait as a provider failure. Keep the shared `data/` mount
+available to every worker and the triggerer service running.
 
 Neither cadence nor provider pacing belongs to the durable identity of
 `climate.pipeline_progress` or `climate.pipeline_progress_detail`.
@@ -317,7 +338,7 @@ and its artifacts, then use an explicit whole-month manual recovery to
 validate and release the claim. Do not clear a claim while its DagRun is active.
 The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
-disabled pending provider pacing, operational review, and rollout.
+disabled pending a live pacing pilot, operational review, and rollout.
 
 ## Task Flow
 

@@ -1,3 +1,9 @@
+"""Adapt Airflow task inputs to the existing checkpoint-backed ETL runtime.
+
+Extraction can inject a durable provider gate without placing Airflow imports
+or scientific transformation logic inside the pipeline modules.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -148,7 +154,9 @@ def build_historical_request_specs(
     return [weather_request_to_spec(monthly) for monthly in monthly_requests]
 
 
-def extract_partition(request_spec: Mapping[str, Any]) -> dict[str, object]:
+def extract_partition(
+    request_spec: Mapping[str, Any], *, paced: bool = False
+) -> dict[str, object]:
     """Delegate one mapped extraction task to the pipeline runtime."""
     from pipeline.request import weather_request_from_spec
     from pipeline.runtime import extract_request_partition
@@ -157,6 +165,12 @@ def extract_partition(request_spec: Mapping[str, Any]) -> dict[str, object]:
     logger.info("Starting extraction for %s through %s", request.start_date, request.end_date)
     with measure_peak_memory("extract_or_resume"):
         warn_low_disk_space("extract_or_resume")
+        if paced:
+            from orchestration.pacing import reserve_or_defer
+
+            return extract_request_partition(
+                request, before_submission=reserve_or_defer
+            )
         return extract_request_partition(request)
 
 

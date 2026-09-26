@@ -1,3 +1,9 @@
+"""Persist mapped ETL evidence and protect the bounded campaign on retries.
+
+Pacing deferrals leave a partition runnable while genuine extraction failures
+remain recorded for deliberate manual repair.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -145,7 +151,10 @@ def extract_with_progress(
     request_spec: dict[str, object],
     progress_id: int,
     run_mode: str,
+    *,
+    paced: bool = False,
 ) -> dict[str, object]:
+    from pipeline.extraction.cds import CdsSubmissionDeferred
     from pipeline.request import build_request_key, weather_request_from_spec
 
     request_key = build_request_key(weather_request_from_spec(request_spec))
@@ -154,13 +163,16 @@ def extract_with_progress(
         transform_status="pending", load_status="pending", validation_status="pending",
     )
     try:
-        result = extract_partition(request_spec)
+        result = extract_partition(request_spec, paced=True) if paced else extract_partition(request_spec)
         _require_request_key(result, request_key)
         path, checksum, size = _identity(result)
         _record(
             progress_id, request_key, extract_status="complete",
             raw_artifact_path=path, raw_sha256=checksum, raw_file_size_bytes=size,
         )
+    except CdsSubmissionDeferred:
+        logger.info("Extraction waiting for the next CDS submission slot; request_key=%s", request_key)
+        raise
     except Exception as error:
         _record_failure(progress_id, request_key, "extract", error)
         raise

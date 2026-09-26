@@ -64,11 +64,11 @@ Still pending:
 - whole-month manual repair passed local tests (64 orchestration and two isolated
   PostgreSQL tests on 2026-09-26); durable scheduled claims and fail-closed
   failed-quarter selection are implemented and await local verification;
-- PostgreSQL-backed CDS submission reservation and configuration contract are in
-  place with offline and isolated concurrency tests; the extraction adapter and
-  Airflow deferral still need wiring before pacing is enforced;
-- implement configurable CDS pacing at every retrieval and the eventual
-  scheduled cadence before enabling the bounded 2016–2025 campaign;
+- PostgreSQL-backed CDS submission reservation and configuration are in place;
+  the extraction adapter now checkpoints retrieval chunks and a mapped operator
+  defers without holding a worker when the durable clock denies a slot;
+- verify the mapped operator and chunk resume in CI and a manual live pacing
+  pilot before setting the eventual scheduled cadence;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 

@@ -1,3 +1,9 @@
+"""Map one selected ERA5-Land range through progress-aware ETL boundaries.
+
+Extraction uses a deferrable operator so CDS pacing remains independent of
+the eventual scheduler cadence and never occupies a worker while waiting.
+"""
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -6,8 +12,8 @@ import pendulum
 from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
+from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
 from orchestration.tasks.progress import (
-    extract_with_progress,
     load_with_progress,
     prepare_monthly_jobs,
     transform_with_progress,
@@ -56,20 +62,6 @@ with DAG(
         )
 
     @task(
-        task_id="extract_or_resume",
-        pool="cds_api",
-        retries=2,
-        retry_delay=timedelta(minutes=10),
-        retry_exponential_backoff=True,
-        max_retry_delay=timedelta(hours=1),
-        execution_timeout=timedelta(hours=6),
-    )
-    def extract_or_resume(
-        request_spec: dict[str, object], progress_id: int, run_mode: str
-    ) -> dict[str, object]:
-        return extract_with_progress(request_spec, progress_id, run_mode)
-
-    @task(
         task_id="transform_or_resume",
         retries=0,
         execution_timeout=timedelta(hours=2),
@@ -89,6 +81,14 @@ with DAG(
         return load_with_progress(transform_result)
 
     monthly_jobs = build_monthly_requests()
-    extracted = extract_or_resume.expand_kwargs(monthly_jobs)
+    extracted = CdsPacedExtractOperator.partial(
+        task_id="extract_or_resume",
+        pool="cds_api",
+        retries=2,
+        retry_delay=timedelta(minutes=10),
+        retry_exponential_backoff=True,
+        max_retry_delay=timedelta(hours=1),
+        execution_timeout=timedelta(hours=6),
+    ).expand_kwargs(monthly_jobs)
     transformed = transform_or_resume.expand(extract_result=extracted)
     load.expand(transform_result=transformed)

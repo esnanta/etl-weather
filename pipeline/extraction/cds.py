@@ -1,8 +1,15 @@
+"""Retrieve ERA5-Land hourly chunks while preserving local-day context.
+
+Orchestrated downloads need resumable chunks so provider pacing can release a
+worker between submissions without repeating an already completed request.
+"""
+
 from __future__ import annotations
 
 import logging
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,13 +30,23 @@ from pipeline.providers.cds import (
     VARIABLE_DESCRIPTIONS,
     get_source_dataset_profile,
 )
-from pipeline.request import build_request, split_request_by_month, validate_request
+from pipeline.request import (
+    build_request, build_request_key, split_request_by_month, validate_request,
+)
 
 logger = logging.getLogger(__name__)
 
 CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
 CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
+
+
+class CdsSubmissionDeferred(Exception):
+    """Signal that a provider call should resume after a durable pacing gate."""
+
+    def __init__(self, next_allowed_at: datetime):
+        self.next_allowed_at = next_allowed_at
+        super().__init__(f"CDS submission deferred until {next_allowed_at.isoformat()}")
 
 def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """Normalize schema mechanics while preserving provider variable names."""
@@ -145,6 +162,7 @@ def _download_cds(
     request: WeatherRequest,
     *,
     purpose: str,
+    before_submission: Callable[[WeatherRequest], None] | None = None,
 ) -> xr.Dataset:
     try:
         import cdsapi
@@ -173,6 +191,8 @@ def _download_cds(
         purpose,
     )
     try:
+        if before_submission is not None:
+            before_submission(request)
         client.retrieve(profile["api_dataset"], payload, str(temp_path))
         with xr.open_dataset(temp_path) as opened_dataset:
             dataset = opened_dataset.load()
@@ -187,15 +207,43 @@ def _download_cds_period(
     request: WeatherRequest,
     *,
     target_request: WeatherRequest,
+    before_submission: Callable[[WeatherRequest], None] | None = None,
+    chunk_cache_directory: Path | None = None,
 ) -> xr.Dataset:
     chunks = split_request_by_month(request)
-    datasets = [
-        _download_cds(
-            chunk,
-            purpose=_retrieval_chunk_purpose(chunk, target_request),
+    datasets = []
+    for chunk in chunks:
+        cache_path = (
+            chunk_cache_directory / f"{build_request_key(chunk)}.nc"
+            if chunk_cache_directory is not None else None
         )
-        for chunk in chunks
-    ]
+        if cache_path is not None and cache_path.exists():
+            with xr.open_dataset(cache_path) as opened:
+                if opened.attrs.get("retrieval_request_key") != build_request_key(chunk):
+                    raise ValueError("CDS chunk checkpoint identity does not match.")
+                dataset = opened.load()
+            logger.info("Resumed CDS retrieval chunk from %s", cache_path)
+        else:
+            dataset = _download_cds(
+                chunk,
+                purpose=_retrieval_chunk_purpose(chunk, target_request),
+                before_submission=before_submission,
+            )
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    dir=cache_path.parent, prefix=".chunk-", suffix=".nc",
+                    delete=False,
+                ) as temporary:
+                    temporary_path = Path(temporary.name)
+                try:
+                    dataset.assign_attrs(
+                        retrieval_request_key=build_request_key(chunk)
+                    ).to_netcdf(temporary_path)
+                    os.replace(temporary_path, cache_path)
+                finally:
+                    temporary_path.unlink(missing_ok=True)
+        datasets.append(dataset)
     if len(datasets) == 1:
         return datasets[0]
 
@@ -215,6 +263,15 @@ def _download_cds_period(
 
 
 class CdsExtractor(WeatherExtractor):
+    def __init__(
+        self,
+        *,
+        before_submission: Callable[[WeatherRequest], None] | None = None,
+        chunk_cache_directory: Path | None = None,
+    ) -> None:
+        self.before_submission = before_submission
+        self.chunk_cache_directory = chunk_cache_directory
+
     def extract(self, request: WeatherRequest) -> RawWeatherDataset:
         validate_request(request)
         normalized_request = build_request(request)
@@ -245,6 +302,8 @@ class CdsExtractor(WeatherExtractor):
         dataset = _download_cds_period(
             retrieval_request,
             target_request=normalized_request,
+            before_submission=self.before_submission,
+            chunk_cache_directory=self.chunk_cache_directory,
         )
 
         missing_variables = [

@@ -1,3 +1,9 @@
+"""Protect durable campaign state as mapped ETL boundaries run or defer.
+
+Pacing waits must leave monthly progress pending while real errors preserve
+the failure gate that requires explicit recovery.
+"""
+
 from contextlib import contextmanager
 from datetime import date
 from types import SimpleNamespace
@@ -7,6 +13,8 @@ import pytest
 from orchestration.campaign import CampaignBlocked, CampaignQuarter
 from orchestration.tasks import progress
 from orchestration.tasks.era5_land import build_historical_request_specs
+from pipeline.extraction.cds import CdsSubmissionDeferred
+from datetime import datetime, timezone
 
 
 @contextmanager
@@ -330,3 +338,23 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
         manual_repair=True,
     )
     assert released == [(42, False)]
+
+
+def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
+    updates = []
+    monkeypatch.setattr(
+        progress, "_record",
+        lambda progress_id, request_key, **fields: updates.append(fields),
+    )
+    monkeypatch.setattr(
+        progress, "extract_partition",
+        lambda spec, *, paced: (_ for _ in ()).throw(
+            CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
+        ),
+    )
+    with pytest.raises(CdsSubmissionDeferred):
+        progress.extract_with_progress(_spec(), 42, "manual", paced=True)
+    assert updates == [{
+        "extract_status": "running", "transform_status": "pending",
+        "load_status": "pending", "validation_status": "pending",
+    }]
