@@ -51,7 +51,9 @@ with DAG(
     def build_monthly_requests() -> list[dict[str, object]]:
         context = get_current_context()
         dag_run = context["dag_run"]
-        return prepare_monthly_jobs(dag_run.run_type, dag_run.conf)
+        return prepare_monthly_jobs(
+            dag_run.run_type, dag_run.conf, dag_run.run_id
+        )
 
     @task(
         task_id="extract_or_resume",
@@ -63,9 +65,9 @@ with DAG(
         execution_timeout=timedelta(hours=6),
     )
     def extract_or_resume(
-        request_spec: dict[str, object], progress_id: int
+        request_spec: dict[str, object], progress_id: int, run_mode: str
     ) -> dict[str, object]:
-        return extract_with_progress(request_spec, progress_id)
+        return extract_with_progress(request_spec, progress_id, run_mode)
 
     @task(
         task_id="transform_or_resume",
