@@ -77,8 +77,7 @@ Implementation progress through 2026-09-26:
 - the 19:31 Asia/Jakarta local-host snapshot reported 5.97 GiB free for
   artifacts/logs/metadata, 53.59 GiB temporary space, 5.70 GiB available RAM,
   a 23.05 MiB PostgreSQL database, and two visible triggerer-related
-  processes. PostgreSQL server filesystem free space and target cloud-host
-  capacity have not been measured;
+  processes. This is a local sample, not a forecast of a future deployment;
 
 Still pending:
 
@@ -86,7 +85,8 @@ Still pending:
   boundary status, persisted load proof, and live-verified CDS pacing; its
   schedule remains disabled;
 - PostgreSQL progress/pacing backup and restart recovery are documented;
-  review target-host disk, database, memory, and triggerer capacity before scheduling;
+  keep the measured local disk headroom visible during the campaign. Future
+  deployment capacity checks belong to that deployment, not the Stage 8 code gate;
 - implement a configurable Asia/Jakarta scheduler cadence, complete campaign
   observability/docs, and pilot scheduled selection plus manual recovery before
   enabling the bounded campaign;
@@ -362,10 +362,9 @@ months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
 Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
 during April make elapsed-time extrapolation unreliable.
 
-These measurements describe the local development host; the full pipeline
-is intended to run on a cloud server. The cloud host's artifact and temporary
-filesystems and the PostgreSQL storage volume must be measured independently.
-Do not run the full range on the current local /home filesystem at 99% usage.
+These measurements describe the local development host. A future cloud
+installation must be evaluated at deployment, not as a prerequisite to
+implementing the schedule. Monitor local disk headroom during any local run.
 Mapped tasks now log a non-blocking warning below 5 GiB available on their
 local artifact or temporary filesystem; this does not measure remote
 PostgreSQL storage. Keep the final date range explicit. The local Airflow
@@ -520,16 +519,19 @@ CDS request pacing:
       an operational starting point, not a claimed Copernicus quota.
 - [x] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
       Its `robust` wrapper can retry submissions after timeouts or retriable
-      HTTP responses. A dedicated requests session now reserves a durable slot
+      HTTP responses. A dedicated requests session reserves a durable slot
       before every POST, including internal retries. GET polling and downloads
-      do not reserve slots. Offline tests cover deferral before transport and
-      reservation on a second POST attempt.
+      do not reserve slots. Offline tests include the real pinned client's
+      retry after a simulated submission timeout, with the second POST denied
+      before transport.
 - [x] Persist/coordinate the last submission timestamp across runs and
       workers; avoid holding a worker or pool slot idle for a long wait
       when Airflow can defer or reschedule it. Preserve a one-slot limit
       at submission, and make recovery after process termination safe.
 - [ ] Review CDS queue time, provider errors, retries, and successful
       submissions; make both the inter-request interval and scheduler cadence adjustable independently without editing scientific contracts.
+      The June pilot observed an object-store GET retry, not a job POST retry;
+      a deterministic test uses the pinned cdsapi retry path to verify POST pacing.
 
 Observability, validation, and rollout:
 
@@ -553,10 +555,8 @@ Observability, validation, and rollout:
       deferral, cached context reuse, download retry, and RAW validation.
       No provider job POST retry occurred; DagRun/load completion was not supplied.
 - [x] Record the local development-host disk, memory, PostgreSQL database
-      size, and visible triggerer process snapshot without treating it as
-      target-host capacity.
-- [ ] Review artifact and PostgreSQL capacity on the target runtime,
-      including temporary downloads, logs, and overlapping task memory.
+      size, and visible triggerer process snapshot. Keep local disk headroom
+      under observation; revisit capacity when deploying to a different host.
       Do not extrapolate April wall time as a guaranteed CDS throughput.
 - [ ] Track all 40 quarter statuses, failed months, last successful load,
       request pacing, and elapsed time during the campaign. Confirm

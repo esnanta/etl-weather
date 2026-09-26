@@ -339,8 +339,7 @@ and its artifacts, then use an explicit whole-month manual recovery to
 validate and release the claim. Do not clear a claim while its DagRun is active.
 The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
-disabled pending target-host review, scheduled-selection and recovery pilots,
-and final rollout checks.
+disabled pending scheduled-selection and recovery pilots and final rollout checks.
 
 ## Campaign Host Capacity and Post-Change CDS Pilot
 
@@ -358,9 +357,8 @@ database and relevant table sizes, and local triggerer process RSS. It does not
 print credentials. Run it while the services and a representative extraction
 are active as well as at idle; process RSS is a point-in-time measurement.
 The triggerer process count does not establish a healthy heartbeat. A remote
-PostgreSQL volume is **not** measured by this command: on the database host,
-check free space for the PostgreSQL data and WAL filesystems separately, and
-record those values with the snapshot. If `postgresql.status` says
+PostgreSQL volume is **not** measured by this command. Its filesystem check
+belongs to a future deployment review, if PostgreSQL is hosted separately. If `postgresql.status` says
 `not measured`, fix the environment or database access before assessing
 capacity. Missing `data/` or Airflow logs paths are also incomplete
 measurements, not zero-byte usage. Do not use the development workspace's
@@ -387,9 +385,11 @@ checkpoint status. Compare the `submitted_at` timestamps of **every**
 reservation: each successive POST must be at least
 `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` apart (default 1,800 seconds).
 A deferred request must not appear as a reserved POST before its
-`next_allowed_at`. A provider retry may not occur naturally in this pilot;
+`next_allowed_at`. A provider job POST retry may not occur naturally in this pilot;
 if none occurs, record that fact rather than claiming live retry coverage.
-The offline retry test exercises the same HTTP gate without calling CDS.
+The offline test exercises the pinned cdsapi client's internal POST retry after
+an injected timeout and proves that the second POST is deferred before it
+reaches transport. No live provider failure is needed for this contract.
 Do not delete an existing RAW checkpoint or shorten the interval merely to
 force this pilot.
 
@@ -411,9 +411,9 @@ free for artifacts, logs, and SQLite metadata on the same filesystem,
 a 23.05 MiB PostgreSQL database. Two triggerer-related processes were visible
 at approximately 169.5 and 147.3 MiB RSS; process count alone does not
 establish separate triggerer instances or heartbeat health. This snapshot
-does not measure peak overlapping task memory, PostgreSQL host data/WAL free
-space, or the intended cloud campaign host. Review those separately before
-enabling the schedule.
+does not measure peak overlapping task memory or a future deployment host.
+Watch local disk headroom while running a local campaign and review capacity
+when deploying to another host.
 
 ## Progress Backup and Restart Recovery
 

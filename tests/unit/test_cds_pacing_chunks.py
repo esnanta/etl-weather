@@ -162,3 +162,43 @@ def test_internal_post_retry_requires_new_slot(
         session.post("https://cds.example/resources/reanalysis-era5-land")
 
     assert events == ["GET", "GET", "reserve", "POST", "reserve"]
+
+
+def test_real_cdsapi_retry_is_deferred_before_second_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the pinned library's robust retry through the paced session."""
+    import cdsapi
+    import requests
+
+    events: list[str] = []
+    request = _request("2024-06-01", "2024-06-30")
+
+    def reserve(chunk: WeatherRequest) -> None:
+        assert chunk is request
+        events.append("reserve")
+        if events.count("reserve") == 2:
+            raise cds.CdsSubmissionDeferred(
+                datetime(2026, 9, 26, tzinfo=timezone.utc)
+            )
+
+    def transport(_session, method, url, *args, **kwargs):
+        events.append(method.upper())
+        if method.upper() == "POST":
+            raise requests.exceptions.ReadTimeout("simulated submission timeout")
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {},
+        )
+
+    monkeypatch.setattr(requests.Session, "request", transport)
+    client = cdsapi.Client(
+        url="https://cds.example/api", key="123:fake",
+        session=cds._PacedSubmissionSession(request, reserve),
+        quiet=True, retry_max=3, sleep_max=0, forget=True,
+    )
+
+    with pytest.raises(cds.CdsSubmissionDeferred):
+        client.retrieve("reanalysis-era5-land", {"variable": ["tp"]})
+
+    assert events == ["GET", "reserve", "POST", "reserve"]
