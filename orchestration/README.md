@@ -283,12 +283,12 @@ transform_or_resume [monthly]
 
 ### Task Breakdown
 
-| Task | Input | Output |
-| --- | --- | --- |
-| `build_monthly_requests` | Explicit inclusive dates | Monthly request specifications |
-| `extract_or_resume` | Monthly request specification | RAW artifact metadata |
-| `transform_or_resume` | RAW artifact metadata | Transformed artifact metadata |
-| `load` | Transformed artifact metadata | PostgreSQL load status |
+| Task                      | Input                         | Output                            |
+| ---                       | ---                           | ---                               |
+| `build_monthly_requests`  | Explicit inclusive dates      | Monthly request specifications    |
+| `extract_or_resume`       | Monthly request specification | RAW artifact metadata             |
+| `transform_or_resume`     | RAW artifact metadata         | Transformed artifact metadata     |
+| `load`                    | Transformed artifact metadata | PostgreSQL load status            |
 
 ## Triggering the ETL
 
@@ -363,12 +363,12 @@ completed successfully in approximately 20 minutes 26 seconds.
 
 PostgreSQL contained the expected local-day observations after the run:
 
-| Partition | Local days | Observation rows |
-| --- | ---: | ---: |
-| January 2024 | 31 | 16,430 |
-| February 2024 | 29 | 15,370 |
-| March 2024 | 31 | 16,430 |
-| **Total** | **91** | **48,230** |
+| Partition     | Local days    | Observation rows  |
+| ---           | ---:          | ---:              |
+| January 2024  | 31            | 16,430            |
+| February 2024 | 29            | 15,370            |
+| March 2024    | 31            | 16,430            |
+| **Total**     | **91**        | **48,230**        |
 
 This case demonstrates that a wider explicit date range can combine an
 idempotently resumed partition with newly downloaded partitions. Timings and
