@@ -49,7 +49,10 @@ Implementation progress through 2026-09-25:
   transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
 - subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
   resume, with one resumed extraction peak RSS of 457.25 MiB.
-- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; isolated PostgreSQL verification is added and awaits a local run;
+- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; their 45 orchestration tests and isolated PostgreSQL reconciliation test passed locally on 2026-09-26;
+- the Airflow-neutral selector now seeds exact campaign identities, reconciles
+  in calendar order, and chooses the earliest eligible incomplete quarter;
+  DAG wiring, failure limits, and concurrent selection control are pending;
 
 Still pending:
 
