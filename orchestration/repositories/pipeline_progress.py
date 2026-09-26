@@ -73,6 +73,8 @@ def create_pipeline_progress_tables(engine: Engine) -> None:
                     execution_status TEXT NOT NULL DEFAULT 'pending',
                     validation_status TEXT NOT NULL DEFAULT 'pending',
                     last_error TEXT,
+                    selection_owner TEXT,
+                    selection_claimed_at TIMESTAMPTZ,
                     started_at TIMESTAMPTZ,
                     completed_at TIMESTAMPTZ,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -94,6 +96,18 @@ def create_pipeline_progress_tables(engine: Engine) -> None:
                         CHECK (validation_status IN ('pending', 'failed', 'valid'))
                 )
                 """
+            )
+        )
+        connection.execute(
+            text(
+                f"ALTER TABLE {parent} "
+                "ADD COLUMN IF NOT EXISTS selection_owner TEXT"
+            )
+        )
+        connection.execute(
+            text(
+                f"ALTER TABLE {parent} "
+                "ADD COLUMN IF NOT EXISTS selection_claimed_at TIMESTAMPTZ"
             )
         )
         connection.execute(
@@ -544,6 +558,90 @@ def get_pipeline_progress_by_id(
     if row is None:
         raise ValueError("Cannot read unknown pipeline progress row.")
     return _progress_from_row(row)
+
+
+def try_claim_pipeline_progress(
+    engine: Engine, progress_id: int, owner: str
+) -> bool:
+    """Atomically claim one unfinished batch for a single scheduled DagRun."""
+    if progress_id <= 0 or not owner.strip():
+        raise ValueError("A positive progress_id and non-empty owner are required.")
+    with engine.begin() as connection:
+        claimed = connection.execute(
+            text(
+                f"""
+                UPDATE {_parent_table()}
+                SET selection_owner = :owner,
+                    selection_claimed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :pipeline_progress_id
+                  AND execution_status <> 'complete'
+                  AND failed_partition_count = 0
+                  AND (selection_owner IS NULL OR selection_owner = :owner)
+                RETURNING id
+                """
+            ),
+            {"pipeline_progress_id": progress_id, "owner": owner.strip()},
+        ).scalar_one_or_none()
+    return claimed is not None
+
+
+def release_pipeline_progress_claim(
+    engine: Engine, progress_id: int, *, require_complete: bool
+) -> bool:
+    """Release a claim after completion or validated manual intervention."""
+    if progress_id <= 0:
+        raise ValueError("progress_id must be positive.")
+    completion_condition = (
+        "AND execution_status = 'complete' AND validation_status = 'valid'"
+        if require_complete else "AND failed_partition_count = 0"
+    )
+    with engine.begin() as connection:
+        result = connection.execute(
+            text(
+                f"""
+                UPDATE {_parent_table()}
+                SET selection_owner = NULL,
+                    selection_claimed_at = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :pipeline_progress_id
+                  AND selection_owner IS NOT NULL
+                  {completion_condition}
+                """
+            ),
+            {"pipeline_progress_id": progress_id},
+        )
+    return result.rowcount == 1
+
+
+def get_failed_progress_partitions(
+    engine: Engine, progress_id: int
+) -> tuple[tuple[date, date, str | None], ...]:
+    """Return bounded diagnostics for failed monthly details."""
+    if progress_id <= 0:
+        raise ValueError("progress_id must be positive.")
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT start_date, end_date, last_error
+                FROM {_detail_table()}
+                WHERE pipeline_progress_id = :pipeline_progress_id
+                  AND (
+                      extract_status = 'failed'
+                      OR transform_status = 'failed'
+                      OR load_status = 'failed'
+                      OR validation_status = 'failed'
+                  )
+                ORDER BY start_date
+                """
+            ),
+            {"pipeline_progress_id": progress_id},
+        ).mappings().all()
+    return tuple(
+        (row["start_date"], row["end_date"], row["last_error"])
+        for row in rows
+    )
 
 
 def _progress_from_row(row: Mapping[str, Any]) -> PipelineProgress:
