@@ -90,6 +90,7 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
 
 def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> None:
     updates = []
+    repairs = []
     monkeypatch.setattr(progress, "_progress_engine", _engine)
     monkeypatch.setattr(
         progress, "_record",
@@ -109,15 +110,21 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
     monkeypatch.setattr(
         progress, "_persisted_row_count", lambda engine, result, path, sha: 15
     )
+    monkeypatch.setattr(
+        progress, "_reconcile_campaign_repair",
+        lambda *args: repairs.append(args),
+    )
 
     result = progress.load_with_progress(
-        {"progress_id": 42, "request_key": "monthly-key"}
+        {"progress_id": 42, "request_key": "monthly-key", "request": _spec()}
     )
     assert result["progress_id"] == 42
     assert updates[0] == {"load_status": "running", "validation_status": "pending"}
     assert updates[-1]["load_status"] == "complete"
     assert updates[-1]["validation_status"] == "valid"
     assert updates[-1]["row_count"] == 15
+    assert repairs[0][0] == 42
+    assert repairs[0][2] == "monthly-key"
 
 
 def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
@@ -213,3 +220,59 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
     assert progress._persisted_row_count(
         engine, {"daily_climate_id": 7, "request_key": "key"}, "path", "sha"
     ) == 2
+
+
+def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
+    from orchestration.campaign import matching_campaign_progress_definition
+
+    definition = matching_campaign_progress_definition(_spec())
+    assert definition is not None
+    updates = []
+    reconciled = []
+    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(
+        progress, "initialize_pipeline_progress",
+        lambda engine, received: 91 if received == definition else None,
+    )
+    monkeypatch.setattr(
+        progress, "raw_artifact_for_request",
+        lambda request: SimpleNamespace(
+            path=SimpleNamespace(as_posix=lambda: "raw.nc")
+        ),
+    )
+    monkeypatch.setattr(progress, "_identity", lambda result: ("raw.nc", "raw-sha", 80))
+    monkeypatch.setattr(
+        progress, "update_pipeline_progress_detail",
+        lambda engine, progress_id, request_key, **fields:
+            updates.append((progress_id, request_key, fields)),
+    )
+    monkeypatch.setattr(
+        progress, "reconcile_pipeline_progress",
+        lambda engine, progress_id: reconciled.append(progress_id),
+    )
+    progress._reconcile_campaign_repair(
+        42, _spec(), definition.partitions[0].request_key,
+        "transformed.parquet", "parquet-sha", 100, 15,
+    )
+
+    assert updates[0][0] == 91
+    assert updates[0][2]["extract_status"] == "complete"
+    assert updates[0][2]["transform_status"] == "complete"
+    assert updates[0][2]["load_status"] == "complete"
+    assert updates[0][2]["validation_status"] == "valid"
+    assert updates[0][2]["row_count"] == 15
+    assert reconciled == [91]
+
+
+def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
+    partial = build_historical_request_specs(
+        "2024-01-15", "2024-01-31", current_local_date=date(2026, 9, 26)
+    )[0]
+
+    def unexpected():
+        raise AssertionError("Quarter progress must not be touched.")
+
+    monkeypatch.setattr(progress, "_progress_engine", unexpected)
+    progress._reconcile_campaign_repair(
+        42, partial, "partial-key", "path", "sha", 100, 15
+    )
