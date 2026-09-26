@@ -192,6 +192,33 @@ one-slot `cds_api` pool allows only one extraction submission at a time.
 
 Until Stage 8 is implemented and verified, the DAG remains manual-only.
 
+### Scheduled and Manual Mode Contract
+
+`orchestration/mode.py` now defines the contract for the later DAG integration.
+Airflow's DagRun `run_type` determines the mode; operators do not pass a
+`mode` parameter. A scheduled DagRun must have empty `dag_run.conf`. It will
+select the earliest eligible incomplete 2016–2025 quarter from durable
+progress once selection is connected. It does not take dates from Airflow's
+scheduled data interval.
+
+A manual DagRun must provide exactly two inclusive dates in `dag_run.conf`:
+
+```json
+{"start_date":"2024-01-01","end_date":"2024-01-31"}
+```
+
+Both must be canonical `YYYY-MM-DD` dates with `end_date >= start_date`.
+Incomplete pairs, extra keys (including `mode`), invalid dates, configured
+scheduled runs, and unsupported run types fail explicitly. Existing request
+validation still checks the selected historical range and availability lag.
+For recovery, prefer one failed month or quarter. Manual ranges may also be
+chosen explicitly for other historical work; they never cause the scheduler
+to skip incomplete campaign quarters without verified progress evidence.
+
+This helper is not yet called by the DAG. The current trigger examples and
+`schedule=None` remain the operating behavior until progress selection and
+DAG wiring are implemented and tested.
+
 ### Scheduler Cadence vs CDS Submission Interval
 
 These are deliberately separate operational controls:
