@@ -289,7 +289,14 @@ period, with matching transformed path/checksum and observation count. Missing
 or changed persisted evidence clears a previously complete parent on the next
 reconciliation. Historical rows already in `daily_climate` are not
 automatically marked valid: checkpoint and progress-detail validation must
-still supply evidence. This helper is not yet invoked by the DAG.
+still supply evidence. The selector seeds the fixed campaign identities, reconciles quarters in calendar
+order, and returns the first eligible incomplete quarter with exactly three
+monthly request specifications. It returns no selection once all 40 are verified
+complete, or when the next quarter has not cleared the six-day availability
+boundary. It selects only the exact initialized campaign batch IDs, so unrelated
+manual ranges and configuration identities cannot displace a campaign quarter.
+The selector is not yet invoked by the DAG; failure limits and concurrent
+selection control remain subsequent Stage 8 work.
 
 ## Task Flow
 
