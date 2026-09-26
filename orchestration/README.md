@@ -299,7 +299,25 @@ The DAG invokes this selector for scheduled run provenance, although
 `schedule=None` prevents scheduled DagRuns today. Manual triggers create or
 reuse their exact range identity. Each mapped boundary records status and
 artifact identity; loading becomes valid only after matching PostgreSQL
-metadata and a positive observation count are verified. Failure limits and concurrent selection control remain subsequent Stage 8 work.
+metadata and a positive observation count are verified.
+
+Scheduled selection now writes a durable owner claim on the earliest incomplete
+quarter with an atomic PostgreSQL update. A competing selector cannot advance
+to another quarter while that claim remains. Completion releases the claim.
+A quarter with a persisted failed detail is not submitted to CDS again on
+subsequent scheduled ticks; the task logs the quarter, failed month, and
+diagnostic reason and maps no extraction tasks. This bounds automatic
+resubmission to the Airflow retries within the original DagRun. A validated
+whole-month manual repair clears the failed detail and releases the claim once
+no failed detail remains, allowing the next scheduled selection to resume.
+
+A process termination can leave a claim without a failed detail. It remains
+blocked instead of silently duplicating CDS work. Inspect the original DagRun
+and its artifacts, then use an explicit whole-month manual recovery to
+validate and release the claim. Do not clear a claim while its DagRun is active.
+The progress-table setup adds claim columns to an existing development schema
+with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
+disabled pending provider pacing, operational review, and rollout.
 
 ## Task Flow
 
