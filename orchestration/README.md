@@ -192,6 +192,33 @@ one-slot `cds_api` pool allows only one extraction submission at a time.
 
 Until Stage 8 is implemented and verified, the DAG remains manual-only.
 
+### Scheduler Cadence vs CDS Submission Interval
+
+These are deliberately separate operational controls:
+
+```text
+scheduler cadence
+        =
+seberapa sering Airflow mencoba menjalankan pipeline
+
+CDS submission interval
+        =
+jarak minimum antar request aktual ke CDS
+```
+
+Scheduler cadence controls how often Airflow attempts to select/start work. It
+must be configurable independently of the persisted progress model; changing
+from two hours to one hour or 30 minutes must not require a database migration
+or change request identity. `max_active_runs=1` remains the overlap guard.
+
+CDS submission interval controls provider pacing between actual retrieval
+submissions. It remains independent from the DAG schedule and the one-slot
+`cds_api` pool, because those controls limit run/task concurrency but do not
+by themselves guarantee a minimum elapsed interval between CDS submissions.
+
+Neither cadence nor provider pacing belongs to the durable identity of
+`climate.pipeline_progress` or `climate.pipeline_progress_detail`.
+
 ### Planned Progress Persistence
 
 Stage 8 will not persist scheduler state using quarter-specific table names.
