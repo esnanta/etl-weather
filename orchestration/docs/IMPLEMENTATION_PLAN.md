@@ -54,14 +54,18 @@ Implementation progress through 2026-09-25:
   in calendar order, and chooses the earliest eligible incomplete quarter;
 - the existing DAG now maps monthly ETL boundaries through progress-aware wrappers;
 - validated whole-month manual loads now update exact campaign detail identities;
-  failure limits and concurrent selection control are pending;
+- one persisted failed detail blocks subsequent automatic CDS submissions, and
+  an atomic owner claim prevents competing selectors from choosing the same
+  quarter; release follows verified completion or manual recovery;
 
 Still pending:
 
 - the existing DAG now uses the mode contract, exact progress identity, mapped boundary status, and persisted load proof; the schedule remains disabled;
-- verify the new manual quarter repair tests, then implement bounded automatic
-  failures, concurrent selection control, configurable CDS pacing, and the
-  eventual scheduled cadence before enabling the bounded 2016–2025 campaign;
+- whole-month manual repair passed local tests (64 orchestration and two isolated
+  PostgreSQL tests on 2026-09-26); durable scheduled claims and fail-closed
+  failed-quarter selection are implemented and await local verification;
+- implement configurable CDS pacing and the eventual scheduled cadence before
+  enabling the bounded 2016–2025 campaign;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
