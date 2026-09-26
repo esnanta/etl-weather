@@ -6,8 +6,11 @@ from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
     get_earliest_incomplete_progress,
     get_pipeline_progress_by_id,
+    get_failed_progress_partitions,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
+    release_pipeline_progress_claim,
+    try_claim_pipeline_progress,
     update_pipeline_progress_detail,
 )
 
@@ -19,7 +22,10 @@ __all__ = [
     "create_pipeline_progress_tables",
     "get_earliest_incomplete_progress",
     "get_pipeline_progress_by_id",
+    "get_failed_progress_partitions",
     "initialize_pipeline_progress",
     "reconcile_pipeline_progress",
+    "release_pipeline_progress_claim",
+    "try_claim_pipeline_progress",
     "update_pipeline_progress_detail",
 ]
