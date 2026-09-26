@@ -52,7 +52,8 @@ Implementation progress through 2026-09-25:
 
 Still pending:
 
-- implement and verify the agreed bounded 2016–2025 quarterly campaign in the existing DAG, including durable progress, configurable CDS pacing, and manual recovery;
+- deterministic 2016–2025 quarter helpers and exact three-month request identities are implemented; the first `climate.quarterly_progress` persistence draft is now superseded by the agreed generic progress model and must be refactored before DAG integration;
+- implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
@@ -376,7 +377,7 @@ Scheduling and selection:
 - [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
-- [ ] Schedule at a configurable two-hour cadence in `Asia/Jakarta`;
+- [ ] Schedule at a configurable cadence in `Asia/Jakarta` (for example 30 minutes, one hour, or two hours);
       retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
       ticks must not skip quarters; a run longer than two hours must not
       overlap the next run.
@@ -389,18 +390,36 @@ Scheduling and selection:
 
 Durable progress and recovery:
 
-- [ ] Choose a durable operational progress store shared by scheduler,
-      workers, and manual runs (prefer a separate PostgreSQL campaign table
-      from the canonical climate tables; SQLite metadata is local
-      development state). Document storage setup, backup, and restart
-      behavior before enabling automatic mode.
-- [ ] Key completion to year, quarter, and the expected request identity
-      (source, dataset, variables, bounding box, and exact monthly periods)
-      so changed configuration cannot reuse an unrelated completion mark.
-- [ ] Mark a quarter complete only after all three corresponding monthly
-      loads succeed and their expected persisted partitions are verified.
-      Persist completion atomically; a task success alone must not move
-      the campaign past an incomplete quarter.
+- [ ] Refactor durable operational progress into the existing PostgreSQL climate
+      database using two cadence-neutral tables:
+      `climate.pipeline_progress` and
+      `climate.pipeline_progress_detail`. Do not create a separate database.
+      Quarter/two-month/month grouping remains scheduler policy rather than
+      persistence identity. SQLite metadata remains local development state.
+- [ ] `climate.pipeline_progress` represents one logical requested range/batch.
+      Store explicit `start_date` and `end_date`, pipeline/source/dataset identity,
+      configuration identity, expected/completed/failed partition counts,
+      execution status, validation status, timestamps, and the latest bounded
+      diagnostic error. Do not encode quarter number as the durable identity.
+- [ ] `climate.pipeline_progress_detail` represents one processed partition and
+      its artifact/database outcome. Store the parent progress ID, request key,
+      exact period, RAW NetCDF path/checksum/file size, transformed artifact
+      path/checksum/file size when available, temporal and spatial validation
+      metrics, row counts, grid counts, extract/transform/load status,
+      validation status/message, processing timestamps, and bounded diagnostic
+      metadata.
+- [ ] Keep stable query/recovery fields as ordinary columns. Allow an optional
+      `metrics JSONB` field only for evolving operational measurements such as
+      task peak RSS, retry counts, durations, or disk-space observations; do
+      not put request identity, status, or validation truth solely in JSONB.
+- [ ] Define parent completion from verified detail state: a progress row may
+      become complete only when every expected detail partition is complete
+      and valid. Partial manual repair must update only the affected detail and
+      may complete the parent only after all expected partitions verify.
+- [ ] Document storage setup, backup, restart, and reconciliation behavior
+      before enabling automatic mode.
+- [ ] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
+- [ ] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
 - [ ] Reconcile valid manual repairs with the same monthly completion
       evidence. A manual range may complete an affected quarter once all
       its months are verified, but partial manual success must never mark
@@ -412,6 +431,35 @@ Durable progress and recovery:
       with year, quarter, month, and reason, then require diagnosis and
       manual repair instead of repeatedly submitting bad requests.
       Resume from validated checkpoints without overwriting RAW files.
+
+Scheduler cadence and CDS submission interval are separate controls:
+
+```text
+scheduler cadence
+        =
+seberapa sering Airflow mencoba menjalankan pipeline
+
+CDS submission interval
+        =
+jarak minimum antar request aktual ke CDS
+```
+
+Scheduler cadence is runtime orchestration policy and must be configurable
+without changing progress-table identity or scientific contracts. The initial
+campaign may use 30 minutes, one hour, two hours, or another reviewed value.
+It controls how often Airflow attempts to start/select work. With
+`max_active_runs=1`, a new run must not overlap an active run.
+
+CDS submission interval is an independent provider-pacing control. It governs
+minimum time between actual CDS retrieval submissions, including retries or
+multiple monthly partitions within one logical progress range. The Airflow
+schedule and the one-slot `cds_api` pool do not by themselves guarantee this
+minimum elapsed time between provider submissions.
+
+Neither value is part of `climate.pipeline_progress` or
+`climate.pipeline_progress_detail` durable identity. They may be recorded as
+runtime/observability metadata when useful, but changing cadence or pacing must
+not invalidate otherwise identical request/progress identity.
 
 CDS request pacing:
 
@@ -428,8 +476,7 @@ CDS request pacing:
       when Airflow can defer or reschedule it. Preserve a one-slot limit
       at submission, and make recovery after process termination safe.
 - [ ] Review CDS queue time, provider errors, retries, and successful
-      submissions; make both the inter-request interval and two-hour
-      campaign cadence adjustable without editing scientific contracts.
+      submissions; make both the inter-request interval and scheduler cadence adjustable independently without editing scientific contracts.
 
 Observability, validation, and rollout:
 

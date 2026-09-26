@@ -116,8 +116,30 @@ Tests must protect the boundaries that become critical during retry/backfill:
 
 `tests/unit/test_runtime.py` owns pipeline runtime-boundary behavior without Airflow.
 `tests/unit/test_database.py` owns canonical PostgreSQL DDL contracts without requiring live PostgreSQL.
-`tests/airflow_orchestration/` owns Airflow-neutral task helpers plus DAG parsing,
-graph, retry, timeout, pool, concurrency, and XCom-control metadata policy.
+`tests/airflow_orchestration/` owns Airflow-neutral task helpers plus campaign scheduling helpers, generic pipeline-progress persistence, DAG parsing, graph, retry, timeout, pool, concurrency, and XCom-control metadata policy.
+
+## Pipeline Progress Persistence Rules
+
+The agreed durable operational model uses the existing PostgreSQL climate
+database:
+
+```text
+climate.pipeline_progress
+climate.pipeline_progress_detail
+```
+
+Tests must protect cadence-neutral persistence. The parent row uses explicit
+date ranges and configuration identity rather than a quarter number. Detail
+rows protect request-key identity, artifact path/checksum/size, temporal and
+spatial metrics, grid/row counts, extract/transform/load status, validation
+status, timestamps, and parent/detail completion reconciliation.
+
+Quarterly grouping belongs to scheduler tests for the current 2016-2025
+campaign. Persistence tests must remain valid if the scheduler later changes
+to two-month or another bounded grouping.
+
+Core identity/status/validation fields must not exist only in JSONB. Optional
+JSONB metrics may be used for evolving observability fields.
 
 ## Provenance Rules
 
@@ -165,6 +187,8 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
   observation UPSERT, and unchanged-partition load skipping.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
+- `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries, exact three-month request specs, and stable request-sensitive campaign identities.
+- `airflow_orchestration/test_campaign_progress.py`: temporary quarter-specific progress tests that must be refactored to the agreed generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` contract before DAG integration.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
 
 ## Dependency and Warning Policy
