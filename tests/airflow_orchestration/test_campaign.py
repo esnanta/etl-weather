@@ -7,6 +7,7 @@ from orchestration.campaign import (
     CAMPAIGN_END_YEAR,
     CAMPAIGN_START_YEAR,
     CampaignQuarter,
+    CampaignBlocked,
     CampaignSelection,
     build_quarter_request_specs,
     initialize_campaign_progress,
@@ -106,6 +107,17 @@ def progress_selection(monkeypatch):
             execution_status=statuses.get(progress_id, "pending"),
             validation_status="valid" if statuses.get(progress_id) == "complete"
             else "pending",
+            failed_partition_count=1 if statuses.get(progress_id) == "failed" else 0,
+        ),
+    )
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.try_claim_pipeline_progress",
+        lambda engine, progress_id, owner: True,
+    )
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.get_failed_progress_partitions",
+        lambda engine, progress_id: (
+            (date(2016, 2, 1), date(2016, 2, 29), "ValidationError"),
         ),
     )
     return statuses, reconciled
@@ -114,7 +126,8 @@ def progress_selection(monkeypatch):
 def test_selection_starts_at_first_incomplete_quarter(progress_selection) -> None:
     _, reconciled = progress_selection
     selected = select_earliest_incomplete_quarter(
-        object(), current_local_date=date(2026, 9, 26)
+        object(), claim_owner="scheduled__one",
+        current_local_date=date(2026, 9, 26)
     )
 
     assert isinstance(selected, CampaignSelection)
@@ -129,10 +142,12 @@ def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) 
     statuses.update({1: "complete", 2: "complete", 4: "complete"})
 
     first = select_earliest_incomplete_quarter(
-        object(), current_local_date=date(2026, 9, 26)
+        object(), claim_owner="scheduled__one",
+        current_local_date=date(2026, 9, 26)
     )
     second = select_earliest_incomplete_quarter(
-        object(), current_local_date=date(2026, 9, 26)
+        object(), claim_owner="scheduled__one",
+        current_local_date=date(2026, 9, 26)
     )
 
     assert first is not None and first.quarter == CampaignQuarter(2016, 3)
@@ -145,7 +160,8 @@ def test_selection_is_no_op_when_all_quarters_are_complete(progress_selection) -
     statuses.update({number: "complete" for number in range(1, 41)})
 
     assert select_earliest_incomplete_quarter(
-        object(), current_local_date=date(2026, 9, 26)
+        object(), claim_owner="scheduled__one",
+        current_local_date=date(2026, 9, 26)
     ) is None
     assert reconciled == list(range(1, 41))
 
@@ -154,9 +170,41 @@ def test_selection_waits_for_whole_quarter_eligibility(progress_selection) -> No
     _, reconciled = progress_selection
 
     assert select_earliest_incomplete_quarter(
-        object(), current_local_date=date(2016, 4, 5)
+        object(), claim_owner="scheduled__one",
+        current_local_date=date(2016, 4, 5)
     ) is None
     assert reconciled == []
+
+
+def test_failed_quarter_blocks_automatic_resubmission(progress_selection) -> None:
+    statuses, reconciled = progress_selection
+    statuses[1] = "failed"
+
+    selected = select_earliest_incomplete_quarter(
+        object(), claim_owner="scheduled__next",
+        current_local_date=date(2026, 9, 26)
+    )
+    assert isinstance(selected, CampaignBlocked)
+    assert selected.quarter == CampaignQuarter(2016, 1)
+    assert "2016-02-01" in selected.reason
+    assert "ValidationError" in selected.reason
+    assert reconciled == [1]
+
+
+def test_claimed_quarter_blocks_competing_selector(
+    progress_selection, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.try_claim_pipeline_progress",
+        lambda engine, progress_id, owner: False,
+    )
+    selected = select_earliest_incomplete_quarter(
+        object(), claim_owner="scheduled__competing",
+        current_local_date=date(2026, 9, 26)
+    )
+    assert isinstance(selected, CampaignBlocked)
+    assert selected.progress_id == 1
+    assert "claimed" in selected.reason
 
 
 def test_manual_whole_month_matches_exact_campaign_partition() -> None:
