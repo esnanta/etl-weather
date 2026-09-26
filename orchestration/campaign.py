@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
 CAMPAIGN_KEY = "era5_land_2016_2025"
 CAMPAIGN_START_YEAR = 2016
 CAMPAIGN_END_YEAR = 2025
+CAMPAIGN_TIMEZONE = ZoneInfo("Asia/Jakarta")
 
 
 @dataclass(frozen=True, order=True)
@@ -41,6 +43,13 @@ class CampaignQuarter:
     @property
     def label(self) -> str:
         return f"{self.year} Q{self.quarter}"
+
+
+@dataclass(frozen=True)
+class CampaignSelection:
+    quarter: CampaignQuarter
+    progress_id: int
+    request_specs: tuple[dict[str, object], ...]
 
 
 def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
@@ -88,3 +97,40 @@ def initialize_campaign_progress(
         definition = build_pipeline_progress_definition(specs)
         progress_ids.append(initialize_pipeline_progress(engine, definition))
     return tuple(progress_ids)
+
+
+def select_earliest_incomplete_quarter(
+    engine: Engine,
+    *,
+    current_local_date: date | None = None,
+) -> CampaignSelection | None:
+    """Reconcile in calendar order and select at most one eligible quarter."""
+    from orchestration.repositories.pipeline_progress import (
+        get_pipeline_progress_by_id,
+        reconcile_pipeline_progress,
+    )
+    from orchestration.tasks.era5_land import AVAILABILITY_LAG_DAYS
+
+    today = current_local_date or datetime.now(CAMPAIGN_TIMEZONE).date()
+    eligibility_boundary = today - timedelta(days=AVAILABILITY_LAG_DAYS)
+
+    # Seeding is independent of the current provider-availability boundary.
+    progress_ids = initialize_campaign_progress(
+        engine, current_local_date=date.max
+    )
+    for quarter, progress_id in zip(
+        iter_campaign_quarters(), progress_ids, strict=True
+    ):
+        if quarter.end_date > eligibility_boundary:
+            return None
+        reconcile_pipeline_progress(engine, progress_id)
+        progress = get_pipeline_progress_by_id(engine, progress_id)
+        if (
+            progress.execution_status != "complete"
+            or progress.validation_status != "valid"
+        ):
+            specs = build_quarter_request_specs(
+                quarter, current_local_date=today
+            )
+            return CampaignSelection(quarter, progress_id, tuple(specs))
+    return None
