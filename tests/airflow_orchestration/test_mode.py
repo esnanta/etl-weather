@@ -33,11 +33,23 @@ def test_manual_mode_preserves_explicit_inclusive_dates() -> None:
         ("manual", None, "require only"),
         ("manual", {"start_date": "2024-01-01"}, "require only"),
         ("manual", {"end_date": "2024-01-31"}, "require only"),
-        ("manual", {"start_date": "2024-01-01", "end_date": "2024-01-31", "mode": "scheduled"}, "require only"),
+        (
+            "manual",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31", "mode": "scheduled"},
+            "require only",
+        ),
         ("manual", {"start_date": None, "end_date": "2024-01-31"}, "start_date"),
-        ("manual", {"start_date": "2024-02-30", "end_date": "2024-03-01"}, "start_date"),
+        (
+            "manual",
+            {"start_date": "2024-02-30", "end_date": "2024-03-01"},
+            "start_date",
+        ),
         ("manual", {"start_date": "2024-1-1", "end_date": "2024-01-31"}, "start_date"),
-        ("manual", {"start_date": "2024-02-01", "end_date": "2024-01-31"}, "end_date"),
+        (
+            "manual",
+            {"start_date": "2024-02-01", "end_date": "2024-01-31"},
+            "end_date",
+        ),
         ("backfill", {}, "Unsupported"),
     ],
 )
