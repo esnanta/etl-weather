@@ -54,6 +54,13 @@ class CampaignSelection:
     request_specs: tuple[dict[str, object], ...]
 
 
+@dataclass(frozen=True)
+class CampaignBlocked:
+    quarter: CampaignQuarter
+    progress_id: int
+    reason: str
+
+
 def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
     return tuple(
         CampaignQuarter(year, quarter)
@@ -131,12 +138,15 @@ def matching_campaign_progress_definition(
 def select_earliest_incomplete_quarter(
     engine: Engine,
     *,
+    claim_owner: str,
     current_local_date: date | None = None,
-) -> CampaignSelection | None:
-    """Reconcile in calendar order and select at most one eligible quarter."""
+) -> CampaignSelection | CampaignBlocked | None:
+    """Reconcile in order and claim at most one eligible unfinished quarter."""
     from orchestration.repositories.pipeline_progress import (
+        get_failed_progress_partitions,
         get_pipeline_progress_by_id,
         reconcile_pipeline_progress,
+        try_claim_pipeline_progress,
     )
     from orchestration.tasks.era5_land import AVAILABILITY_LAG_DAYS
 
@@ -154,10 +164,25 @@ def select_earliest_incomplete_quarter(
             return None
         reconcile_pipeline_progress(engine, progress_id)
         progress = get_pipeline_progress_by_id(engine, progress_id)
+        if progress.failed_partition_count:
+            failed = get_failed_progress_partitions(engine, progress_id)
+            months = ", ".join(
+                f"{start} through {end} ({error or 'unknown error'})"
+                for start, end, error in failed
+            )
+            return CampaignBlocked(
+                quarter, progress_id,
+                f"Manual repair required for {quarter.label}: {months}",
+            )
         if (
             progress.execution_status != "complete"
             or progress.validation_status != "valid"
         ):
+            if not try_claim_pipeline_progress(engine, progress_id, claim_owner):
+                return CampaignBlocked(
+                    quarter, progress_id,
+                    f"{quarter.label} is already claimed by another run.",
+                )
             specs = build_quarter_request_specs(
                 quarter, current_local_date=today
             )
