@@ -365,7 +365,7 @@ def update_pipeline_progress_detail(
 
 
 def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
-    """Derive parent counts/status only from persisted detail evidence."""
+    """Derive parent status from detail state and matching persisted observations."""
     if progress_id <= 0:
         raise ValueError("progress_id must be positive.")
     parent = _parent_table()
@@ -374,21 +374,46 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
         f"""
         WITH detail_state AS (
             SELECT
-                COUNT(*) AS actual_count,
-                COUNT(*) FILTER (
-                    WHERE extract_status = 'complete'
-                      AND transform_status = 'complete'
-                      AND load_status = 'complete'
-                      AND validation_status = 'valid'
+                COUNT(partition.id) AS actual_count,
+                COUNT(partition.id) FILTER (
+                    WHERE partition.extract_status = 'complete'
+                      AND partition.transform_status = 'complete'
+                      AND partition.load_status = 'complete'
+                      AND partition.validation_status = 'valid'
+                      AND partition.row_count > 0
+                      AND persisted.id IS NOT NULL
+                      AND persisted.transformed_artifact_path =
+                          partition.transformed_artifact_path
+                      AND persisted.transformed_sha256 =
+                          partition.transformed_sha256
+                      AND observations.row_count = partition.row_count
                 ) AS completed_count,
-                COUNT(*) FILTER (
-                    WHERE extract_status = 'failed'
-                       OR transform_status = 'failed'
-                       OR load_status = 'failed'
-                       OR validation_status = 'failed'
-                ) AS failed_count
-            FROM {detail}
-            WHERE pipeline_progress_id = :pipeline_progress_id
+                COUNT(partition.id) FILTER (
+                    WHERE partition.extract_status = 'failed'
+                       OR partition.transform_status = 'failed'
+                       OR partition.load_status = 'failed'
+                       OR partition.validation_status = 'failed'
+                ) AS failed_count,
+                COUNT(partition.id) FILTER (
+                    WHERE partition.extract_status = 'running'
+                       OR partition.transform_status = 'running'
+                       OR partition.load_status = 'running'
+                ) AS running_count
+            FROM {parent} AS batch
+            LEFT JOIN {detail} AS partition
+              ON partition.pipeline_progress_id = batch.id
+            LEFT JOIN climate_data.daily_climate AS persisted
+              ON persisted.request_key = partition.request_key
+             AND persisted.source::text = batch.source
+             AND persisted.dataset_name = batch.dataset_name
+             AND persisted.start_date = partition.start_date
+             AND persisted.end_date = partition.end_date
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS row_count
+                FROM climate_data.daily_climate_detail AS observation
+                WHERE observation.daily_climate_id = persisted.id
+            ) AS observations ON TRUE
+            WHERE batch.id = :pipeline_progress_id
         )
         UPDATE {parent} AS progress
         SET completed_partition_count = detail_state.completed_count,
@@ -401,8 +426,9 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
                 WHEN detail_state.failed_count > 0
                     THEN 'failed'
                 WHEN detail_state.completed_count > 0
+                  OR detail_state.running_count > 0
                     THEN 'running'
-                ELSE progress.execution_status
+                ELSE 'pending'
             END,
             validation_status = CASE
                 WHEN detail_state.actual_count = progress.expected_partition_count
