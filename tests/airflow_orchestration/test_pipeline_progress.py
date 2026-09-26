@@ -11,6 +11,8 @@ from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
+    release_pipeline_progress_claim,
+    try_claim_pipeline_progress,
     update_pipeline_progress_detail,
 )
 
@@ -19,6 +21,9 @@ class _ScalarResult:
     rowcount = 1
 
     def scalar_one(self) -> int:
+        return 42
+
+    def scalar_one_or_none(self) -> int:
         return 42
 
 
@@ -200,3 +205,22 @@ def test_parent_completion_is_derived_from_all_detail_evidence() -> None:
     assert "COALESCE(progress.completed_at, CURRENT_TIMESTAMP)" in sql
     assert "completed_partition_count = detail_state.completed_count" in sql
     assert "failed_partition_count = detail_state.failed_count" in sql
+
+
+def test_claim_is_atomic_and_released_only_after_verified_completion() -> None:
+    engine = _Engine()
+    assert try_claim_pipeline_progress(
+        cast(Engine, cast(object, engine)), 42, "scheduled__one"
+    )
+    claim_sql = engine.connection.statements[-1]
+    assert "selection_owner IS NULL OR selection_owner = :owner" in claim_sql
+    assert "failed_partition_count = 0" in claim_sql
+    assert "RETURNING id" in claim_sql
+
+    assert release_pipeline_progress_claim(
+        cast(Engine, cast(object, engine)), 42, require_complete=True
+    )
+    release_sql = engine.connection.statements[-1]
+    assert "execution_status = 'complete'" in release_sql
+    assert "validation_status = 'valid'" in release_sql
+    assert "selection_owner = NULL" in release_sql
