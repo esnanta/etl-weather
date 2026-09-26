@@ -49,9 +49,9 @@ Implementation progress through 2026-09-25:
   transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
 - subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
   resume, with one resumed extraction peak RSS of 457.25 MiB.
+- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; isolated PostgreSQL verification is added and awaits a local run;
 
 Still pending:
-- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; isolated PostgreSQL verification is added and awaits a local run;
 
 - deterministic 2016–2025 quarter helpers remain scheduler policy; cadence-neutral progress definitions and the generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` repository are implemented but are not yet wired into the DAG;
 - implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
