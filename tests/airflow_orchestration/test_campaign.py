@@ -11,6 +11,7 @@ from orchestration.campaign import (
     build_quarter_request_specs,
     initialize_campaign_progress,
     iter_campaign_quarters,
+    matching_campaign_progress_definition,
     select_earliest_incomplete_quarter,
 )
 
@@ -156,3 +157,36 @@ def test_selection_waits_for_whole_quarter_eligibility(progress_selection) -> No
         object(), current_local_date=date(2016, 4, 5)
     ) is None
     assert reconciled == []
+
+
+def test_manual_whole_month_matches_exact_campaign_partition() -> None:
+    from orchestration.tasks.era5_land import build_historical_request_specs
+    from pipeline.request import build_request_key, weather_request_from_spec
+
+    spec = build_historical_request_specs(
+        "2024-02-01", "2024-02-29", current_local_date=date(2026, 9, 26)
+    )[0]
+    definition = matching_campaign_progress_definition(spec)
+
+    assert definition is not None
+    assert (definition.start_date, definition.end_date) == (
+        "2024-01-01", "2024-03-31"
+    )
+    assert build_request_key(weather_request_from_spec(spec)) in {
+        partition.request_key for partition in definition.partitions
+    }
+
+
+def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> None:
+    from orchestration.tasks.era5_land import build_historical_request_specs
+
+    partial = build_historical_request_specs(
+        "2024-02-10", "2024-02-29", current_local_date=date(2026, 9, 26)
+    )[0]
+    assert matching_campaign_progress_definition(partial) is None
+
+    changed = build_historical_request_specs(
+        "2024-02-01", "2024-02-29", current_local_date=date(2026, 9, 26)
+    )[0]
+    changed["bbox"]["north_lat"] = 5.2
+    assert matching_campaign_progress_definition(changed) is None
