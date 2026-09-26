@@ -478,7 +478,7 @@ def get_earliest_incomplete_progress(
     campaign_start_date: str,
     campaign_end_date: str,
 ) -> PipelineProgress | None:
-    """Return the earliest incomplete logical batch within explicit campaign bounds."""
+    """Query generic batches; campaign selection uses exact seeded IDs instead."""
     parent = _parent_table()
     statement = text(
         f"""
@@ -508,8 +508,36 @@ def get_earliest_incomplete_progress(
                 "campaign_end_date": campaign_end_date,
             },
         ).mappings().first()
+    return _progress_from_row(row) if row is not None else None
+
+
+def get_pipeline_progress_by_id(
+    engine: Engine,
+    progress_id: int,
+) -> PipelineProgress:
+    """Read the exact initialized batch after reconciling its evidence."""
+    if progress_id <= 0:
+        raise ValueError("progress_id must be positive.")
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                f"""
+                SELECT id, pipeline_name, source, dataset_name, start_date, end_date,
+                       configuration_identity, expected_partition_count,
+                       completed_partition_count, failed_partition_count,
+                       execution_status, validation_status, completed_at
+                FROM {_parent_table()}
+                WHERE id = :pipeline_progress_id
+                """
+            ),
+            {"pipeline_progress_id": progress_id},
+        ).mappings().one_or_none()
     if row is None:
-        return None
+        raise ValueError("Cannot read unknown pipeline progress row.")
+    return _progress_from_row(row)
+
+
+def _progress_from_row(row: Mapping[str, Any]) -> PipelineProgress:
     return PipelineProgress(
         id=int(row["id"]),
         pipeline_name=str(row["pipeline_name"]),
