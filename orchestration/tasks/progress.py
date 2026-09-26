@@ -9,7 +9,10 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from orchestration.campaign import select_earliest_incomplete_quarter
+from orchestration.campaign import (
+    matching_campaign_progress_definition,
+    select_earliest_incomplete_quarter,
+)
 from orchestration.mode import resolve_run_mode
 from orchestration.progress import build_pipeline_progress_definition
 from orchestration.repositories.pipeline_progress import (
@@ -30,7 +33,11 @@ from pipeline.database import (
     create_daily_climate_table,
     create_schema,
 )
-from pipeline.storage import artifact_path_for_metadata, calculate_file_sha256
+from pipeline.storage import (
+    artifact_path_for_metadata,
+    calculate_file_sha256,
+    raw_artifact_for_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +203,59 @@ def _persisted_row_count(
     return int(row["row_count"])
 
 
+def _reconcile_campaign_repair(
+    progress_id: int,
+    request_spec: Mapping[str, Any],
+    request_key: str,
+    transformed_path: str,
+    transformed_sha256: str,
+    transformed_size: int,
+    row_count: int,
+) -> None:
+    """Apply a validated whole-month load to its exact campaign quarter."""
+    from pipeline.request import weather_request_from_spec
+
+    definition = matching_campaign_progress_definition(request_spec)
+    if definition is None:
+        logger.info(
+            "Loaded partition does not match a whole campaign month; request_key=%s",
+            request_key,
+        )
+        return
+    with _progress_engine() as engine:
+        campaign_id = initialize_pipeline_progress(engine, definition)
+        if campaign_id == progress_id:
+            return
+        raw_artifact = raw_artifact_for_request(
+            weather_request_from_spec(request_spec)
+        )
+        raw_path, raw_sha256, raw_size = _identity(
+            {"artifact_path": raw_artifact.path.as_posix()}
+        )
+        update_pipeline_progress_detail(
+            engine,
+            campaign_id,
+            request_key,
+            extract_status="complete",
+            transform_status="complete",
+            load_status="complete",
+            validation_status="valid",
+            raw_artifact_path=raw_path,
+            raw_sha256=raw_sha256,
+            raw_file_size_bytes=raw_size,
+            transformed_artifact_path=transformed_path,
+            transformed_sha256=transformed_sha256,
+            transformed_file_size_bytes=transformed_size,
+            row_count=row_count,
+        )
+        reconcile_pipeline_progress(engine, campaign_id)
+    logger.info(
+        "Reconciled campaign repair; progress_id=%d; request_key=%s",
+        campaign_id,
+        request_key,
+    )
+
+
 def load_with_progress(transform_result: dict[str, object]) -> dict[str, object]:
     progress_id = int(transform_result["progress_id"])
     request_key = str(transform_result["request_key"])
@@ -212,6 +272,12 @@ def load_with_progress(transform_result: dict[str, object]) -> dict[str, object]
             progress_id, request_key, load_status="complete", validation_status="valid",
             transformed_artifact_path=path, transformed_sha256=checksum,
             transformed_file_size_bytes=size, row_count=row_count,
+        )
+        request_spec = transform_result["request"]
+        if not isinstance(request_spec, Mapping):
+            raise ValueError("Load control metadata is missing a request specification.")
+        _reconcile_campaign_repair(
+            progress_id, request_spec, request_key, path, checksum, size, row_count
         )
     except Exception as error:
         _record_failure(progress_id, request_key, "load", error)
