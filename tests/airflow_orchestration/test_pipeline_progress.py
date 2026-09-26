@@ -177,15 +177,24 @@ def test_parent_completion_is_derived_from_all_detail_evidence() -> None:
     reconcile_pipeline_progress(cast(Engine, cast(object, engine)), 42)
 
     sql = engine.connection.statements[-1]
-    assert "COUNT(*) FILTER" in sql
-    assert "extract_status = 'complete'" in sql
-    assert "transform_status = 'complete'" in sql
-    assert "load_status = 'complete'" in sql
-    assert "validation_status = 'valid'" in sql
+    assert "COUNT(partition.id) FILTER" in sql
+    assert "partition.extract_status = 'complete'" in sql
+    assert "partition.transform_status = 'complete'" in sql
+    assert "partition.load_status = 'complete'" in sql
+    assert "partition.validation_status = 'valid'" in sql
+    assert "persisted.request_key = partition.request_key" in sql
+    assert "persisted.source::text = batch.source" in sql
+    assert "persisted.dataset_name = batch.dataset_name" in sql
+    assert "persisted.start_date = partition.start_date" in sql
+    assert "persisted.end_date = partition.end_date" in sql
+    assert "persisted.transformed_artifact_path =" in sql
+    assert "persisted.transformed_sha256 =" in sql
+    assert "observations.row_count = partition.row_count" in sql
     assert "detail_state.actual_count = progress.expected_partition_count" in sql
     assert "detail_state.completed_count = progress.expected_partition_count" in sql
     assert "detail_state.failed_count = 0" in sql
     assert "THEN 'complete'" in sql
     assert "THEN 'failed'" in sql
+    assert "ELSE 'pending'" in sql
     assert "completed_partition_count = detail_state.completed_count" in sql
     assert "failed_partition_count = detail_state.failed_count" in sql
