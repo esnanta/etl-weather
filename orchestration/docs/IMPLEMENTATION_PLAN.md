@@ -535,6 +535,8 @@ Observability, validation, and rollout:
 - [ ] Run `python -m pytest tests/airflow_orchestration -q` and affected
       core/integration tests. Pilot scheduled and manual recovery runs
       before enabling the entire campaign.
+- [x] Provide a read-only host capacity snapshot and a repeatable manual
+      post-change CDS pilot procedure without exposing secrets.
 - [ ] Review artifact and PostgreSQL capacity on the target runtime,
       including temporary downloads, logs, and overlapping task memory.
       Do not extrapolate April wall time as a guaranteed CDS throughput.

@@ -341,6 +341,57 @@ The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
 disabled pending the post-change retry pilot, operational review, and rollout.
 
+## Campaign Host Capacity and Post-Change CDS Pilot
+
+Run this read-only snapshot on the actual Airflow host, from the repository
+root, after activating the deployment environment:
+
+```bash
+source activate-airflow.sh
+python scripts/inspect_campaign_capacity.py > campaign-capacity.json
+```
+
+The JSON contains host name, paths, disk bytes available for `data/`, temporary
+downloads, Airflow logs and metadata, available RAM and swap, PostgreSQL
+database and relevant table sizes, and local triggerer process RSS. It does not
+print credentials. Run it while the services and a representative extraction
+are active as well as at idle; process RSS is a point-in-time measurement.
+The triggerer process count does not establish a healthy heartbeat. A remote
+PostgreSQL volume is **not** measured by this command: on the database host,
+check free space for the PostgreSQL data and WAL filesystems separately, and
+record those values with the snapshot. If `postgresql.status` says
+`not measured`, fix the environment or database access before assessing
+capacity. Missing `data/` or Airflow logs paths are also incomplete
+measurements, not zero-byte usage. Do not use the development workspace's
+numbers as measurements of the campaign host.
+
+Before scheduling, repeat a manual CDS pilot against a month without a RAW
+checkpoint. For example, use June 2024 only if its RAW has not already been
+created on this host; otherwise choose another reviewed missing month:
+
+```bash
+source activate-airflow.sh
+airflow dags trigger cds_era5_land_etl \\
+  --conf '{"start_date":"2024-06-01","end_date":"2024-06-30"}'
+airflow dags list-runs cds_era5_land_etl
+```
+
+In the Airflow UI, open that run's mapped `extract_or_resume` log, including
+the log before a deferral and the log after resumption. Record these lines in
+chronological order: `CDS retrieval plan`, `CDS submission reserved`,
+`CDS submission deferred`, `Resumed CDS retrieval chunk`, provider timeout
+or HTTP retry messages, `RAW Temporal Validation PASSED`, and
+`RAW Spatial Validation PASSED`. Also record the run state and the RAW
+checkpoint status. Compare the `submitted_at` timestamps of **every**
+reservation: each successive POST must be at least
+`CDS_MIN_SUBMISSION_INTERVAL_SECONDS` apart (default 1,800 seconds).
+A deferred request must not appear as a reserved POST before its
+`next_allowed_at`. A provider retry may not occur naturally in this pilot;
+if none occurs, record that fact rather than claiming live retry coverage.
+The offline retry test exercises the same HTTP gate without calling CDS.
+Do not delete an existing RAW checkpoint or shorten the interval merely to
+force this pilot.
+
 ## Progress Backup and Restart Recovery
 
 The local Airflow metadata database is SQLite, while the campaign truth is in
