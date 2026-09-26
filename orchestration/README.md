@@ -192,6 +192,37 @@ one-slot `cds_api` pool allows only one extraction submission at a time.
 
 Until Stage 8 is implemented and verified, the DAG remains manual-only.
 
+### Planned Progress Persistence
+
+Stage 8 will not persist scheduler state using quarter-specific table names.
+The agreed PostgreSQL model remains in the existing climate database:
+
+```text
+climate.pipeline_progress
+climate.pipeline_progress_detail
+```
+
+`pipeline_progress` represents one logical requested range or batch using
+explicit `start_date` and `end_date`. The current scheduler may choose a
+three-month quarter, but the persistence model must also support a future
+two-month, one-month, annual, or manually selected range without a schema
+rename.
+
+`pipeline_progress_detail` represents each processed partition and records
+the request/artifact/validation outcome needed for recovery and monitoring.
+For the current ERA5-Land pipeline this includes the monthly request key, RAW
+NetCDF artifact identity, transformed artifact identity, temporal/spatial
+validation metrics, grid and row counts, extract/transform/load state, and
+validation state.
+
+Stable identity, status, validation, period, checksum, and count fields remain
+ordinary columns. An optional JSONB metrics field may hold evolving operational
+measurements, but it must not replace core progress truth.
+
+The existing quarter helper remains scheduler policy for the bounded
+2016-2025 campaign; quarter number is not part of the durable persistence
+identity.
+
 ## Task Flow
 
 ```text
