@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -6,9 +7,11 @@ from orchestration.campaign import (
     CAMPAIGN_END_YEAR,
     CAMPAIGN_START_YEAR,
     CampaignQuarter,
+    CampaignSelection,
     build_quarter_request_specs,
     initialize_campaign_progress,
     iter_campaign_quarters,
+    select_earliest_incomplete_quarter,
 )
 
 
@@ -82,3 +85,74 @@ def test_campaign_initialization_seeds_every_quarter(monkeypatch) -> None:
     assert (definitions[-1].start_date, definitions[-1].end_date) == (
         "2025-10-01", "2025-12-31"
     )
+
+
+@pytest.fixture
+def progress_selection(monkeypatch):
+    reconciled = []
+    statuses = {}
+    monkeypatch.setattr(
+        "orchestration.campaign.initialize_campaign_progress",
+        lambda engine, **kwargs: tuple(range(1, 41)),
+    )
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.reconcile_pipeline_progress",
+        lambda engine, progress_id: reconciled.append(progress_id),
+    )
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.get_pipeline_progress_by_id",
+        lambda engine, progress_id: SimpleNamespace(
+            execution_status=statuses.get(progress_id, "pending"),
+            validation_status="valid" if statuses.get(progress_id) == "complete"
+            else "pending",
+        ),
+    )
+    return statuses, reconciled
+
+
+def test_selection_starts_at_first_incomplete_quarter(progress_selection) -> None:
+    _, reconciled = progress_selection
+    selected = select_earliest_incomplete_quarter(
+        object(), current_local_date=date(2026, 9, 26)
+    )
+
+    assert isinstance(selected, CampaignSelection)
+    assert selected.quarter == CampaignQuarter(2016, 1)
+    assert selected.progress_id == 1
+    assert len(selected.request_specs) == 3
+    assert reconciled == [1]
+
+
+def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) -> None:
+    statuses, reconciled = progress_selection
+    statuses.update({1: "complete", 2: "complete", 4: "complete"})
+
+    first = select_earliest_incomplete_quarter(
+        object(), current_local_date=date(2026, 9, 26)
+    )
+    second = select_earliest_incomplete_quarter(
+        object(), current_local_date=date(2026, 9, 26)
+    )
+
+    assert first is not None and first.quarter == CampaignQuarter(2016, 3)
+    assert second is not None and second.quarter == first.quarter
+    assert reconciled == [1, 2, 3, 1, 2, 3]
+
+
+def test_selection_is_no_op_when_all_quarters_are_complete(progress_selection) -> None:
+    statuses, reconciled = progress_selection
+    statuses.update({number: "complete" for number in range(1, 41)})
+
+    assert select_earliest_incomplete_quarter(
+        object(), current_local_date=date(2026, 9, 26)
+    ) is None
+    assert reconciled == list(range(1, 41))
+
+
+def test_selection_waits_for_whole_quarter_eligibility(progress_selection) -> None:
+    _, reconciled = progress_selection
+
+    assert select_earliest_incomplete_quarter(
+        object(), current_local_date=date(2016, 4, 5)
+    ) is None
+    assert reconciled == []
