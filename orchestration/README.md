@@ -299,9 +299,7 @@ The DAG invokes this selector for scheduled run provenance, although
 `schedule=None` prevents scheduled DagRuns today. Manual triggers create or
 reuse their exact range identity. Each mapped boundary records status and
 artifact identity; loading becomes valid only after matching PostgreSQL
-metadata and a positive observation count are verified. Failure limits,
-manual repair of an affected quarter, and concurrent selection control remain
-subsequent Stage 8 work.
+metadata and a positive observation count are verified. Failure limits and concurrent selection control remain subsequent Stage 8 work.
 
 ## Task Flow
 
@@ -372,6 +370,24 @@ For example, to process the following new month explicitly:
 airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2024-04-01","end_date":"2024-04-30"}'
 ```
+
+### Manual Campaign Recovery
+
+A failed campaign month can be rerun through the same DAG using its complete
+calendar-month dates. For example, to repair February 2024:
+
+```bash
+airflow dags trigger cds_era5_land_etl \
+  --conf '{"start_date":"2024-02-01","end_date":"2024-02-29"}'
+```
+
+After the checkpoint-backed load verifies PostgreSQL evidence, the manual range
+and the matching February detail of 2024 Q1 are reconciled. Q1 becomes complete
+only when January, February, and March all have valid persisted evidence. A
+partial-month range, an out-of-campaign period, or a changed request
+configuration does not modify the campaign quarter. Existing historical
+database rows alone are not silently promoted; rerun the missing whole months
+to validate their checkpoints and record their progress.
 
 ### Check DagRun Status
 
