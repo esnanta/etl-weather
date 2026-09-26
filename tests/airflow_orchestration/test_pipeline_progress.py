@@ -196,5 +196,7 @@ def test_parent_completion_is_derived_from_all_detail_evidence() -> None:
     assert "THEN 'complete'" in sql
     assert "THEN 'failed'" in sql
     assert "ELSE 'pending'" in sql
+    assert "detail_state.attempted_count > 0" in sql
+    assert "COALESCE(progress.completed_at, CURRENT_TIMESTAMP)" in sql
     assert "completed_partition_count = detail_state.completed_count" in sql
     assert "failed_partition_count = detail_state.failed_count" in sql
