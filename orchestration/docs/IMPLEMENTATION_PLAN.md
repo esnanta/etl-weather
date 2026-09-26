@@ -505,9 +505,14 @@ CDS request pacing:
       `client.retrieve`, shared by automatic and manual modes, including
       additional chunks and Airflow task retries. The 30-minute default is
       an operational starting point, not a claimed Copernicus quota.
-- [ ] Confirm whether the pinned CDS client internally resubmits a provider job
-      during its own retries; the current gate surrounds each top-level
-      `client.retrieve` call.
+- [ ] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
+      With the adapter's UID:key credential format, `Client.retrieve` calls
+      `_api`, whose `robust` wrapper retries the POST on connection/read
+      timeouts and retriable HTTP status codes. The current database gate
+      surrounds each top-level `client.retrieve`, so these internal POST
+      retries can occur before the 30-minute interval. Preserve safe status
+      polling and download retries while enforcing pacing at real submissions;
+      add offline tests before scheduling.
 - [x] Persist/coordinate the last submission timestamp across runs and
       workers; avoid holding a worker or pool slot idle for a long wait
       when Airflow can defer or reschedule it. Preserve a one-slot limit
