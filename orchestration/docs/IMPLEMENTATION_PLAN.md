@@ -13,7 +13,7 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implementation progress through 2026-09-25:
+Implementation progress through 2026-09-26:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
@@ -57,19 +57,27 @@ Implementation progress through 2026-09-25:
 - one persisted failed detail blocks subsequent automatic CDS submissions, and
   an atomic owner claim prevents competing selectors from choosing the same
   quarter; release follows verified completion or manual recovery;
+- CDS pacing uses a PostgreSQL submission clock, a 30-minute default interval,
+  a deferrable extraction operator, and resumable retrieval chunks. CI passed
+  186 tests with five PostgreSQL integration tests skipped; the isolated local
+  pacing integration test passed separately;
+- the manual May 2024 live pilot completed successfully on 2026-09-26. The
+  context request was submitted at 17:30:06 Asia/Jakarta, the May request was
+  deferred at 17:31:19, and the triggerer woke the task at 18:00:06. The
+  context chunk resumed from its checkpoint, and May was submitted at 18:00:13
+  (about 30 minutes 7 seconds after the first submission). RAW validation
+  passed with 768 hourly steps, 1,505 grid points, and all five variables;
 
 Still pending:
 
-- the existing DAG now uses the mode contract, exact progress identity, mapped boundary status, and persisted load proof; the schedule remains disabled;
-- whole-month manual repair passed local tests (64 orchestration and two isolated
-  PostgreSQL tests on 2026-09-26); durable scheduled claims and fail-closed
-  failed-quarter selection are implemented and await local verification;
-- PostgreSQL-backed CDS submission reservation and configuration are in place;
-  the extraction adapter now checkpoints retrieval chunks and a mapped operator
-  defers without holding a worker when the durable clock denies a slot;
-- verify the mapped operator and chunk resume in CI and a manual live pacing
-  pilot before setting the eventual scheduled cadence;
-- review capacity before enabling the schedule and monitor the 40-quarter campaign;
+- the existing DAG uses the mode contract, exact progress identity, mapped
+  boundary status, persisted load proof, and live-verified CDS pacing; its
+  schedule remains disabled;
+- document PostgreSQL progress/pacing backup and restart recovery, then review
+  target-host disk, database, memory, and triggerer capacity before scheduling;
+- implement a configurable Asia/Jakarta scheduler cadence, complete campaign
+  observability/docs, and pilot scheduled selection plus manual recovery before
+  enabling the bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -371,7 +379,7 @@ Exit condition (met): monthly resume and a three-month run have been verified.
 The former proposal to trigger one complete ten-year DagRun has been replaced
 by Stage 8.
 
-## Stage 8 — Scheduled Quarterly Historical Campaign (Planned)
+## Stage 8 — Scheduled Quarterly Historical Campaign (In Progress)
 
 **Agreed scope (2026-09-25):** extend the existing
 `cds_era5_land_etl` DAG with automatic and explicit manual modes.
@@ -400,16 +408,16 @@ builder still validates the historical range and six-day availability lag.
 Unsupported run types, extra keys, incomplete pairs, invalid dates, and
 scheduled configuration fail explicitly. A single failed month or quarter is
 the recommended manual repair scope. Manual dates are not silently replaced
-by scheduler-selected dates. The contract is implemented and tested, but the
-DAG still has `schedule=None` and does not call it yet.
-- [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
+by scheduler-selected dates. The contract is implemented and used by the DAG. Its schedule remains
+`None` pending the scheduled rollout.
+- [x] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
 - [ ] Schedule at a configurable cadence in `Asia/Jakarta` (for example 30 minutes, one hour, or two hours);
       retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
       ticks must not skip quarters; a run longer than two hours must not
       overlap the next run.
-- [ ] Keep manual triggers available through the same DAG; document that
+- [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.
 - [ ] After all 40 quarters are verified complete, make scheduled ticks
@@ -447,12 +455,12 @@ Durable progress and recovery:
 - [ ] Document storage setup, backup, restart, and reconciliation behavior
       before enabling automatic mode.
 - [x] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
-- [ ] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
-- [ ] Reconcile valid manual repairs with the same monthly completion
+- [x] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
+- [x] Reconcile valid manual repairs with the same monthly completion
       evidence. A manual range may complete an affected quarter once all
       its months are verified, but partial manual success must never mark
       an incomplete quarter complete.
-- [ ] Select the earliest incomplete quarter on every scheduled run so
+- [x] Select the earliest incomplete quarter on every scheduled run so
       restarts, missed ticks, and retries cannot silently skip a period.
       Guard concurrent progress updates even when `max_active_runs=1`.
 - [ ] Bound repeated automatic failures for the same quarter; log/alert
@@ -491,15 +499,16 @@ not invalidate otherwise identical request/progress identity.
 
 CDS request pacing:
 
-- [ ] Keep the one-slot `cds_api` pool. Document that it limits
+- [x] Keep the one-slot `cds_api` pool. Document that it limits
       concurrent extraction but does not enforce time between requests.
-- [ ] Add a configurable minimum interval between actual CDS API
-      submissions, shared by automatic and manual modes, including any
-      additional retrievals within one monthly extraction and retries.
-      Start with a conservative 15–30 minute *operational setting*
-      for evaluation, not a claimed Copernicus quota. Check how the
-      extraction adapter submits requests before selecting an exact default.
-- [ ] Persist/coordinate the last submission timestamp across runs and
+- [x] Add a configurable minimum interval before each top-level CDS
+      `client.retrieve`, shared by automatic and manual modes, including
+      additional chunks and Airflow task retries. The 30-minute default is
+      an operational starting point, not a claimed Copernicus quota.
+- [ ] Confirm whether the pinned CDS client internally resubmits a provider job
+      during its own retries; the current gate surrounds each top-level
+      `client.retrieve` call.
+- [x] Persist/coordinate the last submission timestamp across runs and
       workers; avoid holding a worker or pool slot idle for a long wait
       when Airflow can defer or reschedule it. Preserve a one-slot limit
       at submission, and make recovery after process termination safe.
