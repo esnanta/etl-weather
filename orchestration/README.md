@@ -339,7 +339,8 @@ and its artifacts, then use an explicit whole-month manual recovery to
 validate and release the claim. Do not clear a claim while its DagRun is active.
 The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
-disabled pending the post-change retry pilot, operational review, and rollout.
+disabled pending target-host review, scheduled-selection and recovery pilots,
+and final rollout checks.
 
 ## Campaign Host Capacity and Post-Change CDS Pilot
 
@@ -391,6 +392,28 @@ if none occurs, record that fact rather than claiming live retry coverage.
 The offline retry test exercises the same HTTP gate without calling CDS.
 Do not delete an existing RAW checkpoint or shorten the interval merely to
 force this pilot.
+
+### Local Pilot Evidence (2026-09-26)
+
+The June 2024 manual extraction pilot reserved its May 31 context POST at
+19:35:24.566821 Asia/Jakarta, deferred June while the slot was unavailable,
+then resumed the cached context chunk and reserved June at 20:05:35.214587.
+The interval was 1,810.648 seconds, exceeding the configured 1,800-second
+minimum. The June object-store download had an `IncompleteRead` and retried
+after 120 seconds; this was a file download retry, **not a CDS job POST
+retry**. June RAW validated 744 hourly steps, 1,505 grid points, and the five
+requested variables. The supplied extract log does not prove that transform,
+load, or the DagRun completed.
+
+The local `cassiopeia-node` snapshot at 19:31 Asia/Jakarta reported 5.97 GiB
+free for artifacts, logs, and SQLite metadata on the same filesystem,
+53.59 GiB free in `/tmp`, 5.70 GiB available RAM, 2.67 GiB free swap, and
+a 23.05 MiB PostgreSQL database. Two triggerer-related processes were visible
+at approximately 169.5 and 147.3 MiB RSS; process count alone does not
+establish separate triggerer instances or heartbeat health. This snapshot
+does not measure peak overlapping task memory, PostgreSQL host data/WAL free
+space, or the intended cloud campaign host. Review those separately before
+enabling the schedule.
 
 ## Progress Backup and Restart Recovery
 

@@ -67,6 +67,18 @@ Implementation progress through 2026-09-26:
   context chunk resumed from its checkpoint, and May was submitted at 18:00:13
   (about 30 minutes 7 seconds after the first submission). RAW validation
   passed with 768 hourly steps, 1,505 grid points, and all five variables;
+- a post-change June 2024 manual extraction pilot submitted the May 31 context
+  POST at 19:35:24.566821 Asia/Jakarta and the June POST at 20:05:35.214587,
+  1,810.648 seconds later. The June submission was initially deferred, the
+  triggerer woke the task, and the cached context chunk was reused. A broken
+  object-store download retried safely; there was no observed job POST retry.
+  June RAW passed temporal/spatial validation (744 hours, 1,505 grid points,
+  five variables). The extract log alone does not establish DagRun/load success;
+- the 19:31 Asia/Jakarta local-host snapshot reported 5.97 GiB free for
+  artifacts/logs/metadata, 53.59 GiB temporary space, 5.70 GiB available RAM,
+  a 23.05 MiB PostgreSQL database, and two visible triggerer-related
+  processes. PostgreSQL server filesystem free space and target cloud-host
+  capacity have not been measured;
 
 Still pending:
 
@@ -537,6 +549,12 @@ Observability, validation, and rollout:
       before enabling the entire campaign.
 - [x] Provide a read-only host capacity snapshot and a repeatable manual
       post-change CDS pilot procedure without exposing secrets.
+- [x] Review the local June 2024 extraction pilot for actual POST spacing,
+      deferral, cached context reuse, download retry, and RAW validation.
+      No provider job POST retry occurred; DagRun/load completion was not supplied.
+- [x] Record the local development-host disk, memory, PostgreSQL database
+      size, and visible triggerer process snapshot without treating it as
+      target-host capacity.
 - [ ] Review artifact and PostgreSQL capacity on the target runtime,
       including temporary downloads, logs, and overlapping task memory.
       Do not extrapolate April wall time as a guaranteed CDS throughput.
