@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -187,6 +187,134 @@ def test_completion_requires_matching_persisted_partition() -> None:
                     text("DELETE FROM climate_data.daily_climate WHERE request_key = :key"),
                     {"key": request_key},
                 )
+                if progress_id is not None:
+                    connection.execute(
+                        text("DELETE FROM climate.pipeline_progress WHERE id = :id"),
+                        {"id": progress_id},
+                    )
+        engine.dispose()
+
+
+def test_manual_month_repair_completes_only_after_all_three_months() -> None:
+    load_dotenv()
+    keys = (
+        "TEST_POSTGRES_HOST", "TEST_POSTGRES_PORT", "TEST_POSTGRES_DATABASE",
+        "TEST_POSTGRES_USER", "TEST_POSTGRES_PASSWORD",
+    )
+    if any(not os.getenv(key) for key in keys):
+        pytest.skip("Isolated TEST_POSTGRES_* connection is required.")
+    if "test" not in os.environ["TEST_POSTGRES_DATABASE"].lower():
+        pytest.fail("TEST_POSTGRES_DATABASE must name an isolated test database.")
+    config = DatabaseConfig(
+        host=os.environ["TEST_POSTGRES_HOST"],
+        port=int(os.environ["TEST_POSTGRES_PORT"]),
+        database=os.environ["TEST_POSTGRES_DATABASE"],
+        user=os.environ["TEST_POSTGRES_USER"],
+        password=os.environ["TEST_POSTGRES_PASSWORD"],
+        schema="climate_data",
+    )
+    engine = create_engine(config.url, future=True)
+    token = uuid4().hex
+    months = (
+        ("2024-01-01", "2024-01-31"),
+        ("2024-02-01", "2024-02-29"),
+        ("2024-03-01", "2024-03-31"),
+    )
+    partitions = tuple(
+        ProgressPartition(f"repair-{token}-{number}", start, end)
+        for number, (start, end) in enumerate(months, start=1)
+    )
+    definition = PipelineProgressDefinition(
+        pipeline_name=f"repair-test-{token}",
+        source="cds",
+        dataset_name="reanalysis-era5-land",
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+        configuration_identity=token,
+        partitions=partitions,
+    )
+    progress_id = None
+    tables_ready = False
+    try:
+        create_schema(engine, config)
+        create_daily_climate_table(engine, config)
+        create_daily_climate_detail_table(engine, config)
+        create_pipeline_progress_tables(engine)
+        tables_ready = True
+        progress_id = initialize_pipeline_progress(engine, definition)
+        for number, partition in enumerate(partitions, start=1):
+            update_pipeline_progress_detail(
+                engine, progress_id, partition.request_key,
+                extract_status="complete", transform_status="complete",
+                load_status="complete", validation_status="valid",
+                transformed_artifact_path=f"test/{number}.parquet",
+                transformed_sha256=f"sha-{number}", row_count=1,
+            )
+
+        def persist_month(number: int) -> None:
+            partition = partitions[number - 1]
+            timestamp = datetime(2024, 4, 1, tzinfo=UTC)
+            local_midnight = datetime.fromisoformat(partition.start_date)
+            utc_instant = local_midnight - timedelta(hours=7)
+            with engine.begin() as connection:
+                metadata_id = connection.execute(
+                    text(
+                        """
+                        INSERT INTO climate_data.daily_climate
+                        (request_key, dataset_name, source, start_date, end_date,
+                         variable_signature, north_lat, south_lat, east_lon, west_lon,
+                         downloaded_at, transformed_artifact_path,
+                         transformed_sha256, transformed_at)
+                        VALUES (:key, 'reanalysis-era5-land', 'cds', :start, :end,
+                                'tp', 6.1, 1.9, 98.3, 94.9, :timestamp,
+                                :path, :sha, :timestamp)
+                        RETURNING id
+                        """
+                    ),
+                    {
+                        "key": partition.request_key,
+                        "start": partition.start_date,
+                        "end": partition.end_date,
+                        "timestamp": timestamp,
+                        "path": f"test/{number}.parquet",
+                        "sha": f"sha-{number}",
+                    },
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO climate_data.daily_climate_detail
+                        (daily_climate_id, valid_time, valid_time_local,
+                         latitude, longitude)
+                        VALUES (:id, :utc_instant, :local_midnight, 4.0, 96.0)
+                        """
+                    ),
+                    {
+                        "id": metadata_id,
+                        "utc_instant": utc_instant,
+                        "local_midnight": local_midnight,
+                    },
+                )
+
+        for number in (1, 2, 3):
+            persist_month(number)
+            reconcile_pipeline_progress(engine, progress_id)
+            state = get_pipeline_progress_by_id(engine, progress_id)
+            assert state.completed_partition_count == number
+            assert state.execution_status == (
+                "complete" if number == 3 else "running"
+            )
+    finally:
+        if tables_ready:
+            with engine.begin() as connection:
+                for partition in partitions:
+                    connection.execute(
+                        text(
+                            "DELETE FROM climate_data.daily_climate "
+                            "WHERE request_key = :key"
+                        ),
+                        {"key": partition.request_key},
+                    )
                 if progress_id is not None:
                     connection.execute(
                         text("DELETE FROM climate.pipeline_progress WHERE id = :id"),
