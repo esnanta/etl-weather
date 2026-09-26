@@ -282,6 +282,15 @@ expected partition must have complete extract/transform/load state and valid
 validation state. This persistence foundation does not yet change the current
 manual-only DAG behavior.
 
+The campaign helper can now seed all 40 quarter batches idempotently. Parent
+reconciliation requires each completed monthly detail to match a canonical
+`climate_data.daily_climate` row by request key, source, dataset, and exact
+period, with matching transformed path/checksum and observation count. Missing
+or changed persisted evidence clears a previously complete parent on the next
+reconciliation. Historical rows already in `daily_climate` are not
+automatically marked valid: checkpoint and progress-detail validation must
+still supply evidence. This helper is not yet invoked by the DAG.
+
 ## Task Flow
 
 ```text
