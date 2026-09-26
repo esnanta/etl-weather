@@ -7,6 +7,7 @@ from orchestration.campaign import (
     CAMPAIGN_START_YEAR,
     CampaignQuarter,
     build_quarter_request_specs,
+    initialize_campaign_progress,
     iter_campaign_quarters,
 )
 
@@ -55,3 +56,29 @@ def test_quarter_request_specs_map_exactly_three_whole_months() -> None:
         ("2024-02-01", "2024-02-29"),
         ("2024-03-01", "2024-03-31"),
     ]
+
+
+def test_campaign_initialization_seeds_every_quarter(monkeypatch) -> None:
+    definitions = []
+
+    def record_progress(engine, definition):
+        definitions.append(definition)
+        return len(definitions)
+
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.initialize_pipeline_progress",
+        record_progress,
+    )
+    ids = initialize_campaign_progress(
+        object(), current_local_date=date(2026, 9, 26)
+    )
+
+    assert ids == tuple(range(1, 41))
+    assert len(definitions) == 40
+    assert all(item.expected_partition_count == 3 for item in definitions)
+    assert (definitions[0].start_date, definitions[0].end_date) == (
+        "2016-01-01", "2016-03-31"
+    )
+    assert (definitions[-1].start_date, definitions[-1].end_date) == (
+        "2025-10-01", "2025-12-31"
+    )
