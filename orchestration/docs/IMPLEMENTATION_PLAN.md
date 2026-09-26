@@ -52,12 +52,15 @@ Implementation progress through 2026-09-25:
 - idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; their 45 orchestration tests and isolated PostgreSQL reconciliation test passed locally on 2026-09-26;
 - the Airflow-neutral selector now seeds exact campaign identities, reconciles
   in calendar order, and chooses the earliest eligible incomplete quarter;
-  DAG wiring, failure limits, and concurrent selection control are pending;
+- the existing DAG now maps monthly ETL boundaries through progress-aware wrappers;
+  failure limits, manual quarter repair, and concurrent selection control are pending;
 
 Still pending:
 
-- deterministic 2016–2025 quarter helpers remain scheduler policy; cadence-neutral progress definitions and the generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` repository are implemented but are not yet wired into the DAG;
-- implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
+- the existing DAG now uses the mode contract, exact progress identity, mapped boundary status, and persisted load proof; the schedule remains disabled;
+- implement and verify manual quarter repair, bounded automatic failures,
+  concurrent selection control, configurable CDS pacing, and the eventual
+  scheduled cadence before enabling the bounded 2016–2025 campaign;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
