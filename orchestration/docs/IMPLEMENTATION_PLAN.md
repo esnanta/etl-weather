@@ -53,14 +53,15 @@ Implementation progress through 2026-09-25:
 - the Airflow-neutral selector now seeds exact campaign identities, reconciles
   in calendar order, and chooses the earliest eligible incomplete quarter;
 - the existing DAG now maps monthly ETL boundaries through progress-aware wrappers;
-  failure limits, manual quarter repair, and concurrent selection control are pending;
+- validated whole-month manual loads now update exact campaign detail identities;
+  failure limits and concurrent selection control are pending;
 
 Still pending:
 
 - the existing DAG now uses the mode contract, exact progress identity, mapped boundary status, and persisted load proof; the schedule remains disabled;
-- implement and verify manual quarter repair, bounded automatic failures,
-  concurrent selection control, configurable CDS pacing, and the eventual
-  scheduled cadence before enabling the bounded 2016–2025 campaign;
+- verify the new manual quarter repair tests, then implement bounded automatic
+  failures, concurrent selection control, configurable CDS pacing, and the
+  eventual scheduled cadence before enabling the bounded 2016–2025 campaign;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
