@@ -52,7 +52,7 @@ Implementation progress through 2026-09-25:
 
 Still pending:
 
-- deterministic 2016–2025 quarter helpers and exact three-month request identities are implemented; the first `climate.quarterly_progress` persistence draft is now superseded by the agreed generic progress model and must be refactored before DAG integration;
+- deterministic 2016–2025 quarter helpers remain scheduler policy; cadence-neutral progress definitions and the generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` repository are implemented but are not yet wired into the DAG;
 - implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
 - review capacity before enabling the schedule and monitor the 40-quarter campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
@@ -390,35 +390,35 @@ Scheduling and selection:
 
 Durable progress and recovery:
 
-- [ ] Refactor durable operational progress into the existing PostgreSQL climate
+- [x] Refactor durable operational progress into the existing PostgreSQL climate
       database using two cadence-neutral tables:
       `climate.pipeline_progress` and
       `climate.pipeline_progress_detail`. Do not create a separate database.
       Quarter/two-month/month grouping remains scheduler policy rather than
       persistence identity. SQLite metadata remains local development state.
-- [ ] `climate.pipeline_progress` represents one logical requested range/batch.
+- [x] `climate.pipeline_progress` represents one logical requested range/batch.
       Store explicit `start_date` and `end_date`, pipeline/source/dataset identity,
       configuration identity, expected/completed/failed partition counts,
       execution status, validation status, timestamps, and the latest bounded
       diagnostic error. Do not encode quarter number as the durable identity.
-- [ ] `climate.pipeline_progress_detail` represents one processed partition and
+- [x] `climate.pipeline_progress_detail` represents one processed partition and
       its artifact/database outcome. Store the parent progress ID, request key,
       exact period, RAW NetCDF path/checksum/file size, transformed artifact
       path/checksum/file size when available, temporal and spatial validation
       metrics, row counts, grid counts, extract/transform/load status,
       validation status/message, processing timestamps, and bounded diagnostic
       metadata.
-- [ ] Keep stable query/recovery fields as ordinary columns. Allow an optional
+- [x] Keep stable query/recovery fields as ordinary columns. Allow an optional
       `metrics JSONB` field only for evolving operational measurements such as
       task peak RSS, retry counts, durations, or disk-space observations; do
       not put request identity, status, or validation truth solely in JSONB.
-- [ ] Define parent completion from verified detail state: a progress row may
+- [x] Define parent completion from verified detail state: a progress row may
       become complete only when every expected detail partition is complete
       and valid. Partial manual repair must update only the affected detail and
       may complete the parent only after all expected partitions verify.
 - [ ] Document storage setup, backup, restart, and reconciliation behavior
       before enabling automatic mode.
-- [ ] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
+- [x] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
 - [ ] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
 - [ ] Reconcile valid manual repairs with the same monthly completion
       evidence. A manual range may complete an affected quarter once all

@@ -219,10 +219,12 @@ by themselves guarantee a minimum elapsed interval between CDS submissions.
 Neither cadence nor provider pacing belongs to the durable identity of
 `climate.pipeline_progress` or `climate.pipeline_progress_detail`.
 
-### Planned Progress Persistence
+### Generic Progress Persistence Foundation
 
-Stage 8 will not persist scheduler state using quarter-specific table names.
-The agreed PostgreSQL model remains in the existing climate database:
+Stage 8 now has a cadence-neutral PostgreSQL persistence foundation. It is not
+wired into the DAG yet; scheduled/manual mode integration remains a later Stage
+8 step. Scheduler state is not stored using quarter-specific table names. The
+implemented model remains in the existing climate database:
 
 ```text
 climate.pipeline_progress
@@ -248,7 +250,10 @@ measurements, but it must not replace core progress truth.
 
 The existing quarter helper remains scheduler policy for the bounded
 2016-2025 campaign; quarter number is not part of the durable persistence
-identity.
+identity. Parent completion is derived from persisted detail evidence: every
+expected partition must have complete extract/transform/load state and valid
+validation state. This persistence foundation does not yet change the current
+manual-only DAG behavior.
 
 ## Task Flow
 
