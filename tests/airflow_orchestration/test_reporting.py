@@ -6,7 +6,7 @@ completion count shown to operators.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from orchestration.campaign import CampaignQuarter, iter_campaign_quarters
 from orchestration.reporting import QuarterReport, format_campaign_report, read_campaign_report
@@ -53,11 +53,14 @@ def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
             quarter,
             "complete" if quarter.quarter <= 3 and quarter.year == 2016
             else "failed" if quarter == CampaignQuarter(2016, 4)
+            else "running" if quarter == CampaignQuarter(2024, 2)
             else "not_initialized",
-            completed_months=3 if quarter.quarter <= 3 and quarter.year == 2016 else 0,
+            completed_months=3 if quarter.quarter <= 3 and quarter.year == 2016
+            else 2 if quarter == CampaignQuarter(2024, 2) else 0,
             failed_months=1 if quarter == CampaignQuarter(2016, 4) else 0,
             last_error="ValidationError" if quarter == CampaignQuarter(2016, 4) else None,
-            last_load_at=timestamp if quarter == CampaignQuarter(2016, 3) else None,
+            last_load_at=timestamp if quarter == CampaignQuarter(2024, 2) else None,
+            last_loaded_month=date(2024, 6, 1) if quarter == CampaignQuarter(2024, 2) else None,
         )
         for quarter in iter_campaign_quarters()
     )
@@ -66,4 +69,5 @@ def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
     assert "2016: 3/4 quarters complete" in output
     assert "2017: 0/4 quarters complete" in output
     assert "Failed 2016 Q4: 1 month(s); reason=ValidationError" in output
-    assert timestamp.isoformat() in output
+    assert "Partial 2024 Q2: 2/3 months complete; status=running" in output
+    assert f"Last recorded valid load: 2024-06 (2024 Q2) at {timestamp.isoformat()}" in output

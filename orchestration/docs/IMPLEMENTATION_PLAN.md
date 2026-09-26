@@ -67,6 +67,10 @@ Implementation progress through 2026-09-26:
   context chunk resumed from its checkpoint, and May was submitted at 18:00:13
   (about 30 minutes 7 seconds after the first submission). RAW validation
   passed with 768 hourly steps, 1,505 grid points, and all five variables;
+- the read-only campaign report on 2026-09-26 showed 0/40 complete
+  quarters and a last valid load at 20:20:09 Asia/Jakarta. A valid monthly
+  load does not complete its three-month quarter; the report now makes
+  partial month counts and last-loaded month explicit;
 - a post-change June 2024 manual extraction pilot submitted the May 31 context
   POST at 19:35:24.566821 Asia/Jakarta and the June POST at 20:05:35.214587,
   1,810.648 seconds later. The June submission was initially deferred, the
@@ -539,8 +543,9 @@ CDS request pacing:
 Observability, validation, and rollout:
 
 - [x] Provide a read-only exact-identity campaign report with yearly completion
-      counts, failed quarters, and last recorded valid load. Keep its output out
-      of XCom and exclude unrelated manual ranges/configurations.
+      counts, partial monthly counts, failed quarters, and the month of the
+      last recorded valid load. Keep its output out of XCom and exclude
+      unrelated manual ranges/configurations.
 - [ ] Log the selected year/quarter, three months, mode, attempt, CDS
       pacing decision, completed/remaining quarters, and failure reason.
       Use the read-only 2016–2025 summary without creating annual DAGs or

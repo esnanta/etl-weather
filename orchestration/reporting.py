@@ -7,7 +7,7 @@ yearly summary must match the forty current quarter definitions explicitly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -24,6 +24,7 @@ class QuarterReport:
     failed_months: int = 0
     last_error: str | None = None
     last_load_at: datetime | None = None
+    last_loaded_month: date | None = None
 
 
 def _load_quarter_report(
@@ -36,13 +37,20 @@ def _load_quarter_report(
             text("""
                 SELECT p.execution_status, p.validation_status,
                        p.completed_partition_count, p.failed_partition_count,
-                       p.last_error,
-                       (SELECT MAX(d.completed_at)
-                        FROM climate.pipeline_progress_detail AS d
-                        WHERE d.pipeline_progress_id = p.id
-                          AND d.load_status = 'complete'
-                          AND d.validation_status = 'valid') AS last_load_at
+                       p.last_error, latest.last_load_at,
+                       latest.last_loaded_month
                 FROM climate.pipeline_progress AS p
+                LEFT JOIN LATERAL (
+                    SELECT d.completed_at AS last_load_at,
+                           d.start_date AS last_loaded_month
+                    FROM climate.pipeline_progress_detail AS d
+                    WHERE d.pipeline_progress_id = p.id
+                      AND d.load_status = 'complete'
+                      AND d.validation_status = 'valid'
+                      AND d.completed_at IS NOT NULL
+                    ORDER BY d.completed_at DESC
+                    LIMIT 1
+                ) AS latest ON TRUE
                 WHERE p.pipeline_name = :pipeline_name AND p.source = :source
                   AND p.dataset_name = :dataset_name
                   AND p.start_date = :start_date AND p.end_date = :end_date
@@ -74,6 +82,7 @@ def _load_quarter_report(
         failed_months=int(row["failed_partition_count"]),
         last_error=row["last_error"],
         last_load_at=row["last_load_at"],
+        last_loaded_month=row["last_loaded_month"],
     )
 
 
@@ -102,8 +111,25 @@ def format_campaign_report(reports: tuple[QuarterReport, ...]) -> str:
         yearly = [item for item in reports if item.quarter.year == year]
         count = sum(item.status == "complete" for item in yearly)
         lines.append(f"{year}: {count}/4 quarters complete")
-    latest = max((item.last_load_at for item in reports if item.last_load_at), default=None)
-    lines.append(f"Last recorded valid load: {latest.isoformat() if latest else 'none'}")
+    for item in reports:
+        if item.status != "complete" and item.completed_months:
+            lines.append(
+                f"Partial {item.quarter.label}: {item.completed_months}/3 months complete; "
+                f"status={item.status}"
+            )
+    latest = max(
+        (item for item in reports if item.last_load_at),
+        key=lambda item: item.last_load_at,
+        default=None,
+    )
+    if latest is None:
+        lines.append("Last recorded valid load: none")
+    else:
+        month = latest.last_loaded_month.isoformat()[:7] if latest.last_loaded_month else "unknown"
+        lines.append(
+            f"Last recorded valid load: {month} ({latest.quarter.label}) at "
+            f"{latest.last_load_at.isoformat()}"
+        )
     for item in reports:
         if item.status == "failed":
             lines.append(

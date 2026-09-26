@@ -369,8 +369,11 @@ python scripts/report_campaign_progress.py
 ```
 
 It lists completed quarters per year (for example, `2016: 3/4 quarters
-complete`), totals for the fixed 40-quarter campaign, failed quarter reasons,
-and the most recent recorded valid load. The command matches each current
+complete`), totals for the fixed 40-quarter campaign, partial quarters with
+their completed monthly counts, failed quarter reasons, and the month and
+timestamp of the most recent recorded valid load. A result of `0/40 quarters
+complete` can coexist with a valid monthly load when the other months of its
+quarter are still incomplete. The command matches each current
 quarter's exact source, dataset, dates, and configuration identity; unrelated
 manual ranges and old configurations are excluded. A missing quarter appears
 as incomplete. This is a snapshot of persisted progress, not a new
