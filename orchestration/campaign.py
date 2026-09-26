@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 CAMPAIGN_KEY = "era5_land_2016_2025"
 CAMPAIGN_START_YEAR = 2016
@@ -65,3 +69,22 @@ def build_quarter_request_specs(
             f"{quarter.label} must resolve to exactly three monthly partitions."
         )
     return specs
+
+
+def initialize_campaign_progress(
+    engine: Engine,
+    *,
+    current_local_date: date | None = None,
+) -> tuple[int, ...]:
+    """Idempotently seed all forty quarter batches before scheduled selection."""
+    from orchestration.progress import build_pipeline_progress_definition
+    from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
+
+    progress_ids = []
+    for quarter in iter_campaign_quarters():
+        specs = build_quarter_request_specs(
+            quarter, current_local_date=current_local_date
+        )
+        definition = build_pipeline_progress_definition(specs)
+        progress_ids.append(initialize_pipeline_progress(engine, definition))
+    return tuple(progress_ids)
