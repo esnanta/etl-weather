@@ -661,6 +661,12 @@ manual dates or scheduled quarter
     build_monthly_requests
                |
                v
+ first_extract_attempt [monthly]
+               |
+               v
+    prepare_retry_pass
+               |
+               v
  extract_or_resume [monthly]
                |
                v
@@ -688,7 +694,9 @@ transform_or_resume [monthly]
 | Task                      | Input                         | Output                            |
 | ---                       | ---                           | ---                               |
 | `build_monthly_requests`  | Explicit inclusive dates      | Monthly request specifications    |
-| `extract_or_resume`       | Monthly request specification | RAW artifact metadata             |
+| `first_extract_attempt`   | Monthly request specification | RAW metadata or failure control   |
+| `prepare_retry_pass`      | Three first-pass results      | Monthly retry/pass-through inputs |
+| `extract_or_resume`       | Monthly retry input           | RAW artifact metadata             |
 | `transform_or_resume`     | RAW artifact metadata         | Transformed artifact metadata     |
 | `load`                    | Transformed artifact metadata | PostgreSQL load status            |
 
