@@ -409,6 +409,13 @@ should make the report show `2024: 1/4 quarters complete` and
 recorded monthly state is a diagnostic; parent completion still requires
 matching persisted observation evidence.
 
+The April 2024 recovery performed on 2026-09-27 advanced 2024 Q2 from
+`2/3` monthly partitions to complete and changed the report from `0/40`
+to `1/40` quarters. The last recorded valid load was April at 10:36:10
+Asia/Jakarta. The trigger output alone showed a queued DagRun; check its
+terminal Airflow state separately. Scheduled selection remains disabled
+pending its own pilot.
+
 ## Campaign Host Capacity and Post-Change CDS Pilot
 
 Run this read-only snapshot on the actual Airflow host, from the repository

@@ -67,6 +67,11 @@ Implementation progress through 2026-09-26:
   context chunk resumed from its checkpoint, and May was submitted at 18:00:13
   (about 30 minutes 7 seconds after the first submission). RAW validation
   passed with 768 hourly steps, 1,505 grid points, and all five variables;
+- the manual April 2024 recovery on 2026-09-27 advanced 2024 Q2 to 3/3
+  verified months and the campaign report to 1/40 complete quarters. The
+  latest recorded valid load was April at 10:36:10 Asia/Jakarta. The supplied
+  trigger output showed the DagRun queued; its terminal Airflow state was not
+  included;
 - the read-only campaign report on 2026-09-26 showed 0/40 complete
   quarters and a last valid load at 20:20:09 Asia/Jakarta. A valid monthly
   load does not complete its three-month quarter; the report now makes
@@ -93,8 +98,8 @@ Still pending:
   deployment capacity checks belong to that deployment, not the Stage 8 code gate;
 - the configurable Asia/Jakarta scheduler cadence is implemented but disabled
   by default; a read-only exact-identity 2016–2025 summary is available.
-  Complete remaining campaign observability and pilot scheduled selection plus
-  manual recovery before enabling the bounded campaign;
+  Complete remaining campaign observability and pilot scheduled selection
+  before enabling the bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -432,9 +437,13 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
 - [x] Configure Jakarta-local campaign ticks at 30 minutes, one hour, or
       two hours, independently of CDS pacing. Default to disabled and retain
       `catchup=False` and `max_active_runs=1`; test the enabled DAG policy.
-- [ ] Pilot scheduled selection and manual recovery of one incomplete
-      month before enabling the schedule in deployment. Skipped ticks must not skip quarters; a run longer than two
-      hours must not overlap the next run.
+- [x] Pilot manual repair of the incomplete April 2024 campaign month.
+      The 2024 Q2 parent advanced from 2/3 to complete after April's
+      recorded valid load; the report changed from 0/40 to 1/40 quarters.
+      Confirm the manual DagRun terminal state separately.
+- [ ] Pilot scheduled selection before enabling the schedule in deployment.
+      Skipped ticks must not skip quarters; a run longer than two hours must
+      not overlap the next run.
 - [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.
