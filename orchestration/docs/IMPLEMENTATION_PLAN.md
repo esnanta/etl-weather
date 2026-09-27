@@ -446,10 +446,38 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       tick cannot advance, completion selects Q2, failure blocks, recovery
       selects Q3, and forty complete quarters yield no jobs.
 - [ ] Pilot a real scheduled DagRun before enabling the ongoing campaign.
-      A controlled pilot procedure now records the preflight, pause/unpause,
-      three monthly results, and postflight evidence. Its execution remains
-      pending on the Airflow host. Skipped ticks must not skip quarters; a run
-      longer than two hours must not overlap the next run.
+      A controlled pilot procedure records the preflight, pause/unpause, three
+      monthly results, and postflight evidence. On 2026-09-27, the first live
+      scheduled 2016 Q1 DagRun completed in `success` after 2h 45m 52s;
+      January, February, and March each passed RAW validation and their mapped
+      extract, transform, and load tasks succeeded. Verify the persisted
+      campaign report and database evidence before closing this item. Skipped
+      ticks must not skip quarters; active runs must not overlap.
+- [ ] Before continuing the unattended campaign, implement scheduled-mode
+      earliest-start slots for the three monthly maps (initially one hour apart)
+      without altering shared DagRun logical dates or the global CDS submission
+      clock. Manual recovery remains explicitly dated and must not inherit
+      scheduled offsets. The observed 2016 Q1 submissions were already about
+      one hour apart per month, but early activation of later maps caused
+      repeated deferral and worker wake-ups. A slot is a minimum start time,
+      not a guaranteed finish time or a provider-mandated interval.
+- [ ] Design and test one first attempt per month before retrying a retriable
+      failure from an earlier month. Keep bounded retries, checkpoint resume,
+      and explicit final failure evidence; a terminal failed detail must still
+      block advancement until verified manual recovery. Test the order with
+      injected failures without contacting CDS, including failures at each
+      month and a final unsuccessful retry. Do not assume Airflow's default
+      mapped-task retries guarantee this order.
+- [ ] Render human-readable CDS submission decisions (`reserved` and
+      `deferred`) with separate lines for chunk, submitted_at, and
+      next_allowed_at as applicable. Keep event names and machine-readable
+      timestamps stable, and add focused log assertions without provider calls.
+- [ ] Review campaign tick cadence against measured DagRun duration and queued
+      runs before unattended rollout. The first 2016 Q1 run took 2h 45m 52s,
+      longer than the configured 2h tick interval; keep `max_active_runs=1`
+      and select a sustainable configurable cadence from repeated observations.
+      CDS guidance describes variable service limits and queueing, not a fixed
+      30-minute submission quota or a one-hour monthly start requirement.
 - [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.
