@@ -14,7 +14,7 @@ from orchestration.campaign import CampaignBlocked, CampaignQuarter
 from orchestration.tasks import progress
 from orchestration.tasks.era5_land import build_historical_request_specs
 from pipeline.extraction.cds import CdsSubmissionDeferred
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 @contextmanager
@@ -358,3 +358,37 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
         "extract_status": "running", "transform_status": "pending",
         "load_status": "pending", "validation_status": "pending",
     }]
+
+
+
+def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
+    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    _skip_schema_setup(monkeypatch)
+    specs = build_historical_request_specs(
+        "2024-01-01", "2024-03-31", current_local_date=date(2026, 9, 26)
+    )
+    monkeypatch.setattr(
+        progress, "select_earliest_incomplete_quarter",
+        lambda engine, claim_owner: SimpleNamespace(
+            quarter=CampaignQuarter(2024, 1), progress_id=19,
+            request_specs=tuple(specs),
+        ),
+    )
+    anchor = datetime(2026, 9, 27, 10, tzinfo=timezone.utc)
+    jobs = progress.prepare_monthly_jobs(
+        "scheduled", {}, "scheduled__one", slot_anchor=anchor
+    )
+    assert [job["earliest_start_at"] for job in jobs] == [
+        (anchor + timedelta(hours=offset)).isoformat() for offset in range(3)
+    ]
+    assert len({job["progress_id"] for job in jobs}) == 1
+
+
+def test_manual_recovery_has_no_scheduled_slot(monkeypatch) -> None:
+    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    _skip_schema_setup(monkeypatch)
+    monkeypatch.setattr(progress, "initialize_pipeline_progress", lambda engine, definition: 42)
+    jobs = progress.prepare_monthly_jobs(
+        "manual", {"start_date": "2024-01-01", "end_date": "2024-01-31"}
+    )
+    assert jobs[0]["earliest_start_at"] is None
