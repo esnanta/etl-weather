@@ -31,12 +31,13 @@ def reserve_or_defer(request: WeatherRequest) -> None:
         engine.dispose()
     if not decision.granted:
         logger.info(
-            "CDS submission deferred | chunk=%s..%s | next_allowed_at=%s",
+            "CDS submission deferred\nchunk=%s..%s\nnext_allowed_at=%s",
             request.start_date, request.end_date, decision.next_allowed_at,
         )
         raise CdsSubmissionDeferred(decision.next_allowed_at)
     logger.info(
-        "CDS submission reserved | chunk=%s..%s | submitted_at=%s | next_allowed_at=%s",
+        "CDS submission reserved\nchunk=%s..%s\nsubmitted_at=%s\nnext_allowed_at=%s",
         request.start_date, request.end_date, decision.checked_at,
         decision.next_allowed_at,
     )
+
