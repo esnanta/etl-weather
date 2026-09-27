@@ -97,8 +97,9 @@ Still pending:
   deployment capacity checks belong to that deployment, not the Stage 8 code gate;
 - the configurable Asia/Jakarta scheduler cadence is implemented but disabled
   by default; a read-only exact-identity 2016–2025 summary is available.
-  Complete remaining campaign observability and pilot scheduled selection
-  before enabling the bounded campaign;
+  The offline scheduled selection pilot is implemented; complete remaining
+  observability and a controlled real scheduled DagRun before enabling the
+  bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -440,7 +441,11 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       The 2024 Q2 parent advanced from 2/3 to complete after April's
       recorded valid load; the report changed from 0/40 to 1/40 quarters.
       The April manual DagRun finished in `success` on 2026-09-27.
-- [ ] Pilot scheduled selection before enabling the schedule in deployment.
+- [x] Pilot scheduled selection offline with isolated progress state and no
+      CDS or production database access: Q1 maps three months, a competing
+      tick cannot advance, completion selects Q2, failure blocks, recovery
+      selects Q3, and forty complete quarters yield no jobs.
+- [ ] Pilot a real scheduled DagRun before enabling the ongoing campaign.
       Skipped ticks must not skip quarters; a run longer than two hours must
       not overlap the next run.
 - [x] Keep manual triggers available through the same DAG; document that

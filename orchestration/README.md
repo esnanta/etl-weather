@@ -358,6 +358,24 @@ The progress-table setup adds claim columns to an existing development schema
 with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. The schedule is still
 disabled pending scheduled-selection and recovery pilots and final rollout checks.
 
+## Offline Scheduled Selection Pilot
+
+Run the deterministic pilot without a CDS credential or a campaign database:
+
+```bash
+python -m pytest tests/airflow_orchestration/test_scheduled_selection_pilot.py -q
+```
+
+The test uses the real scheduled mode, earliest-incomplete selector, and
+monthly mapping boundary with isolated in-memory progress state. It verifies
+2016 Q1 maps January–March, a competing tick stays on the claimed Q1,
+completion moves to Q2, a failed month blocks further selection, a simulated
+manual repair allows Q3, and all 40 complete quarters produce no work. No
+extraction task executes, and the test fails if it tries to call CDS. This
+checks orchestration decisions; it does not demonstrate a PostgreSQL-backed
+claim or a live scheduled DagRun. Keep the deployed schedule disabled until
+the separate live pilot is reviewed.
+
 ## Campaign Progress Summary
 
 After the progress tables exist, run this read-only command from the repository
