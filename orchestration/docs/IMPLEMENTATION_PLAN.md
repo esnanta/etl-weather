@@ -453,7 +453,7 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       extract, transform, and load tasks succeeded. Verify the persisted
       campaign report and database evidence before closing this item. Skipped
       ticks must not skip quarters; active runs must not overlap.
-- [ ] Before continuing the unattended campaign, implement scheduled-mode
+- [x] Before continuing the unattended campaign, implement scheduled-mode
       earliest-start slots for the three monthly maps (initially one hour apart)
       without altering shared DagRun logical dates or the global CDS submission
       clock. Manual recovery remains explicitly dated and must not inherit
@@ -468,7 +468,7 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       injected failures without contacting CDS, including failures at each
       month and a final unsuccessful retry. Do not assume Airflow's default
       mapped-task retries guarantee this order.
-- [ ] Render human-readable CDS submission decisions (`reserved` and
+- [x] Render human-readable CDS submission decisions (`reserved` and
       `deferred`) with separate lines for chunk, submitted_at, and
       next_allowed_at as applicable. Keep event names and machine-readable
       timestamps stable, and add focused log assertions without provider calls.
@@ -652,3 +652,36 @@ respects the scientific and historical campaign contracts.
 - No implicit rolling ten-year range.
 - No distributed workers with isolated local artifact storage.
 - No restoration of inactive ARCO paths.
+
+
+### Pre-campaign change review (2026-09-27)
+
+The scheduled mapper now assigns earliest-start instants at selection time: the
+three months receive UTC anchors at +0, +1, and +2 hours within the same
+DagRun. These instants are lower bounds. The DagRun logical date remains shared.
+Manual jobs have no slot offset. The PostgreSQL CDS submission clock continues
+to gate every actual POST, including context chunks and retry attempts; its
+30-minute default and the one-hour slots are adjustable project policies.
+
+Extraction uses a first mapped pass with zero Airflow retries. A real failure
+is recorded in progress and passed as small control metadata, while pacing
+deferrals still release the worker. A barrier waits for all three first-pass
+map results before mapping the second pass. Successful months pass through;
+failed months resume their checkpoint with at most two Airflow retries in the
+second pass. A terminal failure propagates and leaves the failed progress
+detail blocking the next quarter. Manual ranges follow the same two passes,
+without scheduled slots. Transformation and load keep their existing policies.
+
+**Verification remains open:** this workspace has no Airflow, pytest, or
+PostgreSQL runtime. Python compilation passed, but the offline Airflow suite
+and affected core tests have not run here. Do not enable unattended scheduling
+until the tests pass on the operator host and the live graph/deferral behavior
+is checked. The 2016 Q1 DagRun success is not enough to close the live-pilot
+item: collect the progress report and database evidence. Check active DagRuns
+before any restart or campaign continuation; pausing a DAG does not stop tasks
+already running.
+
+The 2-hour tick is shorter than the 2h 45m 52s first pilot. Keep
+`max_active_runs=1` and the cadence configurable; inspect subsequent runtimes
+and queued DagRuns before choosing a sustainable cadence. No cadence change
+is justified by this single run.
