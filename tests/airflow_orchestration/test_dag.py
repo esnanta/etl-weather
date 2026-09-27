@@ -54,7 +54,7 @@ def test_etl_dag_boundary_policies(dag) -> None:
     load = dag.get_task("load")
 
     assert extract.pool == "cds_api"
-    assert extract.retries == 2
+    assert extract.retries == 1
     assert extract.execution_timeout == timedelta(hours=6)
     assert transform.retries == 0
     assert transform.execution_timeout == timedelta(hours=2)
@@ -78,4 +78,4 @@ def test_first_attempt_barrier_and_retry_pass(dag) -> None:
     assert first.pool == retry.pool == "cds_api"
     assert first.downstream_task_ids == {"prepare_retry_pass"}
     assert dag.get_task("prepare_retry_pass").downstream_task_ids == {"extract_or_resume"}
-    assert retry.retries == 2
+    assert retry.retries == 1
