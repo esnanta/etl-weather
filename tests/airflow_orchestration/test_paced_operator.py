@@ -37,15 +37,16 @@ def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatc
 
 
 
+@pytest.mark.parametrize("failed_month", ["2016-01-01", "2016-02-01", "2016-03-01"])
 def test_first_pass_failure_is_handed_to_bounded_retry_after_all_first_maps(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, failed_month: str,
 ) -> None:
     calls = []
 
     def extract(spec, progress_id, mode, *, paced):
         month = spec["start_date"]
         calls.append(month)
-        if month == "2016-01-01" and calls.count(month) < 3:
+        if month == failed_month and calls.count(month) < 3:
             raise RuntimeError("temporary failure")
         return {"boundary": "extract_or_resume", "request": spec,
                 "progress_id": progress_id, "run_mode": mode}
@@ -58,20 +59,21 @@ def test_first_pass_failure_is_handed_to_bounded_retry_after_all_first_maps(
             progress_id=42, run_mode="scheduled", first_pass=True,
         ).execute({}))
     assert calls == ["2016-01-01", "2016-02-01", "2016-03-01"]
-    assert first[0]["first_attempt_failed"] is True
+    failed_index = ("2016-01-01", "2016-02-01", "2016-03-01").index(failed_month)
+    assert first[failed_index]["first_attempt_failed"] is True
     for index, month in enumerate(("2016-01-01", "2016-02-01", "2016-03-01")):
         operator = cds_extract_operator.CdsPacedExtractOperator(
             task_id=f"retry_{month}", request_spec={"start_date": month},
             progress_id=42, run_mode="scheduled", first_result=first[index],
         )
-        if index == 0:
+        if index == failed_index:
             with pytest.raises(RuntimeError):
                 operator.execute({})
             assert operator.execute({})["boundary"] == "extract_or_resume"
         else:
             assert operator.execute({}) is first[index]
     assert calls == ["2016-01-01", "2016-02-01", "2016-03-01",
-                     "2016-01-01", "2016-01-01"]
+                     failed_month, failed_month]
 
 
 def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
