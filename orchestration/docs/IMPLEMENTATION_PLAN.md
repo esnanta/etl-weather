@@ -461,7 +461,7 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       one hour apart per month, but early activation of later maps caused
       repeated deferral and worker wake-ups. A slot is a minimum start time,
       not a guaranteed finish time or a provider-mandated interval.
-- [ ] Design and test one first attempt per month before retrying a retriable
+- [x] Design and test one first attempt per month before retrying a retriable
       failure from an earlier month. Keep bounded retries, checkpoint resume,
       and explicit final failure evidence; a terminal failed detail must still
       block advancement until verified manual recovery. Test the order with
@@ -674,10 +674,11 @@ detail blocking the next quarter. Manual ranges follow the same two passes,
 without scheduled slots. Transformation and load keep their existing policies.
 
 **Verification remains open:** this workspace has no Airflow, pytest, or
-PostgreSQL runtime. Python compilation passed, but the offline Airflow suite
-and affected core tests have not run here. Do not enable unattended scheduling
-until the tests pass on the operator host and the live graph/deferral behavior
-is checked. The 2016 Q1 DagRun success is not enough to close the live-pilot
+PostgreSQL runtime, but Python compilation passed and GitHub Actions on `dev`
+ran the full offline suite after the retry-budget change: **208 passed, 5
+skipped** (run 36313959964). The skipped database integration tests do not
+verify the operator's progress database. Do not enable unattended scheduling
+until the live graph/deferral behavior and persisted evidence are checked. The 2016 Q1 DagRun success is not enough to close the live-pilot
 item: collect the progress report and database evidence. Check active DagRuns
 before any restart or campaign continuation; pausing a DAG does not stop tasks
 already running.
