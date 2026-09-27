@@ -1,3 +1,5 @@
+"""Verify the mapped Airflow DAG graph and execution policy."""
+
 from datetime import timedelta
 from pathlib import Path
 
@@ -31,12 +33,14 @@ def test_etl_dag_policy(dag) -> None:
 def test_etl_dag_task_graph(dag) -> None:
     assert set(dag.task_ids) == {
         "build_monthly_requests",
+        "first_extract_attempt",
+        "prepare_retry_pass",
         "extract_or_resume",
         "transform_or_resume",
         "load",
     }
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
-        "extract_or_resume"
+        "first_extract_attempt"
     }
     assert dag.get_task("extract_or_resume").downstream_task_ids == {
         "transform_or_resume"
@@ -64,3 +68,14 @@ def test_pipeline_package_does_not_import_airflow() -> None:
         source = path.read_text(encoding="utf-8")
         assert "import airflow" not in source
         assert "from airflow" not in source
+
+
+
+def test_first_attempt_barrier_and_retry_pass(dag) -> None:
+    first = dag.get_task("first_extract_attempt")
+    retry = dag.get_task("extract_or_resume")
+    assert first.retries == 0
+    assert first.pool == retry.pool == "cds_api"
+    assert first.downstream_task_ids == {"prepare_retry_pass"}
+    assert dag.get_task("prepare_retry_pass").downstream_task_ids == {"extract_or_resume"}
+    assert retry.retries == 2
