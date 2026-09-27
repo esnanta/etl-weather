@@ -107,7 +107,7 @@ with DAG(
     extracted = CdsPacedExtractOperator.partial(
         task_id="extract_or_resume",
         pool="cds_api",
-        retries=2,
+        retries=1,
         retry_delay=timedelta(minutes=10),
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(hours=1),
