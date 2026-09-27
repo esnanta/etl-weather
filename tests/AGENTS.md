@@ -187,8 +187,9 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
   observation UPSERT, and unchanged-partition load skipping.
 - `test_runtime.py`: extract/transform resume branches, resumed validation and loader boundary.
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
-- `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries, exact three-month request specs, and stable request-sensitive campaign identities.
-- `airflow_orchestration/test_campaign_progress.py`: temporary quarter-specific progress tests that must be refactored to the agreed generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` contract before DAG integration.
+- `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries and exact three-month request specs as scheduler policy.
+- `airflow_orchestration/test_progress.py`: cadence-neutral progress-definition identity for one-month, multi-month, quarterly, or manual ranges.
+- `airflow_orchestration/test_pipeline_progress.py`: generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` DDL, seeding, detail updates, and parent reconciliation before DAG integration.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
 
 ## Dependency and Warning Policy

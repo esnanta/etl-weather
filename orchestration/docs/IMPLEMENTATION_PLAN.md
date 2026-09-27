@@ -13,7 +13,7 @@ transformation, validation, checkpoint, provenance, or persistence behavior.
 
 ## Current Implementation Status
 
-Implementation progress through 2026-09-25:
+Implementation progress through 2026-09-26:
 
 - JSON-safe request specifications and checkpoint-backed runtime entrypoints;
 - 105 core unit tests after the runtime-boundary change;
@@ -49,12 +49,56 @@ Implementation progress through 2026-09-25:
   transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
 - subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
   resume, with one resumed extraction peak RSS of 457.25 MiB.
+- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; their 45 orchestration tests and isolated PostgreSQL reconciliation test passed locally on 2026-09-26;
+- the Airflow-neutral selector now seeds exact campaign identities, reconciles
+  in calendar order, and chooses the earliest eligible incomplete quarter;
+- the existing DAG now maps monthly ETL boundaries through progress-aware wrappers;
+- validated whole-month manual loads now update exact campaign detail identities;
+- one persisted failed detail blocks subsequent automatic CDS submissions, and
+  an atomic owner claim prevents competing selectors from choosing the same
+  quarter; release follows verified completion or manual recovery;
+- CDS pacing uses a PostgreSQL submission clock, a 30-minute default interval,
+  a deferrable extraction operator, and resumable retrieval chunks. CI passed
+  186 tests with five PostgreSQL integration tests skipped; the isolated local
+  pacing integration test passed separately;
+- the manual May 2024 live pilot completed successfully on 2026-09-26. The
+  context request was submitted at 17:30:06 Asia/Jakarta, the May request was
+  deferred at 17:31:19, and the triggerer woke the task at 18:00:06. The
+  context chunk resumed from its checkpoint, and May was submitted at 18:00:13
+  (about 30 minutes 7 seconds after the first submission). RAW validation
+  passed with 768 hourly steps, 1,505 grid points, and all five variables;
+- the manual April 2024 recovery on 2026-09-27 advanced 2024 Q2 to 3/3
+  verified months and the campaign report to 1/40 complete quarters. The
+  latest recorded valid load was April at 10:36:10 Asia/Jakarta. The
+  DagRun reached `success` at 10:36:11, about 12 seconds after it started;
+- the read-only campaign report on 2026-09-26 showed 0/40 complete
+  quarters and a last valid load at 20:20:09 Asia/Jakarta. A valid monthly
+  load does not complete its three-month quarter; the report now makes
+  partial month counts and last-loaded month explicit;
+- a post-change June 2024 manual extraction pilot submitted the May 31 context
+  POST at 19:35:24.566821 Asia/Jakarta and the June POST at 20:05:35.214587,
+  1,810.648 seconds later. The June submission was initially deferred, the
+  triggerer woke the task, and the cached context chunk was reused. A broken
+  object-store download retried safely; there was no observed job POST retry.
+  June RAW passed temporal/spatial validation (744 hours, 1,505 grid points,
+  five variables). The extract log alone does not establish DagRun/load success;
+- the 19:31 Asia/Jakarta local-host snapshot reported 5.97 GiB free for
+  artifacts/logs/metadata, 53.59 GiB temporary space, 5.70 GiB available RAM,
+  a 23.05 MiB PostgreSQL database, and two visible triggerer-related
+  processes. This is a local sample, not a forecast of a future deployment;
 
 Still pending:
 
-- deterministic 2016–2025 quarter helpers and exact three-month request identities are implemented; the first `climate.quarterly_progress` persistence draft is now superseded by the agreed generic progress model and must be refactored before DAG integration;
-- implement and verify the remaining bounded 2016–2025 quarterly campaign wiring in the existing DAG, including progress initialization/reconciliation, configurable CDS pacing, and manual recovery;
-- review capacity before enabling the schedule and monitor the 40-quarter campaign;
+- the existing DAG uses the mode contract, exact progress identity, mapped
+  boundary status, persisted load proof, and live-verified CDS pacing; its
+  schedule remains disabled;
+- PostgreSQL progress/pacing backup and restart recovery are documented;
+  keep the measured local disk headroom visible during the campaign. Future
+  deployment capacity checks belong to that deployment, not the Stage 8 code gate;
+- the configurable Asia/Jakarta scheduler cadence is implemented but disabled
+  by default; a read-only exact-identity 2016–2025 summary is available.
+  Complete remaining campaign observability and pilot scheduled selection
+  before enabling the bounded campaign;
 - decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
 
 ## Target Structure
@@ -327,10 +371,9 @@ months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
 Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
 during April make elapsed-time extrapolation unreliable.
 
-These measurements describe the local development host; the full pipeline
-is intended to run on a cloud server. The cloud host's artifact and temporary
-filesystems and the PostgreSQL storage volume must be measured independently.
-Do not run the full range on the current local /home filesystem at 99% usage.
+These measurements describe the local development host. A future cloud
+installation must be evaluated at deployment, not as a prerequisite to
+implementing the schedule. Monitor local disk headroom during any local run.
 Mapped tasks now log a non-blocking warning below 5 GiB available on their
 local artifact or temporary filesystem; this does not measure remote
 PostgreSQL storage. Keep the final date range explicit. The local Airflow
@@ -356,7 +399,7 @@ Exit condition (met): monthly resume and a three-month run have been verified.
 The former proposal to trigger one complete ten-year DagRun has been replaced
 by Stage 8.
 
-## Stage 8 — Scheduled Quarterly Historical Campaign (Planned)
+## Stage 8 — Scheduled Quarterly Historical Campaign (In Progress)
 
 **Agreed scope (2026-09-25):** extend the existing
 `cds_era5_land_etl` DAG with automatic and explicit manual modes.
@@ -370,18 +413,37 @@ optional operator input, not a separate DAG per year.
 
 Scheduling and selection:
 
-- [ ] Define an unambiguous mode contract: a scheduled run chooses the next
-      eligible incomplete quarter; a manual run requires explicit inclusive
-      dates, with a single failed month or quarter the recommended recovery
-      scope. Reject incomplete date pairs and ambiguous mode inputs.
-- [ ] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
+- [x] Define an unambiguous mode contract in `orchestration/mode.py` before
+      DAG integration. A scheduled run will select the next eligible incomplete
+      quarter; a manual run requires explicit inclusive dates. Reject incomplete
+      date pairs and ambiguous mode inputs.
+
+The mode contract uses Airflow's DagRun `run_type` as its sole mode authority.
+No `mode` parameter is accepted. `scheduled` runs require empty `dag_run.conf`
+and return no operator dates; a later selection step will use persisted progress
+to choose the earliest eligible incomplete quarter. `manual` runs require
+`dag_run.conf` to contain exactly `start_date` and `end_date` as canonical
+`YYYY-MM-DD` strings, inclusive and in ascending order. The existing request
+builder still validates the historical range and six-day availability lag.
+Unsupported run types, extra keys, incomplete pairs, invalid dates, and
+scheduled configuration fail explicitly. A single failed month or quarter is
+the recommended manual repair scope. Manual dates are not silently replaced
+by scheduler-selected dates. The contract is implemented and used by the DAG. Its schedule remains
+`None` by default pending the scheduled rollout.
+- [x] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
       select quarters in calendar order from 2016 Q1 through 2025 Q4,
       and map exactly three whole calendar months per automatic run.
-- [ ] Schedule at a configurable cadence in `Asia/Jakarta` (for example 30 minutes, one hour, or two hours);
-      retain `catchup=False` and `max_active_runs=1`. Skipped scheduler
-      ticks must not skip quarters; a run longer than two hours must not
-      overlap the next run.
-- [ ] Keep manual triggers available through the same DAG; document that
+- [x] Configure Jakarta-local campaign ticks at 30 minutes, one hour, or
+      two hours, independently of CDS pacing. Default to disabled and retain
+      `catchup=False` and `max_active_runs=1`; test the enabled DAG policy.
+- [x] Pilot manual repair of the incomplete April 2024 campaign month.
+      The 2024 Q2 parent advanced from 2/3 to complete after April's
+      recorded valid load; the report changed from 0/40 to 1/40 quarters.
+      The April manual DagRun finished in `success` on 2026-09-27.
+- [ ] Pilot scheduled selection before enabling the schedule in deployment.
+      Skipped ticks must not skip quarters; a run longer than two hours must
+      not overlap the next run.
+- [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.
 - [ ] After all 40 quarters are verified complete, make scheduled ticks
@@ -390,41 +452,42 @@ Scheduling and selection:
 
 Durable progress and recovery:
 
-- [ ] Refactor durable operational progress into the existing PostgreSQL climate
+- [x] Refactor durable operational progress into the existing PostgreSQL climate
       database using two cadence-neutral tables:
       `climate.pipeline_progress` and
       `climate.pipeline_progress_detail`. Do not create a separate database.
       Quarter/two-month/month grouping remains scheduler policy rather than
       persistence identity. SQLite metadata remains local development state.
-- [ ] `climate.pipeline_progress` represents one logical requested range/batch.
+- [x] `climate.pipeline_progress` represents one logical requested range/batch.
       Store explicit `start_date` and `end_date`, pipeline/source/dataset identity,
       configuration identity, expected/completed/failed partition counts,
       execution status, validation status, timestamps, and the latest bounded
       diagnostic error. Do not encode quarter number as the durable identity.
-- [ ] `climate.pipeline_progress_detail` represents one processed partition and
+- [x] `climate.pipeline_progress_detail` represents one processed partition and
       its artifact/database outcome. Store the parent progress ID, request key,
       exact period, RAW NetCDF path/checksum/file size, transformed artifact
       path/checksum/file size when available, temporal and spatial validation
       metrics, row counts, grid counts, extract/transform/load status,
       validation status/message, processing timestamps, and bounded diagnostic
       metadata.
-- [ ] Keep stable query/recovery fields as ordinary columns. Allow an optional
+- [x] Keep stable query/recovery fields as ordinary columns. Allow an optional
       `metrics JSONB` field only for evolving operational measurements such as
       task peak RSS, retry counts, durations, or disk-space observations; do
       not put request identity, status, or validation truth solely in JSONB.
-- [ ] Define parent completion from verified detail state: a progress row may
+- [x] Define parent completion from verified detail state: a progress row may
       become complete only when every expected detail partition is complete
       and valid. Partial manual repair must update only the affected detail and
       may complete the parent only after all expected partitions verify.
-- [ ] Document storage setup, backup, restart, and reconciliation behavior
-      before enabling automatic mode.
-- [ ] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
-- [ ] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
-- [ ] Reconcile valid manual repairs with the same monthly completion
+- [x] Document storage setup, backup, restart, and reconciliation behavior
+      before enabling automatic mode. The runbook covers coordinated PostgreSQL
+      and artifact snapshots, pacing state, stale claims, and manual repair.
+- [x] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
+- [x] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
+- [x] Reconcile valid manual repairs with the same monthly completion
       evidence. A manual range may complete an affected quarter once all
       its months are verified, but partial manual success must never mark
       an incomplete quarter complete.
-- [ ] Select the earliest incomplete quarter on every scheduled run so
+- [x] Select the earliest incomplete quarter on every scheduled run so
       restarts, missed ticks, and retries cannot silently skip a period.
       Guard concurrent progress updates even when `max_active_runs=1`.
 - [ ] Bound repeated automatic failures for the same quarter; log/alert
@@ -463,27 +526,38 @@ not invalidate otherwise identical request/progress identity.
 
 CDS request pacing:
 
-- [ ] Keep the one-slot `cds_api` pool. Document that it limits
+- [x] Keep the one-slot `cds_api` pool. Document that it limits
       concurrent extraction but does not enforce time between requests.
-- [ ] Add a configurable minimum interval between actual CDS API
-      submissions, shared by automatic and manual modes, including any
-      additional retrievals within one monthly extraction and retries.
-      Start with a conservative 15–30 minute *operational setting*
-      for evaluation, not a claimed Copernicus quota. Check how the
-      extraction adapter submits requests before selecting an exact default.
-- [ ] Persist/coordinate the last submission timestamp across runs and
+- [x] Add a configurable minimum interval before each CDS submission POST,
+      shared by automatic and manual modes, including internal library retries,
+      additional chunks, and Airflow task retries. The 30-minute default is
+      an operational starting point, not a claimed Copernicus quota.
+- [x] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
+      Its `robust` wrapper can retry submissions after timeouts or retriable
+      HTTP responses. A dedicated requests session reserves a durable slot
+      before every POST, including internal retries. GET polling and downloads
+      do not reserve slots. Offline tests include the real pinned client's
+      retry after a simulated submission timeout, with the second POST denied
+      before transport.
+- [x] Persist/coordinate the last submission timestamp across runs and
       workers; avoid holding a worker or pool slot idle for a long wait
       when Airflow can defer or reschedule it. Preserve a one-slot limit
       at submission, and make recovery after process termination safe.
 - [ ] Review CDS queue time, provider errors, retries, and successful
       submissions; make both the inter-request interval and scheduler cadence adjustable independently without editing scientific contracts.
+      The June pilot observed an object-store GET retry, not a job POST retry;
+      a deterministic test uses the pinned cdsapi retry path to verify POST pacing.
 
 Observability, validation, and rollout:
 
+- [x] Provide a read-only exact-identity campaign report with yearly completion
+      counts, partial monthly boundary states, failed quarters, and the month
+      of the last recorded valid load. Keep its output out of XCom and exclude
+      unrelated manual ranges/configurations.
 - [ ] Log the selected year/quarter, three months, mode, attempt, CDS
       pacing decision, completed/remaining quarters, and failure reason.
-      Provide a readable 2016–2025 summary (e.g. 2016: 3/4 quarters)
-      without creating annual DAGs or sending large payloads through XCom.
+      Use the read-only 2016–2025 summary without creating annual DAGs or
+      sending large payloads through XCom.
 - [ ] Update Airflow policy docs and README examples that currently say
       `schedule=None` or recommend triggering all 120 months in one
       DagRun; document manual quarter/month/year examples and status checks.
@@ -494,8 +568,14 @@ Observability, validation, and rollout:
 - [ ] Run `python -m pytest tests/airflow_orchestration -q` and affected
       core/integration tests. Pilot scheduled and manual recovery runs
       before enabling the entire campaign.
-- [ ] Review artifact and PostgreSQL capacity on the target runtime,
-      including temporary downloads, logs, and overlapping task memory.
+- [x] Provide a read-only host capacity snapshot and a repeatable manual
+      post-change CDS pilot procedure without exposing secrets.
+- [x] Review the local June 2024 extraction pilot for actual POST spacing,
+      deferral, cached context reuse, download retry, and RAW validation.
+      No provider job POST retry occurred; DagRun/load completion was not supplied.
+- [x] Record the local development-host disk, memory, PostgreSQL database
+      size, and visible triggerer process snapshot. Keep local disk headroom
+      under observation; revisit capacity when deploying to a different host.
       Do not extrapolate April wall time as a guaranteed CDS throughput.
 - [ ] Track all 40 quarter statuses, failed months, last successful load,
       request pacing, and elapsed time during the campaign. Confirm

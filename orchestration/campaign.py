@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
-from datetime import date, timedelta
-from typing import Iterable, Mapping, Any
+from datetime import date, datetime, timedelta
+from calendar import monthrange
+from typing import TYPE_CHECKING, Any, Mapping
+from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+    from orchestration.progress import PipelineProgressDefinition
 
 CAMPAIGN_KEY = "era5_land_2016_2025"
 CAMPAIGN_START_YEAR = 2016
 CAMPAIGN_END_YEAR = 2025
+CAMPAIGN_TIMEZONE = ZoneInfo("Asia/Jakarta")
 
 
 @dataclass(frozen=True, order=True)
@@ -42,6 +47,20 @@ class CampaignQuarter:
         return f"{self.year} Q{self.quarter}"
 
 
+@dataclass(frozen=True)
+class CampaignSelection:
+    quarter: CampaignQuarter
+    progress_id: int
+    request_specs: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True)
+class CampaignBlocked:
+    quarter: CampaignQuarter
+    progress_id: int
+    reason: str
+
+
 def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
     return tuple(
         CampaignQuarter(year, quarter)
@@ -70,38 +89,102 @@ def build_quarter_request_specs(
     return specs
 
 
-def build_configuration_identity(
-    request_specs: Iterable[Mapping[str, Any]],
-) -> str:
-    """Hash the exact monthly request identities expected for one quarter."""
-    from pipeline.request import build_request_key, weather_request_from_spec
-
-    request_keys = [
-        build_request_key(weather_request_from_spec(spec))
-        for spec in request_specs
-    ]
-    if len(request_keys) != 3:
-        raise ValueError("Quarter configuration identity requires exactly three requests.")
-
-    payload = {
-        "campaign_key": CAMPAIGN_KEY,
-        "request_keys": request_keys,
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def build_campaign_expected_identities(
+def initialize_campaign_progress(
+    engine: Engine,
     *,
     current_local_date: date | None = None,
-) -> dict[CampaignQuarter, str]:
-    """Build the current expected request identity for all 40 campaign quarters."""
-    return {
-        quarter: build_configuration_identity(
-            build_quarter_request_specs(
-                quarter,
-                current_local_date=current_local_date,
-            )
+) -> tuple[int, ...]:
+    """Idempotently seed all forty quarter batches before scheduled selection."""
+    from orchestration.progress import build_pipeline_progress_definition
+    from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
+
+    progress_ids = []
+    for quarter in iter_campaign_quarters():
+        specs = build_quarter_request_specs(
+            quarter, current_local_date=current_local_date
         )
-        for quarter in iter_campaign_quarters()
-    }
+        definition = build_pipeline_progress_definition(specs)
+        progress_ids.append(initialize_pipeline_progress(engine, definition))
+    return tuple(progress_ids)
+
+
+def matching_campaign_progress_definition(
+    request_spec: Mapping[str, Any],
+) -> PipelineProgressDefinition | None:
+    """Match one exact calendar-month request to the current campaign identity."""
+    from orchestration.progress import build_pipeline_progress_definition
+    from pipeline.request import build_request_key, weather_request_from_spec
+
+    request = weather_request_from_spec(request_spec)
+    start = date.fromisoformat(request.start_date)
+    end = date.fromisoformat(request.end_date)
+    if not CAMPAIGN_START_YEAR <= start.year <= CAMPAIGN_END_YEAR:
+        return None
+    if (
+        start.day != 1
+        or end != date(start.year, start.month, monthrange(start.year, start.month)[1])
+    ):
+        return None
+
+    quarter = CampaignQuarter(start.year, (start.month - 1) // 3 + 1)
+    specs = build_quarter_request_specs(quarter, current_local_date=date.max)
+    definition = build_pipeline_progress_definition(specs)
+    request_key = build_request_key(request)
+    if request_key not in {partition.request_key for partition in definition.partitions}:
+        return None
+    return definition
+
+
+def select_earliest_incomplete_quarter(
+    engine: Engine,
+    *,
+    claim_owner: str,
+    current_local_date: date | None = None,
+) -> CampaignSelection | CampaignBlocked | None:
+    """Reconcile in order and claim at most one eligible unfinished quarter."""
+    from orchestration.repositories.pipeline_progress import (
+        get_failed_progress_partitions,
+        get_pipeline_progress_by_id,
+        reconcile_pipeline_progress,
+        try_claim_pipeline_progress,
+    )
+    from orchestration.tasks.era5_land import AVAILABILITY_LAG_DAYS
+
+    today = current_local_date or datetime.now(CAMPAIGN_TIMEZONE).date()
+    eligibility_boundary = today - timedelta(days=AVAILABILITY_LAG_DAYS)
+
+    # Seeding is independent of the current provider-availability boundary.
+    progress_ids = initialize_campaign_progress(
+        engine, current_local_date=date.max
+    )
+    for quarter, progress_id in zip(
+        iter_campaign_quarters(), progress_ids, strict=True
+    ):
+        if quarter.end_date > eligibility_boundary:
+            return None
+        reconcile_pipeline_progress(engine, progress_id)
+        progress = get_pipeline_progress_by_id(engine, progress_id)
+        if progress.failed_partition_count:
+            failed = get_failed_progress_partitions(engine, progress_id)
+            months = ", ".join(
+                f"{start} through {end} ({error or 'unknown error'})"
+                for start, end, error in failed
+            )
+            return CampaignBlocked(
+                quarter, progress_id,
+                f"Manual repair required for {quarter.label}: {months}",
+            )
+        if (
+            progress.execution_status != "complete"
+            or progress.validation_status != "valid"
+        ):
+            if not try_claim_pipeline_progress(engine, progress_id, claim_owner):
+                return CampaignBlocked(
+                    quarter, progress_id,
+                    f"{quarter.label} is already claimed by another run.",
+                )
+            specs = build_quarter_request_specs(
+                quarter, current_local_date=today
+            )
+            return CampaignSelection(quarter, progress_id, tuple(specs))
+    return None

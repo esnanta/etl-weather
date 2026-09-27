@@ -1,3 +1,9 @@
+"""Map one selected ERA5-Land range through progress-aware ETL boundaries.
+
+Extraction uses a deferrable operator so CDS pacing remains independent of
+the eventual scheduler cadence and never occupies a worker while waiting.
+"""
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -6,11 +12,12 @@ import pendulum
 from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
-from orchestration.tasks.era5_land import (
-    build_historical_request_specs,
-    extract_partition,
-    load_partition,
-    transform_partition,
+from orchestration.schedule import campaign_schedule
+from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
+from orchestration.tasks.progress import (
+    load_with_progress,
+    prepare_monthly_jobs,
+    transform_with_progress,
 )
 
 DAG_ID = "cds_era5_land_etl"
@@ -18,8 +25,8 @@ DAG_ID = "cds_era5_land_etl"
 
 with DAG(
     dag_id=DAG_ID,
-    description="Explicit date-range ERA5-Land ETL",
-    schedule=None,
+    description="ERA5-Land ETL with durable partition progress",
+    schedule=campaign_schedule(),
     start_date=pendulum.datetime(2026, 1, 1, tz="Asia/Jakarta"),
     catchup=False,
     max_active_runs=1,
@@ -50,23 +57,10 @@ with DAG(
     )
     def build_monthly_requests() -> list[dict[str, object]]:
         context = get_current_context()
-        params = context["params"]
-        return build_historical_request_specs(
-            params.get("start_date"),
-            params.get("end_date"),
+        dag_run = context["dag_run"]
+        return prepare_monthly_jobs(
+            dag_run.run_type, dag_run.conf, dag_run.run_id
         )
-
-    @task(
-        task_id="extract_or_resume",
-        pool="cds_api",
-        retries=2,
-        retry_delay=timedelta(minutes=10),
-        retry_exponential_backoff=True,
-        max_retry_delay=timedelta(hours=1),
-        execution_timeout=timedelta(hours=6),
-    )
-    def extract_or_resume(request_spec: dict[str, object]) -> dict[str, object]:
-        return extract_partition(request_spec)
 
     @task(
         task_id="transform_or_resume",
@@ -74,7 +68,7 @@ with DAG(
         execution_timeout=timedelta(hours=2),
     )
     def transform_or_resume(extract_result: dict[str, object]) -> dict[str, object]:
-        return transform_partition(extract_result)
+        return transform_with_progress(extract_result)
 
     @task(
         task_id="load",
@@ -85,9 +79,17 @@ with DAG(
         execution_timeout=timedelta(hours=2),
     )
     def load(transform_result: dict[str, object]) -> dict[str, object]:
-        return load_partition(transform_result)
+        return load_with_progress(transform_result)
 
-    monthly_specs = build_monthly_requests()
-    extracted = extract_or_resume.expand(request_spec=monthly_specs)
-    transformed = transform_or_resume.expand(extract_result=extracted)
+    monthly_jobs = build_monthly_requests()
+    extracted = CdsPacedExtractOperator.partial(
+        task_id="extract_or_resume",
+        pool="cds_api",
+        retries=2,
+        retry_delay=timedelta(minutes=10),
+        retry_exponential_backoff=True,
+        max_retry_delay=timedelta(hours=1),
+        execution_timeout=timedelta(hours=6),
+    ).expand_kwargs(monthly_jobs)
+    transformed = transform_or_resume.expand(extract_result=extracted.output)
     load.expand(transform_result=transformed)
