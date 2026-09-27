@@ -667,8 +667,9 @@ Extraction uses a first mapped pass with zero Airflow retries. A real failure
 is recorded in progress and passed as small control metadata, while pacing
 deferrals still release the worker. A barrier waits for all three first-pass
 map results before mapping the second pass. Successful months pass through;
-failed months resume their checkpoint with at most two Airflow retries in the
-second pass. A terminal failure propagates and leaves the failed progress
+failed months resume their checkpoint with one Airflow retry in the
+second pass: one first-pass attempt plus two second-pass attempts preserves the
+original maximum of three attempts. A terminal failure propagates and leaves the failed progress
 detail blocking the next quarter. Manual ranges follow the same two passes,
 without scheduled slots. Transformation and load keep their existing policies.
 
