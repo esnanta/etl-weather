@@ -62,6 +62,20 @@ with DAG(
             dag_run.run_type, dag_run.conf, dag_run.run_id
         )
 
+    @task(task_id="prepare_retry_pass", retries=0)
+    def prepare_retry_pass(
+        first_results: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "request_spec": result.get("request_spec", result.get("request")),
+                "progress_id": result["progress_id"],
+                "run_mode": result["run_mode"],
+                "first_result": result,
+            }
+            for result in first_results
+        ]
+
     @task(
         task_id="transform_or_resume",
         retries=0,
@@ -82,6 +96,14 @@ with DAG(
         return load_with_progress(transform_result)
 
     monthly_jobs = build_monthly_requests()
+    first_attempts = CdsPacedExtractOperator.partial(
+        task_id="first_extract_attempt",
+        pool="cds_api",
+        retries=0,
+        first_pass=True,
+        execution_timeout=timedelta(hours=6),
+    ).expand_kwargs(monthly_jobs)
+    retry_jobs = prepare_retry_pass(first_attempts.output)
     extracted = CdsPacedExtractOperator.partial(
         task_id="extract_or_resume",
         pool="cds_api",
@@ -90,6 +112,7 @@ with DAG(
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(hours=1),
         execution_timeout=timedelta(hours=6),
-    ).expand_kwargs(monthly_jobs)
+    ).expand_kwargs(retry_jobs)
     transformed = transform_or_resume.expand(extract_result=extracted.output)
     load.expand(transform_result=transformed)
+
