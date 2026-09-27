@@ -432,8 +432,8 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
 - [x] Configure Jakarta-local campaign ticks at 30 minutes, one hour, or
       two hours, independently of CDS pacing. Default to disabled and retain
       `catchup=False` and `max_active_runs=1`; test the enabled DAG policy.
-- [ ] Pilot scheduled selection and recovery before enabling the schedule in
-      deployment. Skipped ticks must not skip quarters; a run longer than two
+- [ ] Pilot scheduled selection and manual recovery of one incomplete
+      month before enabling the schedule in deployment. Skipped ticks must not skip quarters; a run longer than two
       hours must not overlap the next run.
 - [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
@@ -543,8 +543,8 @@ CDS request pacing:
 Observability, validation, and rollout:
 
 - [x] Provide a read-only exact-identity campaign report with yearly completion
-      counts, partial monthly counts, failed quarters, and the month of the
-      last recorded valid load. Keep its output out of XCom and exclude
+      counts, partial monthly boundary states, failed quarters, and the month
+      of the last recorded valid load. Keep its output out of XCom and exclude
       unrelated manual ranges/configurations.
 - [ ] Log the selected year/quarter, three months, mode, attempt, CDS
       pacing decision, completed/remaining quarters, and failure reason.

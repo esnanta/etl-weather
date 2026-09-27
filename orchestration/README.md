@@ -370,8 +370,9 @@ python scripts/report_campaign_progress.py
 
 It lists completed quarters per year (for example, `2016: 3/4 quarters
 complete`), totals for the fixed 40-quarter campaign, partial quarters with
-their completed monthly counts, failed quarter reasons, and the month and
-timestamp of the most recent recorded valid load. A result of `0/40 quarters
+their completed monthly counts and each month's recorded extract, transform,
+load, and validation state, failed quarter reasons, and the month and timestamp
+of the most recent recorded valid load. A result of `0/40 quarters
 complete` can coexist with a valid monthly load when the other months of its
 quarter are still incomplete. The command matches each current
 quarter's exact source, dataset, dates, and configuration identity; unrelated
@@ -384,6 +385,29 @@ The selection task also logs the selected year and quarter, the three month
 labels, the run mode, progress ID, and a reason when automatic selection is
 blocked. CDS pacing decisions remain in the mapped extraction log. The
 summary stays in the terminal/logs and is never placed in XCom.
+
+### Complete a Partial Quarter by Manual Recovery
+
+If the report shows one incomplete whole month in a partial quarter, first
+check that the corresponding DagRun is no longer active. Trigger **only that
+exact month** through the existing DAG, then rerun the report. For example,
+if `2024-04` is pending in `2024 Q2`:
+
+```bash
+airflow dags trigger cds_era5_land_etl \\
+  --conf '{"start_date":"2024-04-01","end_date":"2024-04-30"}'
+airflow dags list-runs cds_era5_land_etl
+python scripts/report_campaign_progress.py
+```
+
+The manual run validates and resumes existing RAW and transformed checkpoints
+when present, verifies the persisted load, and reconciles its exact campaign
+month. Confirm that the manual DagRun succeeds and the partial quarter reaches
+`3/3` months. With the current `0/40` baseline, a successful April repair
+should make the report show `2024: 1/4 quarters complete` and
+`Campaign 2016-2025: 1/40 quarters complete`. A
+recorded monthly state is a diagnostic; parent completion still requires
+matching persisted observation evidence.
 
 ## Campaign Host Capacity and Post-Change CDS Pilot
 

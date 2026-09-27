@@ -17,6 +17,15 @@ from orchestration.progress import PipelineProgressDefinition, build_pipeline_pr
 
 
 @dataclass(frozen=True)
+class MonthReport:
+    start_date: date
+    extract_status: str
+    transform_status: str
+    load_status: str
+    validation_status: str
+
+
+@dataclass(frozen=True)
 class QuarterReport:
     quarter: CampaignQuarter
     status: str
@@ -25,6 +34,7 @@ class QuarterReport:
     last_error: str | None = None
     last_load_at: datetime | None = None
     last_loaded_month: date | None = None
+    months: tuple[MonthReport, ...] = ()
 
 
 def _load_quarter_report(
@@ -35,7 +45,7 @@ def _load_quarter_report(
     with engine.connect() as connection:
         row = connection.execute(
             text("""
-                SELECT p.execution_status, p.validation_status,
+                SELECT p.id, p.execution_status, p.validation_status,
                        p.completed_partition_count, p.failed_partition_count,
                        p.last_error, latest.last_load_at,
                        latest.last_loaded_month
@@ -65,8 +75,18 @@ def _load_quarter_report(
                 "configuration_identity": definition.configuration_identity,
             },
         ).mappings().one_or_none()
-    if row is None:
-        return QuarterReport(quarter, "not_initialized")
+        if row is None:
+            return QuarterReport(quarter, "not_initialized")
+        month_rows = connection.execute(
+            text("""
+                SELECT start_date, extract_status, transform_status,
+                       load_status, validation_status
+                FROM climate.pipeline_progress_detail
+                WHERE pipeline_progress_id = :progress_id
+                ORDER BY start_date
+            """),
+            {"progress_id": row["id"]},
+        ).mappings().all()
     status = (
         "complete"
         if row["execution_status"] == "complete"
@@ -83,6 +103,16 @@ def _load_quarter_report(
         last_error=row["last_error"],
         last_load_at=row["last_load_at"],
         last_loaded_month=row["last_loaded_month"],
+        months=tuple(
+            MonthReport(
+                start_date=month["start_date"],
+                extract_status=str(month["extract_status"]),
+                transform_status=str(month["transform_status"]),
+                load_status=str(month["load_status"]),
+                validation_status=str(month["validation_status"]),
+            )
+            for month in month_rows
+        ),
     )
 
 
@@ -117,6 +147,14 @@ def format_campaign_report(reports: tuple[QuarterReport, ...]) -> str:
                 f"Partial {item.quarter.label}: {item.completed_months}/3 months complete; "
                 f"status={item.status}"
             )
+            for month in item.months:
+                lines.append(
+                    f"  {month.start_date.isoformat()[:7]}: "
+                    f"extract={month.extract_status}, "
+                    f"transform={month.transform_status}, "
+                    f"load={month.load_status}, "
+                    f"validation={month.validation_status}"
+                )
     latest = max(
         (item for item in reports if item.last_load_at),
         key=lambda item: item.last_load_at,
