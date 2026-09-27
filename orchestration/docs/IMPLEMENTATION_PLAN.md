@@ -69,9 +69,8 @@ Implementation progress through 2026-09-26:
   passed with 768 hourly steps, 1,505 grid points, and all five variables;
 - the manual April 2024 recovery on 2026-09-27 advanced 2024 Q2 to 3/3
   verified months and the campaign report to 1/40 complete quarters. The
-  latest recorded valid load was April at 10:36:10 Asia/Jakarta. The supplied
-  trigger output showed the DagRun queued; its terminal Airflow state was not
-  included;
+  latest recorded valid load was April at 10:36:10 Asia/Jakarta. The
+  DagRun reached `success` at 10:36:11, about 12 seconds after it started;
 - the read-only campaign report on 2026-09-26 showed 0/40 complete
   quarters and a last valid load at 20:20:09 Asia/Jakarta. A valid monthly
   load does not complete its three-month quarter; the report now makes
@@ -440,7 +439,7 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
 - [x] Pilot manual repair of the incomplete April 2024 campaign month.
       The 2024 Q2 parent advanced from 2/3 to complete after April's
       recorded valid load; the report changed from 0/40 to 1/40 quarters.
-      Confirm the manual DagRun terminal state separately.
+      The April manual DagRun finished in `success` on 2026-09-27.
 - [ ] Pilot scheduled selection before enabling the schedule in deployment.
       Skipped ticks must not skip quarters; a run longer than two hours must
       not overlap the next run.

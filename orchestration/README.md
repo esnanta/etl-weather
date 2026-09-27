@@ -412,8 +412,8 @@ matching persisted observation evidence.
 The April 2024 recovery performed on 2026-09-27 advanced 2024 Q2 from
 `2/3` monthly partitions to complete and changed the report from `0/40`
 to `1/40` quarters. The last recorded valid load was April at 10:36:10
-Asia/Jakarta. The trigger output alone showed a queued DagRun; check its
-terminal Airflow state separately. Scheduled selection remains disabled
+Asia/Jakarta. The April manual DagRun subsequently reached `success` at
+10:36:11, approximately 12 seconds after its start. Scheduled selection remains disabled
 pending its own pilot.
 
 ## Campaign Host Capacity and Post-Change CDS Pilot
