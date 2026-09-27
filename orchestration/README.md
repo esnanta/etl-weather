@@ -376,6 +376,90 @@ checks orchestration decisions; it does not demonstrate a PostgreSQL-backed
 claim or a live scheduled DagRun. Keep the deployed schedule disabled until
 the separate live pilot is reviewed.
 
+## Controlled Scheduled Pilot on the Airflow Host
+
+This pilot is an actual scheduled DagRun. It can submit the earliest incomplete
+quarter to CDS (normally 2016 Q1 if no earlier campaign quarter is complete).
+Run it only on the Airflow host with access to the normal PostgreSQL database,
+CDS credentials, shared artifacts, and a running triggerer. Do not use
+`airflow dags trigger` for this check: that CLI command creates a **manual**
+DagRun and requires explicit dates.
+
+1. Record the baseline and check free disk space before starting:
+
+   ```bash
+   source activate-airflow.sh
+   python scripts/report_campaign_progress.py
+   python scripts/inspect_campaign_capacity.py
+   airflow dags list-runs cds_era5_land_etl
+   ```
+
+   Inspect the capacity snapshot. The prior development-host snapshot had
+   only about 6 GiB free on the artifact/log filesystem, and the task warning
+   threshold is 5 GiB. Free adequate space before a three-month extraction;
+   the snapshot alone cannot prove that the pilot will fit. Confirm there is
+   no active manual or scheduled DagRun.
+
+2. Keep the DAG paused while changing its schedule. Stop the Airflow DAG
+   processor and scheduler, then start them again with these variables in
+   **both** service environments (after `source activate-airflow.sh`):
+
+   ```bash
+   export ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
+   export ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+   ```
+
+   Restart the API server as well if it parses DAG files separately. Leave the
+   triggerer running. Confirm in the Airflow UI that the DAG's schedule is
+   `0 */2 * * *` in Asia/Jakarta, `catchup=False`, and
+   `max_active_runs=1`. Use `airflow dags unpause cds_era5_land_etl` once
+   the configuration has propagated. Wait for a DagRun whose `run_type` is
+   `scheduled` and whose conf is empty; the next tick may take up to two
+   hours.
+
+3. Wait for the first scheduled DagRun and record its **full** run ID.
+   Verify its `run_type` is `scheduled`, its conf is empty, and
+   `build_monthly_requests` selects the earliest unfinished quarter with
+   exactly three months. Do not start a manual DagRun in parallel. If
+   selection reports a block or no work, pause the DAG and inspect the
+   report and claim before proceeding.
+
+4. Monitor the first run through its three mapped extraction,
+   transformation, and load instances, including any paced CDS deferrals.
+   Check the final DagRun state and CDS reservation timestamps. The
+   two-hour cadence can create another tick while this run is still active;
+   `max_active_runs=1` should keep it from executing concurrently. Inspect
+   `airflow dags list-runs cds_era5_land_etl` around that tick. Pause the DAG
+   after the first run completes and before another queued run starts. If
+   another run has already started, pause and inspect its state; do not claim
+   that this was a one-run pilot. Pausing a DAG can stop scheduling pending
+   tasks, so do not assume that pausing an active run lets it finish.
+
+   After the pause, collect:
+
+   ```bash
+   python scripts/report_campaign_progress.py
+   python scripts/inspect_campaign_capacity.py
+   airflow dags list-runs cds_era5_land_etl
+   ```
+
+   A successful 2016 Q1 pilot should show all three months valid and 2016 Q1
+   complete. Compare the report with the baseline; the already completed
+   2024 Q2 must remain complete. If the run fails or is interrupted, leave
+   the DAG paused, inspect the failed month and claim, and use the documented
+   whole-month manual repair before another scheduled tick.
+
+5. Keep the DAG paused after the pilot. Restore
+   `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` in the DAG processor and scheduler
+   environments when restarting services. Verify the parsed schedule returns
+   to `None`. Review the recorded run, resource use, and progress before
+   deciding on continuous campaign operation.
+
+The offline selector test and `max_active_runs=1` policy check do not prove
+live scheduler behavior. The first scheduled run verifies the scheduled mode and three-month load.
+If it extends past another tick, compare run states to verify no active
+overlap; an earlier completion does not exercise that case.
+
 ## Campaign Progress Summary
 
 After the progress tables exist, run this read-only command from the repository

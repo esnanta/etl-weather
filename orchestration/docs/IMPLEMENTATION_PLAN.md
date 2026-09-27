@@ -446,8 +446,10 @@ by scheduler-selected dates. The contract is implemented and used by the DAG. It
       tick cannot advance, completion selects Q2, failure blocks, recovery
       selects Q3, and forty complete quarters yield no jobs.
 - [ ] Pilot a real scheduled DagRun before enabling the ongoing campaign.
-      Skipped ticks must not skip quarters; a run longer than two hours must
-      not overlap the next run.
+      A controlled pilot procedure now records the preflight, pause/unpause,
+      three monthly results, and postflight evidence. Its execution remains
+      pending on the Airflow host. Skipped ticks must not skip quarters; a run
+      longer than two hours must not overlap the next run.
 - [x] Keep manual triggers available through the same DAG; document that
       manual and automatic runs share `max_active_runs=1` and can queue
       behind one another.
