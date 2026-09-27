@@ -84,8 +84,8 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     operator = cds_extract_operator.CdsPacedExtractOperator(
         task_id="terminal", request_spec={"start_date": "2016-01-01"},
         progress_id=42, run_mode="scheduled", first_result={"first_attempt_failed": True},
-        retries=2,
+        retries=1,
     )
-    assert operator.retries == 2
+    assert operator.retries == 1
     with pytest.raises(RuntimeError, match="terminal"):
         operator.execute({})
