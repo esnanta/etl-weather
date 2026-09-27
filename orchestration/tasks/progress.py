@@ -7,6 +7,7 @@ remain recorded for deliberate manual repair.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -63,6 +64,8 @@ def prepare_monthly_jobs(
     run_type: str,
     conf: Mapping[str, Any] | None,
     run_id: str | None = None,
+    *,
+    slot_anchor: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Resolve one run and initialize its exact progress identity."""
     mode = resolve_run_mode(run_type, conf)
@@ -107,9 +110,19 @@ def prepare_monthly_jobs(
                 progress_id,
                 ", ".join(str(spec["start_date"])[:7] for spec in specs),
             )
+        anchor = slot_anchor or datetime.now(timezone.utc)
+        if anchor.tzinfo is None:
+            raise ValueError("Scheduled slot anchor must be timezone-aware.")
         return [
-            {"request_spec": spec, "progress_id": progress_id, "run_mode": mode.mode}
-            for spec in specs
+            {
+                "request_spec": spec, "progress_id": progress_id,
+                "run_mode": mode.mode,
+                "earliest_start_at": (
+                    (anchor + timedelta(hours=index)).isoformat()
+                    if mode.mode == "scheduled" else None
+                ),
+            }
+            for index, spec in enumerate(specs)
         ]
 
 
@@ -334,3 +347,4 @@ def load_with_progress(transform_result: dict[str, object]) -> dict[str, object]
         "progress_id": progress_id,
         "run_mode": transform_result["run_mode"],
     }
+
