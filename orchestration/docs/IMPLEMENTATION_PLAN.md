@@ -703,6 +703,24 @@ is justified by this single run.
       that the +0/+1/+2-hour slots or retry barrier work live. Do not pull a
       changed DAG graph during an active run again. Record its terminal state,
       exact monthly details, campaign report, and database evidence.
+- [x] Recover the two missing 2016 Q2 loads through one manual May-June DagRun
+      after the mixed v3/v4 scheduled run ended. The scheduled run finished
+      Airflow `success` on 2026-09-28 at 15:54:51 Asia/Jakarta after 23h 8m
+      56s, but its old `extract_or_resume[0..2]` instances were `removed`;
+      only April had a completed transform/load. Durable campaign progress
+      correctly stayed at 2/40 with May and June extracted but pending
+      transformation and load. The manual run
+      `manual__2026-09-28T09:40:27.384394+00:00` completed `success` in
+      about 17 seconds; both mapped months passed first extraction, the retry
+      barrier, extraction pass-through, transformation, and load. The read-only
+      progress report advanced to 3/40 quarters and 2016 to 2/4. Its latest
+      recorded valid load was May by completion timestamp, which does not
+      imply that June was omitted. Independently inspect monthly PostgreSQL
+      observation counts/provenance before closing the live verification item.
+- [ ] Independently verify the 2016 Q2 April-June database partitions,
+      observation counts, and provenance against their validated artifacts.
+      The campaign progress report records the quarter complete, but the
+      supplied operator evidence has not included this database query.
 - [ ] Conduct one clean scheduled pilot under the current DAG version after
       active runs are terminal and evidence is reviewed. Verify slot earliest
       starts, first-pass barrier, provider POST timestamps, retry/resume, and
