@@ -697,12 +697,13 @@ is justified by this single run.
       within one monthly request, not a failed first attempt. Verify the
       context cache resume and target reservation in the later log; do not
       infer completion from the earlier deferral.
-- [ ] Inspect the active 2016 Q2 DagRun, which crossed DAG versions v3/v4
-      during deployment: old mapped extraction instances were removed and new
-      first-pass instances appeared. This mixed-version run is not evidence
-      that the +0/+1/+2-hour slots or retry barrier work live. Do not pull a
-      changed DAG graph during an active run again. Record its terminal state,
-      exact monthly details, campaign report, and database evidence.
+- [x] Inspect the 2016 Q2 DagRun that crossed DAG versions v3/v4.
+      It ended Airflow success but removed old extraction maps and left May/June
+      downstream work pending. A separate manual May-June DagRun completed the
+      two missing loads, and the campaign report and independent database check
+      confirm the quarter complete. This mixed-version scheduled run is not
+      evidence that the +0/+1/+2-hour slots or retry barrier work live. Do not
+      pull a changed DAG graph during an active run again.
 - [x] Recover the two missing 2016 Q2 loads through one manual May-June DagRun
       after the mixed v3/v4 scheduled run ended. The scheduled run finished
       Airflow `success` on 2026-09-28 at 15:54:51 Asia/Jakarta after 23h 8m
@@ -717,10 +718,14 @@ is justified by this single run.
       recorded valid load was May by completion timestamp, which does not
       imply that June was omitted. Independently inspect monthly PostgreSQL
       observation counts/provenance before closing the live verification item.
-- [ ] Independently verify the 2016 Q2 April-June database partitions,
-      observation counts, and provenance against their validated artifacts.
-      The campaign progress report records the quarter complete, but the
-      supplied operator evidence has not included this database query.
+- [x] Independently verify the 2016 Q2 April-June database partitions,
+      observation counts, and provenance. The read-only operator check on
+      2026-09-28 returned PASS for April (15,900 rows), May (16,430 rows),
+      and June (15,900 rows); persisted observation counts match progress
+      counts, and transformed paths and SHA-256 metadata match for all three.
+      The exact campaign report records 3/40 quarters complete, 37 remaining,
+      and zero failed. Its latest valid load names May because that completion
+      timestamp was latest; June also passed the independent check.
 - [ ] Conduct one clean scheduled pilot under the current DAG version after
       active runs are terminal and evidence is reviewed. Verify slot earliest
       starts, first-pass barrier, provider POST timestamps, retry/resume, and
