@@ -282,6 +282,18 @@ fails for inspection rather than silently downloading it again. The task does
 not count a pacing wait as a provider failure. Keep the shared `data/` mount
 available to every worker and the triggerer service running.
 
+One monthly partition may need two POSTs: a previous-month context chunk and
+the target-month chunk. For example, June 2016 first retrieves May 31 for the
+UTC+7 daily boundary. If that context POST is reserved at 10:30:28 with a
+30-minute operational interval, the June POST cannot be reserved before
+11:00:28. The operator may therefore wake at 10:30, download context, and
+defer again for the target. The cached context is reused on the next wakeup.
+`next_allowed_at` is a minimum submission time, not a task start or finish
+promise; another worker's reservation can move the next opportunity later.
+Inspect the `chunk` field and the `Resumed CDS retrieval chunk` event before
+classifying a repeat deferral as a failed retry.
+
+
 Neither cadence nor provider pacing belongs to the durable identity of
 `climate.pipeline_progress` or `climate.pipeline_progress_detail`.
 
@@ -963,3 +975,16 @@ partitions, and keep the DAG paused until that evidence and a post-change pilot
 are reviewed. The observed first run took 2h 45m 52s, above the configured
 2-hour tick; `max_active_runs=1` prevents overlap but can leave ticks queued
 or delayed. Review more than one runtime and the queue before adjusting cadence.
+
+### Deploying DAG changes during a campaign
+
+Do not pull or restart with a changed DAG graph while a DagRun is active.
+Airflow may show one DagRun with task instances from two DAG versions, remove
+old mapped instances, and schedule new mapped instances after reparsing. Such
+a mixed-version run cannot verify a new earliest-start policy: its completed
+`build_monthly_requests` XCom may have been produced by the previous version
+without `earliest_start_at`. Keep automatic scheduling disabled, inspect every
+active and deferred task, and finish or diagnose the current run before a new
+pilot. Preserve Airflow metadata, PostgreSQL progress, and checkpoint files.
+A clean post-change scheduled pilot must start and complete under the new DAG
+version and be reconciled against persisted database evidence.
