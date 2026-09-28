@@ -687,3 +687,23 @@ The 2-hour tick is shorter than the 2h 45m 52s first pilot. Keep
 `max_active_runs=1` and the cadence configurable; inspect subsequent runtimes
 and queued DagRuns before choosing a sustainable cadence. No cadence change
 is justified by this single run.
+
+### Live follow-up — 2026-09-28
+
+- [x] Diagnose the June 2016 `first_extract_attempt[2]` pacing wait from the
+      operator log. It resumed at 10:30:27 Asia/Jakarta, reserved the May 31
+      context POST at 10:30:28.994241, downloaded it, then deferred the June
+      target POST until 11:00:28.994241. This is two separately paced chunks
+      within one monthly request, not a failed first attempt. Verify the
+      context cache resume and target reservation in the later log; do not
+      infer completion from the earlier deferral.
+- [ ] Inspect the active 2016 Q2 DagRun, which crossed DAG versions v3/v4
+      during deployment: old mapped extraction instances were removed and new
+      first-pass instances appeared. This mixed-version run is not evidence
+      that the +0/+1/+2-hour slots or retry barrier work live. Do not pull a
+      changed DAG graph during an active run again. Record its terminal state,
+      exact monthly details, campaign report, and database evidence.
+- [ ] Conduct one clean scheduled pilot under the current DAG version after
+      active runs are terminal and evidence is reviewed. Verify slot earliest
+      starts, first-pass barrier, provider POST timestamps, retry/resume, and
+      persisted completion. Keep the campaign schedule disabled until then.
