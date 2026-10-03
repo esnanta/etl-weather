@@ -1,6 +1,7 @@
 import logging
 from types import SimpleNamespace
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -133,6 +134,12 @@ def test_peak_memory_is_logged_when_partition_fails(
         "[METRIC] task memory | boundary=extract_or_resume" in record.message
         for record in caplog.records
     )
+
+
+def test_monitoring_data_path_still_targets_repository_data() -> None:
+    expected = Path(__file__).resolve().parents[2] / "data"
+    resolved = Path(monitoring.__file__).resolve().parents[1] / "data"
+    assert resolved == expected
 
 
 def test_disk_warning_reports_low_space_without_failing_task(
