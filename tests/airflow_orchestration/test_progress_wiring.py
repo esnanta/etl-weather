@@ -173,6 +173,17 @@ def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
         lambda result: {"request_key": "monthly-key", "artifact_path": "partition"},
     )
     monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
+    monkeypatch.setattr(
+        load_tasks,
+        "record_failure",
+        lambda progress_id, request_key, boundary, error: updates.append(
+            {
+                f"{boundary}_status": "failed",
+                "validation_status": "failed",
+                "last_error": type(error).__name__,
+            }
+        ),
+    )
 
     def invalid_proof(engine, result, path, checksum):
         raise ValueError("Mismatch")
