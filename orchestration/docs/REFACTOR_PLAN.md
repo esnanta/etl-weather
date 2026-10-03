@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 dependency audit complete; baseline CI verified. Local full pytest rerun blocked by unavailable dependencies. Implementation and database reset have not started.  
+Status: P1 complete. User-reported local verification: 208 unit/orchestration tests passed and 5 PostgreSQL integration tests passed. Ready for P2; implementation and database reset have not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -212,7 +212,8 @@ logged separately. Do not silently fix behavior in a structural refactor.
 - [x] Refresh `dev` HEAD and applicable instructions; record implementation baseline SHA.
 - [x] Audit configuration, schema literals, imports, request-factory callers, and reports.
 - [x] Record exact files needed outside orchestration and notify the user before editing.
-- [ ] Run relevant existing offline tests locally; record actual results and pre-existing failures. Full local rerun is blocked (see section 10.1).
+- [x] Run relevant existing offline tests locally; record actual results and pre-existing failures. User reported 208 passed in 6.15s on 2026-10-03; no failures or skips.
+- [x] Verify the local PostgreSQL integration baseline. User reported 5 passed in 1.30s on 2026-10-03; no failures or skips (see section 10.1).
 - [x] Verify the existing full-suite CI run for the exact audited baseline: 208 passed, 5 skipped; no failed tests. This is historical CI evidence, not a new local pytest execution.
 - [x] Run available dependency-free checks locally: 35 direct behavior assertions; syntax parsing for 80 Python files; core import-boundary check for 26 pipeline modules.
 - [x] Capture graph, mapping, retry/defer, slot-anchor, XCom, and progress contracts.
@@ -313,7 +314,9 @@ For every subsequent fix:
 | 2026-09-29 | P0 | Planning document created from the user decisions and reviewed dev code; documentation-only change. No tests, reset, code refactor, or live requests executed. | Start P1; notify exact external paths before implementation. |
 | 2026-10-03 | P1 | Audited 96 source/config/test/document files at `2f8a93e`; verified baseline CI (208 passed, 5 skipped), 35 local direct assertions, 80 Python syntax parses, and 26 core modules without Airflow/orchestration imports. Recorded dependency map, external scope, behavior contracts, and gaps below. | Local full pytest unavailable; P2 not started; PostgreSQL integration and live-host state not verified. |
 
-Current next action: P2 configuration separation after the audit review. Use the exact-SHA CI run as the available full-suite baseline; the local pytest rerun remains explicitly unchecked. Require new test evidence for implementation changes.
+| 2026-10-03 | P1 closure | User supplied local quiet-test results: unit/orchestration **208 passed in 6.15s**; PostgreSQL integration **5 passed in 1.30s**. No failures or skips. Local checkout SHA was not supplied. Marked P1 complete; earlier assistant dependency limitation does not apply to the user's successful environment. | Ready for P2; no application code or database changes in this documentation update. |
+
+Current next action: P2 configuration separation. P1 is complete using the recorded audit, exact-SHA historical CI, and the user's successful local unit/orchestration and PostgreSQL integration results. Require new test evidence after implementation changes.
 No implementation or database reset was performed during P1.
 
 
@@ -329,13 +332,15 @@ All repository reads used `dev` or its exact commit
 | Existing CI at the exact baseline | [Run 36558576961](https://github.com/esnanta/etl-weather/actions/runs/36558576961), job `109373628429`, push on 2026-09-29 | Python 3.12.14, pytest 7.4.4; 213 collected, **208 passed, 5 skipped in 6.31s** |
 | CI suite breakdown | Retrieved job log | 97 orchestration tests and 111 unit tests passed |
 | Skipped CI tests | Log shows pacing `s`, reconciliation `ss`, idempotency `ss` | All five PostgreSQL integration cases skipped; not evidence of database behavior |
-| New local full pytest attempt | `python -m pytest tests/unit tests/airflow_orchestration -q` | Blocked before collection: `No module named pytest`; this is an environment failure, not a test failure |
-| Isolated pytest installation attempt | `pytest==7.4.4` in a temporary virtual environment | Package access returned no matching distribution, including explicit PyPI index attempt; repository requirements were not changed |
+| Initial assistant-environment pytest attempt | `python -m pytest tests/unit tests/airflow_orchestration -q` | Blocked before collection: `No module named pytest`; this is an environment failure, not a test failure |
+| Initial assistant-environment installation attempt | `pytest==7.4.4` in a temporary virtual environment | Package access returned no matching distribution, including explicit PyPI index attempt; repository requirements were not changed |
 | New direct behavior checks | Imported original pure helpers, no replacement dependencies | **35 assertions passed**; these are not pytest suite results |
 | Python syntax | AST parsing of source and test files | **80 files parsed successfully** |
 | Core dependency boundary | AST import scan of `pipeline/` | **26 modules** without Airflow/orchestration imports |
 | Conservative internal dependency graph | Includes function-local and type-only imports | **47 runtime/script modules, 95 edges, no detected cycles**; not a proof of all dynamic imports |
-| Host/database runtime | No host access or configured `TEST_POSTGRES_*` values in this environment | No database queries, reset, live DAG execution, or CDS submissions |
+| Assistant host/database access | No access to the user's host or configured `TEST_POSTGRES_*` values in the assistant environment | The assistant did not execute database queries, a reset, live DAGs, or CDS submissions |
+| User local unit/orchestration run, 2026-10-03 | Terminal output supplied by the user after activating the project environment | **208 passed in 6.15s**; no failures or skips |
+| User local PostgreSQL integration run, 2026-10-03 | Terminal output supplied by the user for the three integration modules | **5 passed in 1.30s**; no failures or skips |
 
 The 35 direct assertions cover manual/scheduled input validation, schedule
 defaults and accepted/invalid cadences, disabled-schedule behavior, Jakarta
@@ -343,20 +348,38 @@ interval conversion and invalid boundaries, 40-quarter bounds, and upstream
 metadata validation. They do not exercise Airflow, PostgreSQL, extraction, or
 scientific transformations.
 
-No baseline regression was observed in the available evidence. Do not describe
-this audit as a new local run of all 208 tests or as a PostgreSQL integration pass.
-The retrieved CI run precedes this audit and matches its exact source commit.
+No baseline regression was observed in the available evidence. The user completed
+the local verification on 2026-10-03 and supplied both successful terminal outputs.
+These are user-executed results, separate from the assistant's earlier limited
+environment checks and the historical CI run. The user's local checkout SHA was
+not included in the output; do not attribute the local runs to an independently
+verified commit. P1's local verification gate is now complete.
 
-To complete the outstanding local rerun on the existing project host environment:
+The earlier dependency limitation applied to the assistant environment. It is not
+evidence of a defect in `requirements.txt`; no dependency changes are required by
+these results.
+
+Commands executed by the user (quiet output):
 
 ```bash
 source activate-airflow.sh
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit tests/airflow_orchestration -q
 ```
 
-Run integration tests only with the existing isolated `TEST_POSTGRES_*`
-configuration. Do not use the disposable development database as an implicit
-test target. Historical pilot counts and old test results remain separate.
+```bash
+source activate-airflow.sh
+python -m pytest \
+  tests/integration/test_postgresql_idempotency.py \
+  tests/integration/test_pipeline_progress_reconciliation.py \
+  tests/integration/test_cds_submission_pacing.py \
+  -q
+```
+
+The integration run covers idempotency/rollback, progress reconciliation, and
+submission pacing. Its five passes replace the earlier absence of local database
+test evidence; they do not prove live scheduler behavior or completion of P6/P7.
+Continue using the isolated `TEST_POSTGRES_*` configuration for future integration
+runs. Historical pilot counts and old test results remain separate.
 
 ### 10.2 Current dependencies and relocation impact
 
