@@ -33,11 +33,14 @@ def runtime_database_engine() -> Iterator[Engine]:
         engine.dispose()
 
 
-def initialize_progress_storage(engine: Engine) -> None:
+def initialize_progress_storage(
+    engine: Engine,
+    config: DatabaseConfig | None = None,
+) -> None:
     """Ensure weather and progress tables required during job preparation exist."""
-    create_schema(engine)
-    create_daily_climate_table(engine)
-    create_daily_climate_detail_table(engine)
+    create_schema(engine, config)
+    create_daily_climate_table(engine, config)
+    create_daily_climate_detail_table(engine, config)
     create_pipeline_progress_tables(engine)
 
 
@@ -46,7 +49,10 @@ def initialize_pacing_storage(engine: Engine) -> None:
     create_cds_pacing_table(engine)
 
 
-def initialize_application_storage(engine: Engine) -> None:
+def initialize_application_storage(
+    engine: Engine,
+    config: DatabaseConfig | None = None,
+) -> None:
     """Idempotently bootstrap all five application tables in dependency order."""
-    initialize_progress_storage(engine)
+    initialize_progress_storage(engine, config)
     initialize_pacing_storage(engine)
