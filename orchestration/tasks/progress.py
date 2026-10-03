@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-
-from sqlalchemy.engine import Engine
 
 from orchestration.config import MONTHLY_SLOT_SPACING_HOURS
 from orchestration.database import initialize_progress_storage, runtime_database_engine
@@ -200,7 +198,6 @@ def transform_with_progress(extract_result: dict[str, object]) -> dict[str, obje
         "progress_id": progress_id,
         "run_mode": extract_result["run_mode"],
     }
-
 
 
 def _reconcile_campaign_repair(
