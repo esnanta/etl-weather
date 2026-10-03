@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 complete. P2 configuration-separation implementation is complete in code; post-change local pytest verification is pending. Database reset and P3 have not started.  
+Status: P1 and P2 complete. Post-change verification: 208 unit/orchestration tests passed and 5 PostgreSQL integration tests passed. Database reset and P3 have not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -227,7 +227,7 @@ logged separately. Do not silently fix behavior in a structural refactor.
 - [x] Relocate request construction/shared settings and update audited callers.
 - [x] Eliminate duplicate setting definitions and schema literals in affected runtime code.
 - [x] Add module purpose docstrings and comments above global variables.
-- [ ] Verify defaults, environment validation, import safety, and standalone request behavior.
+- [x] Verify defaults, environment validation, import safety, and standalone request behavior.
 
 ### P3 — Database organization and fresh-schema support
 
@@ -316,8 +316,9 @@ For every subsequent fix:
 | 2026-10-03 | P1 closure | User supplied local quiet-test results: unit/orchestration **208 passed in 6.15s**; PostgreSQL integration **5 passed in 1.30s**. No failures or skips. Local checkout SHA was not supplied. Marked P1 complete; earlier assistant dependency limitation does not apply to the user's successful environment. | Ready for P2; no application code or database changes in this documentation update. |
 | 2026-10-03 | P2 implementation | Added root `config.py`, `request_factory.py`, and `orchestration/config.py`; moved shared dataset/bbox/variable/schema settings and orchestration campaign/schedule/pacing/slot/availability/disk policy to their owners. Updated audited runtime callers and schema references while retaining `DatabaseConfig` credentials and compatibility exports. Static reference audit found no remaining old `climate.*` table literals or old request-factory imports in the changed runtime files. | Post-change local unit/orchestration and PostgreSQL integration pytest evidence is still required. P3 and database reset remain untouched. |
 | 2026-10-03 | P2 verification fix | User ran post-change tests: unit/orchestration **206 passed, 2 failed**; PostgreSQL integration **4 passed, 1 failed**. All three failures were stale test references to the former `climate` progress schema, while runtime correctly used `climate_data`. Updated `test_pipeline_progress.py` and `test_pipeline_progress_reconciliation.py` to derive progress schema/table names from `orchestration.config`; no runtime behavior changed. | Rerun both quiet test groups. P2 verification remains open until they pass. |
+| 2026-10-03 | P2 closure | User reran the post-fix verification locally: unit/orchestration **208 passed in 5.64s**; PostgreSQL integration **5 passed in 1.28s**. No failures or skips were reported. P2 configuration separation is complete. | P3 is the next planned stage. Database recreation remains deferred to P6. |
 
-Current next action: finish the P2 verification gate with new local quiet pytest evidence. P1 is complete; P2 code changes are implemented on `dev`. Do not start P3 or reset PostgreSQL until the post-change tests are reviewed.
+Current next action: P3 database organization and fresh-schema support. P1 and P2 are complete with successful local regression and PostgreSQL integration evidence. Do not reset PostgreSQL yet; recreation remains a separate P6 maintenance step.
 No database reset has been performed.
 
 
