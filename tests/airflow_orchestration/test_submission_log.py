@@ -1,6 +1,7 @@
 """Check readable CDS pacing decisions without sending provider requests."""
 
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -14,9 +15,12 @@ from pipeline.extraction.cds import CdsSubmissionDeferred
 def test_submission_log_fields_use_separate_lines(monkeypatch, caplog, granted):
     submitted = datetime(2026, 9, 27, 10, tzinfo=timezone.utc)
     next_allowed = datetime(2026, 9, 27, 10, 30, tzinfo=timezone.utc)
-    monkeypatch.setattr(pacing, "create_engine", lambda *args, **kwargs: SimpleNamespace(dispose=lambda: None))
-    monkeypatch.setattr(pacing.DatabaseConfig, "from_env", lambda: SimpleNamespace(url="offline"))
-    monkeypatch.setattr(pacing, "create_cds_pacing_table", lambda engine: None)
+    @contextmanager
+    def engine():
+        yield object()
+
+    monkeypatch.setattr(pacing, "runtime_database_engine", engine)
+    monkeypatch.setattr(pacing, "initialize_pacing_storage", lambda engine: None)
     monkeypatch.setattr(
         pacing, "reserve_cds_submission",
         lambda engine: SimpleNamespace(granted=granted, checked_at=submitted,
