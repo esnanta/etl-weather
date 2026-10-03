@@ -1,46 +1,25 @@
-from __future__ import annotations
+"""Compatibility imports for configuration moved to project-level owners.
 
-import os
+New code should import lightweight values from :mod:`config` and request
+construction from :mod:`request_factory`.
+"""
 
-from dotenv import load_dotenv
-
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
-
-ACEH_BBOX = BoundingBox(
-    north_lat=6.1,
-    south_lat=1.9,
-    east_lon=98.3,
-    west_lon=94.9,
+from config import (
+    CDS_DATASET,
+    CDS_END_DATE,
+    CDS_START_DATE,
+    CDS_VARIABLES,
 )
+from request_factory import build_aceh_bbox, build_cds_request
 
-CDS_DATASET = "reanalysis-era5-land"
-CDS_START_DATE = "2022-01-01"
-CDS_END_DATE = "2022-01-03"
-CDS_VARIABLES = ["tp", "t2m", "swvl1", "ssrd", "d2m"]
+# Backward-compatible typed bounding box for callers not yet migrated.
+ACEH_BBOX = build_aceh_bbox()
 
-
-def build_cds_request(
-    start_date: str = CDS_START_DATE,
-    end_date: str = CDS_END_DATE,
-    *,
-    require_api_key: bool = True,
-) -> WeatherRequest:
-    """Build the active CDS request for an explicit inclusive period."""
-    if require_api_key:
-        _require_cds_api_key()
-    return WeatherRequest(
-        source=DataSource.CDS,
-        dataset=CDS_DATASET,
-        start_date=start_date,
-        end_date=end_date,
-        variables=CDS_VARIABLES.copy(),
-        bbox=ACEH_BBOX,
-    )
-
-
-def _require_cds_api_key() -> None:
-    load_dotenv()
-    if not os.getenv("CDSAPI_KEY", "").strip():
-        raise ValueError(
-            "CDSAPI_KEY is missing. Set CDSAPI_KEY=YOUR_UID:YOUR_API_KEY in .env."
-        )
+__all__ = [
+    "ACEH_BBOX",
+    "CDS_DATASET",
+    "CDS_END_DATE",
+    "CDS_START_DATE",
+    "CDS_VARIABLES",
+    "build_cds_request",
+]
