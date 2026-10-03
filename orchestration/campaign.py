@@ -4,16 +4,18 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from typing import TYPE_CHECKING, Any, Mapping
-from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from orchestration.progress import PipelineProgressDefinition
 
-CAMPAIGN_KEY = "era5_land_2016_2025"
-CAMPAIGN_START_YEAR = 2016
-CAMPAIGN_END_YEAR = 2025
-CAMPAIGN_TIMEZONE = ZoneInfo("Asia/Jakarta")
+from orchestration.config import (
+    AVAILABILITY_LAG_DAYS,
+    CAMPAIGN_END_YEAR,
+    CAMPAIGN_KEY,
+    CAMPAIGN_START_YEAR,
+    CAMPAIGN_TIMEZONE,
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -148,8 +150,6 @@ def select_earliest_incomplete_quarter(
         reconcile_pipeline_progress,
         try_claim_pipeline_progress,
     )
-    from orchestration.tasks.era5_land import AVAILABILITY_LAG_DAYS
-
     today = current_local_date or datetime.now(CAMPAIGN_TIMEZONE).date()
     eligibility_boundary = today - timedelta(days=AVAILABILITY_LAG_DAYS)
 
