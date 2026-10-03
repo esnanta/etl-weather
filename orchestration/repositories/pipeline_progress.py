@@ -8,11 +8,13 @@ from typing import Any, Mapping
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from orchestration.config import (
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
 from orchestration.progress import PipelineProgressDefinition
-
-PIPELINE_PROGRESS_SCHEMA = "climate"
-PIPELINE_PROGRESS_TABLE = "pipeline_progress"
-PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
+from pipeline.database import DAILY_CLIMATE_DETAIL_TABLE, DAILY_CLIMATE_TABLE, SCHEMA_NAME
 _ALLOWED_EXECUTION_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_BOUNDARY_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_VALIDATION_STATUSES = ("pending", "failed", "valid")
@@ -421,7 +423,7 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
             FROM {parent} AS batch
             LEFT JOIN {detail} AS partition
               ON partition.pipeline_progress_id = batch.id
-            LEFT JOIN climate_data.daily_climate AS persisted
+            LEFT JOIN {SCHEMA_NAME}.{DAILY_CLIMATE_TABLE} AS persisted
               ON persisted.request_key = partition.request_key
              AND persisted.source::text = batch.source
              AND persisted.dataset_name = batch.dataset_name
@@ -429,7 +431,7 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
              AND persisted.end_date = partition.end_date
             LEFT JOIN LATERAL (
                 SELECT COUNT(*) AS row_count
-                FROM climate_data.daily_climate_detail AS observation
+                FROM {SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE} AS observation
                 WHERE observation.daily_climate_id = persisted.id
             ) AS observations ON TRUE
             WHERE batch.id = :pipeline_progress_id
