@@ -16,12 +16,8 @@ from pipeline.repositories.daily_climate import (
     load_daily_climate_for_modelling,
 )
 from pipeline.model import DataSource
-from scripts.config import (
-    ACEH_BBOX,
-    CDS_DATASET,
-    CDS_END_DATE,
-    CDS_START_DATE,
-)
+from config import CDS_DATASET, CDS_END_DATE, CDS_START_DATE
+from request_factory import build_aceh_bbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,7 +70,7 @@ def main() -> None:
         dataset_name=CDS_DATASET,
         start_date=date.fromisoformat(CDS_START_DATE),
         end_date=date.fromisoformat(CDS_END_DATE),
-        bbox=ACEH_BBOX,
+        bbox=build_aceh_bbox(),
     )
     dataframe = load_daily_climate_for_modelling(selection)
     print(_build_dataframe_ascii_table(dataframe, rows=10))
