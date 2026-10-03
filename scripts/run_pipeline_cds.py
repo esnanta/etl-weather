@@ -6,7 +6,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from pipeline.runtime import run_monthly_batch
-from scripts.config import build_cds_request
+from request_factory import build_cds_request
 
 logging.basicConfig(
     level=logging.INFO,
