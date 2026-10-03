@@ -208,7 +208,7 @@ def test_claimed_quarter_blocks_competing_selector(
 
 
 def test_manual_whole_month_matches_exact_campaign_partition() -> None:
-    from orchestration.tasks.era5_land import build_historical_request_specs
+    from orchestration.requests import build_historical_request_specs
     from pipeline.request import build_request_key, weather_request_from_spec
 
     spec = build_historical_request_specs(
@@ -226,7 +226,7 @@ def test_manual_whole_month_matches_exact_campaign_partition() -> None:
 
 
 def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> None:
-    from orchestration.tasks.era5_land import build_historical_request_specs
+    from orchestration.requests import build_historical_request_specs
 
     partial = build_historical_request_specs(
         "2024-02-10", "2024-02-29", current_local_date=date(2026, 9, 26)
