@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1, P2, and P3 complete. P4 task-responsibility implementation is complete in code; post-change local verification is pending. Database reset has not started.  
+Status: P1 through P4 complete. P4 verification: 211 unit/orchestration tests passed and 6 PostgreSQL integration tests passed. P5 is next; database reset has not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -161,6 +161,13 @@ as needed. Move SQL such as `_persisted_row_count()` out of task wrappers.
 Both `tasks/era5_land.py` and `tasks/progress.py` must be considered; splitting only
 the former leaves the main responsibility mixing unresolved.
 
+The task modules are orchestration adapters only. They may coordinate progress,
+monitoring, pacing, Airflow control metadata, and calls into the pipeline, but
+must not reimplement extraction, transformation, loading, request identity,
+checkpoint, validation, or scientific logic already owned by `pipeline/`.
+Changes inside `pipeline/` require a separate, concrete technical reason and
+must be reported before editing.
+
 Campaign request construction should not import from a task wrapper. Avoid
 generic utility collections, extra Airflow tasks, and unnecessary class layers.
 Python module movement must not rename Airflow task IDs.
@@ -245,9 +252,9 @@ logged separately. Do not silently fix behavior in a structural refactor.
 - [x] Split extraction, transformation, load, and job preparation into named modules.
 - [x] Separate shared progress recording and campaign-repair coordination as needed.
 - [x] Update campaign, operator, DAG, repository exports, and audited callers.
-- [ ] Preserve task IDs, graph, XCom fields, exceptions, attempts, and deferral behavior.
-- [ ] Verify moved disk-path logic still resolves the repository data directory correctly.
-- [ ] Verify logging and process-memory measurements retain their original meaning.
+- [x] Preserve task IDs, graph, XCom fields, exceptions, attempts, and deferral behavior.
+- [x] Verify moved disk-path logic still resolves the repository data directory correctly.
+- [x] Verify logging and process-memory measurements retain their original meaning.
 
 ### P5 — Regression and documentation
 
@@ -320,8 +327,9 @@ For every subsequent fix:
 | 2026-10-03 | P3 implementation | Added `orchestration/database.py` for runtime engine lifecycle and bootstrap coordination, plus `repositories/load_evidence.py` for persisted-load verification. Progress preparation and CDS pacing now use the shared lifecycle while preserving their original bootstrap timing. Removed redundant fresh-schema `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` upgrade DDL; the columns remain in the canonical CREATE TABLE definition. Added isolated fresh/repeated bootstrap coverage and guarded P6 recreation procedure. | Run post-change unit/orchestration tests and six PostgreSQL integration tests, including fresh bootstrap. Do not start P4 or P6 until reviewed. |
 | 2026-10-04 | P3 closure | User ran post-change verification locally: unit/orchestration **211 passed in 6.32s** and PostgreSQL integration **6 passed in 1.46s**, including fresh/repeated bootstrap. No failures or skips were reported. P3 is complete. | Start P4 task responsibility refactor; database recreation remains deferred to P6. |
 | 2026-10-04 | P4 implementation | Split request planning, interval conversion, monitoring, job preparation, extraction, transformation, load, progress recording, and campaign repair into responsibility-specific modules. Updated campaign, DAG, CDS operator, and orchestration tests to the new owners. Kept `tasks/era5_land.py` and `tasks/progress.py` only as thin compatibility re-export facades; runtime callers no longer depend on them. Preserved historical logger names and added a focused repository-data-path assertion. | Run post-change unit/orchestration and PostgreSQL integration tests. Keep P4 behavioral verification items open until results are reviewed. |
+| 2026-10-04 | P4 closure and pipeline-boundary audit | User ran post-change verification locally: unit/orchestration **211 passed in 5.76s** and PostgreSQL integration **6 passed in 1.34s**. Audited the new task modules against `pipeline/runtime.py`, `pipeline/request.py`, loader and CDS extraction owners: extraction, transformation, and loading remain delegated to existing pipeline functions; job preparation remains orchestration-only. No `pipeline/` files were changed for P4. | P4 complete. Start P5 regression/documentation; any future `pipeline/` change requires a separately stated technical reason. |
 
-Current next action: complete the P4 verification gate with new local unit/orchestration and PostgreSQL integration evidence. P1, P2, and P3 are complete; P4 code changes are implemented on `dev`. Do not start P5 or reset PostgreSQL until the results are reviewed.
+Current next action: P5 regression and documentation. P1 through P4 are complete with successful local unit/orchestration and PostgreSQL integration evidence. Preserve `pipeline/` as the ETL/scientific implementation owner; orchestration task modules remain adapters only. Database recreation remains deferred to P6.
 No database reset has been performed.
 
 
