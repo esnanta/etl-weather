@@ -41,7 +41,7 @@ def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -
     monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        job_tasks, "initialize_pipeline_progress",
         lambda engine, definition: definitions.append(definition) or 42,
     )
 
@@ -60,7 +60,7 @@ def test_scheduled_terminal_run_maps_no_partitions(monkeypatch) -> None:
     monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: None,
     )
     assert job_tasks.prepare_monthly_jobs(
@@ -80,7 +80,7 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
         request_specs=tuple(specs),
     )
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: selected,
     )
 
@@ -97,7 +97,7 @@ def test_blocked_scheduled_run_maps_no_partitions(monkeypatch, caplog) -> None:
     monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: CampaignBlocked(
             CampaignQuarter(2024, 1), 19, "Manual repair required"
         ),
@@ -121,13 +121,13 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
 def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> None:
     updates = []
     repairs = []
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "_record",
+        load_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "load_partition",
+        load_tasks, "load_partition",
         lambda result: {
             "boundary": "load",
             "request_key": "monthly-key",
@@ -138,10 +138,10 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
     )
     monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
     monkeypatch.setattr(
-        progress, "persisted_row_count", lambda engine, result, path, sha: 15
+        load_tasks, "persisted_row_count", lambda engine, result, path, sha: 15
     )
     monkeypatch.setattr(
-        progress, "_reconcile_campaign_repair",
+        load_tasks, "reconcile_campaign_repair",
         lambda *args, **kwargs: repairs.append((args, kwargs)),
     )
 
@@ -163,13 +163,13 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
 
 def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
     updates = []
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "_record",
+        load_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "load_partition",
+        load_tasks, "load_partition",
         lambda result: {"request_key": "monthly-key", "artifact_path": "partition"},
     )
     monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
@@ -266,27 +266,27 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     released = []
     monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        job_tasks, "initialize_pipeline_progress",
         lambda engine, received: 91 if received == definition else None,
     )
     monkeypatch.setattr(
-        progress, "raw_artifact_for_request",
+        campaign_repair, "raw_artifact_for_request",
         lambda request: SimpleNamespace(
             path=SimpleNamespace(as_posix=lambda: "raw.nc")
         ),
     )
-    monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("raw.nc", "raw-sha", 80))
+    monkeypatch.setattr(campaign_repair, "artifact_identity", lambda result: ("raw.nc", "raw-sha", 80))
     monkeypatch.setattr(
-        progress, "update_pipeline_progress_detail",
+        campaign_repair, "update_pipeline_progress_detail",
         lambda engine, progress_id, request_key, **fields:
             updates.append((progress_id, request_key, fields)),
     )
     monkeypatch.setattr(
-        progress, "reconcile_pipeline_progress",
+        campaign_repair, "reconcile_pipeline_progress",
         lambda engine, progress_id: reconciled.append(progress_id),
     )
     monkeypatch.setattr(
-        progress, "release_pipeline_progress_claim",
+        campaign_repair, "release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
@@ -325,11 +325,11 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
     released = []
     monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        job_tasks, "initialize_pipeline_progress",
         lambda engine, definition: 42,
     )
     monkeypatch.setattr(
-        progress, "release_pipeline_progress_claim",
+        campaign_repair, "release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
@@ -343,11 +343,11 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
 def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
     updates = []
     monkeypatch.setattr(
-        progress, "_record",
+        extract_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "extract_partition",
+        extract_tasks, "extract_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
             CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
@@ -368,7 +368,7 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
         "2024-01-01", "2024-03-31", current_local_date=date(2026, 9, 26)
     )
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: SimpleNamespace(
             quarter=CampaignQuarter(2024, 1), progress_id=19,
             request_specs=tuple(specs),
