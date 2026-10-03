@@ -266,7 +266,7 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     released = []
     monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        job_tasks, "initialize_pipeline_progress",
+        campaign_repair, "initialize_pipeline_progress",
         lambda engine, received: 91 if received == definition else None,
     )
     monkeypatch.setattr(
@@ -325,7 +325,7 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
     released = []
     monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        job_tasks, "initialize_pipeline_progress",
+        campaign_repair, "initialize_pipeline_progress",
         lambda engine, definition: 42,
     )
     monkeypatch.setattr(
@@ -362,7 +362,7 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
 
 
 def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
-    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     specs = build_historical_request_specs(
         "2024-01-01", "2024-03-31", current_local_date=date(2026, 9, 26)
@@ -385,9 +385,9 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
 
 
 def test_manual_recovery_has_no_scheduled_slot(monkeypatch) -> None:
-    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
-    monkeypatch.setattr(campaign_repair, "initialize_pipeline_progress", lambda engine, definition: 42)
+    monkeypatch.setattr(job_tasks, "initialize_pipeline_progress", lambda engine, definition: 42)
     jobs = job_tasks.prepare_monthly_jobs(
         "manual", {"start_date": "2024-01-01", "end_date": "2024-01-31"}
     )
