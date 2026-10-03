@@ -9,14 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-ENABLED_ENV = "ERA5_CAMPAIGN_SCHEDULE_ENABLED"
-CADENCE_ENV = "ERA5_CAMPAIGN_SCHEDULE_CADENCE"
-DEFAULT_CADENCE = "2h"
-CADENCE_CRON = {
-    "30m": "*/30 * * * *",
-    "1h": "0 * * * *",
-    "2h": "0 */2 * * *",
-}
+from orchestration.config import CADENCE_CRON, CADENCE_ENV, DEFAULT_CADENCE, ENABLED_ENV
 
 
 def campaign_schedule(environ: Mapping[str, str] | None = None) -> str | None:
