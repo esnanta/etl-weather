@@ -13,12 +13,10 @@ from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
 from orchestration.schedule import campaign_schedule
+from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
-from orchestration.tasks.progress import (
-    load_with_progress,
-    prepare_monthly_jobs,
-    transform_with_progress,
-)
+from orchestration.tasks.load import load_with_progress
+from orchestration.tasks.transform import transform_with_progress
 
 DAG_ID = "cds_era5_land_etl"
 
