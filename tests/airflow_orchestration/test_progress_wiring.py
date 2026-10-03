@@ -110,7 +110,7 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
     def unexpected():
         raise AssertionError("Database access is not expected.")
 
-    monkeypatch.setattr(progress, "_progress_engine", unexpected)
+    monkeypatch.setattr(progress, "runtime_database_engine", unexpected)
     with pytest.raises(ValueError, match="require only"):
         progress.prepare_monthly_jobs("manual", {"start_date": "2024-01-01"})
 
@@ -311,7 +311,7 @@ def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
     def unexpected():
         raise AssertionError("Quarter progress must not be touched.")
 
-    monkeypatch.setattr(progress, "_progress_engine", unexpected)
+    monkeypatch.setattr(progress, "runtime_database_engine", unexpected)
     progress._reconcile_campaign_repair(
         42, partial, "partial-key", "path", "sha", 100, 15,
         manual_repair=True,
