@@ -27,14 +27,8 @@ def test_scheduled_selection_recovery_and_terminal_noop(
     def isolated_engine():
         yield engine
 
-    monkeypatch.setattr(progress, "_progress_engine", isolated_engine)
-    for setup in (
-        "create_schema",
-        "create_daily_climate_table",
-        "create_daily_climate_detail_table",
-        "create_pipeline_progress_tables",
-    ):
-        monkeypatch.setattr(progress, setup, lambda unused_engine: None)
+    monkeypatch.setattr(progress, "runtime_database_engine", isolated_engine)
+    monkeypatch.setattr(progress, "initialize_progress_storage", lambda unused_engine: None)
     monkeypatch.setattr(
         campaign, "initialize_campaign_progress",
         lambda unused_engine, **kwargs: tuple(range(1, 41)),
