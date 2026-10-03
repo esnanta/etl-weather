@@ -80,7 +80,19 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
 def _postgres() -> dict[str, object]:
     try:
         from sqlalchemy import create_engine, text
-        from pipeline.database import DatabaseConfig
+        from orchestration.config import (
+            PACING_SCHEMA,
+            PACING_TABLE,
+            PIPELINE_PROGRESS_DETAIL_TABLE,
+            PIPELINE_PROGRESS_SCHEMA,
+            PIPELINE_PROGRESS_TABLE,
+        )
+        from pipeline.database import (
+            DAILY_CLIMATE_DETAIL_TABLE,
+            DAILY_CLIMATE_TABLE,
+            DatabaseConfig,
+            SCHEMA_NAME,
+        )
 
         engine = create_engine(DatabaseConfig.from_env().url, future=True,
                                connect_args={"connect_timeout": 5})
@@ -91,11 +103,11 @@ def _postgres() -> dict[str, object]:
                 ).scalar_one()
                 tables = {}
                 for table in (
-                    "climate.pipeline_progress",
-                    "climate.pipeline_progress_detail",
-                    "climate.cds_submission_pacing",
-                    "climate_data.daily_climate",
-                    "climate_data.daily_climate_detail",
+                    f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}",
+                    f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}",
+                    f"{PACING_SCHEMA}.{PACING_TABLE}",
+                    f"{SCHEMA_NAME}.{DAILY_CLIMATE_TABLE}",
+                    f"{SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE}",
                 ):
                     size = connection.execute(
                         text("SELECT pg_total_relation_size(to_regclass(:name))"),
