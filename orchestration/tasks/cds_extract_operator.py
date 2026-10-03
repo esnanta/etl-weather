@@ -12,7 +12,7 @@ from typing import Any
 from airflow.providers.standard.triggers.temporal import DateTimeTrigger
 from airflow.sdk import BaseOperator, Context
 
-from orchestration.tasks.progress import extract_with_progress
+from orchestration.tasks.extract import extract_with_progress
 from pipeline.extraction.cds import CdsSubmissionDeferred
 
 
