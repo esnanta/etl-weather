@@ -39,7 +39,7 @@ def test_progress_bootstrap_preserves_dependency_order(monkeypatch) -> None:
         monkeypatch.setattr(
             database,
             name,
-            lambda engine, name=name: calls.append(name),
+            lambda engine, config=None, name=name: calls.append(name),
         )
 
     database.initialize_progress_storage(object())
@@ -57,7 +57,7 @@ def test_full_bootstrap_adds_pacing_after_progress_storage(monkeypatch) -> None:
     monkeypatch.setattr(
         database,
         "initialize_progress_storage",
-        lambda engine: calls.append("progress"),
+        lambda engine, config=None: calls.append("progress"),
     )
     monkeypatch.setattr(
         database,
