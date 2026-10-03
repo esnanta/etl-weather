@@ -4,14 +4,12 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from orchestration.tasks import era5_land
-from orchestration.tasks.era5_land import (
-    build_historical_request_specs,
-    extract_partition,
-    inclusive_local_dates,
-    load_partition,
-    transform_partition,
-)
+from orchestration import monitoring
+from orchestration.intervals import inclusive_local_dates
+from orchestration.requests import build_historical_request_specs
+from orchestration.tasks.extract import extract_partition
+from orchestration.tasks.load import load_partition
+from orchestration.tasks.transform import transform_partition
 
 
 def test_build_historical_request_specs_requires_explicit_dates() -> None:
@@ -141,9 +139,9 @@ def test_disk_warning_reports_low_space_without_failing_task(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(
-        era5_land.shutil,
+        monitoring.shutil,
         "disk_usage",
-        lambda path: SimpleNamespace(free=4 * era5_land.GIB),
+        lambda path: SimpleNamespace(free=4 * monitoring.GIB),
     )
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
         era5_land.warn_low_disk_space("transform_or_resume")
@@ -154,9 +152,9 @@ def test_disk_warning_reports_low_space_without_failing_task(
 
     caplog.clear()
     monkeypatch.setattr(
-        era5_land.shutil,
+        monitoring.shutil,
         "disk_usage",
-        lambda path: SimpleNamespace(free=6 * era5_land.GIB),
+        lambda path: SimpleNamespace(free=6 * monitoring.GIB),
     )
     era5_land.warn_low_disk_space("transform_or_resume")
     assert not any("[DISK]" in record.message for record in caplog.records)
@@ -168,7 +166,7 @@ def test_disk_warning_reports_unavailable_measurement(
     def unavailable(path: object) -> None:
         raise OSError("measurement failed")
 
-    monkeypatch.setattr(era5_land.shutil, "disk_usage", unavailable)
+    monkeypatch.setattr(monitoring.shutil, "disk_usage", unavailable)
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
         era5_land.warn_low_disk_space("extract_or_resume")
     assert any(
