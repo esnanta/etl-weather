@@ -3,6 +3,11 @@ from typing import cast
 import pytest
 from sqlalchemy.engine import Engine
 
+from orchestration.config import (
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
 from orchestration.progress import (
     PipelineProgressDefinition,
     ProgressPartition,
@@ -86,9 +91,15 @@ def test_progress_ddl_is_cadence_neutral_parent_detail_model() -> None:
     create_pipeline_progress_tables(cast(Engine, cast(object, engine)))
 
     sql = "\n".join(engine.connection.statements)
-    assert "CREATE SCHEMA IF NOT EXISTS climate" in sql
-    assert "CREATE TABLE IF NOT EXISTS climate.pipeline_progress" in sql
-    assert "CREATE TABLE IF NOT EXISTS climate.pipeline_progress_detail" in sql
+    assert f"CREATE SCHEMA IF NOT EXISTS {PIPELINE_PROGRESS_SCHEMA}" in sql
+    assert (
+        f"CREATE TABLE IF NOT EXISTS "
+        f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}"
+    ) in sql
+    assert (
+        f"CREATE TABLE IF NOT EXISTS "
+        f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
+    ) in sql
     assert "configuration_identity TEXT NOT NULL" in sql
     assert "expected_partition_count INTEGER NOT NULL" in sql
     assert "completed_partition_count INTEGER NOT NULL DEFAULT 0" in sql
@@ -119,10 +130,14 @@ def test_initialize_progress_seeds_parent_and_expected_details() -> None:
 
     sql = "\n".join(engine.connection.statements)
     assert progress_id == 42
-    assert "INSERT INTO climate.pipeline_progress" in sql
+    assert (
+        f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}"
+    ) in sql
     assert "configuration_identity" in sql
     assert "ON CONFLICT (" in sql
-    assert "INSERT INTO climate.pipeline_progress_detail" in sql
+    assert (
+        f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
+    ) in sql
     detail_params = [
         params
         for params in engine.connection.params
