@@ -144,7 +144,7 @@ def test_disk_warning_reports_low_space_without_failing_task(
         lambda path: SimpleNamespace(free=4 * monitoring.GIB),
     )
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
-        era5_land.warn_low_disk_space("transform_or_resume")
+        monitoring.warn_low_disk_space("transform_or_resume")
     warnings = [record.message for record in caplog.records if "[DISK]" in record.message]
     assert len(warnings) >= 1
     assert all("boundary=transform_or_resume" in message for message in warnings)
@@ -156,7 +156,7 @@ def test_disk_warning_reports_low_space_without_failing_task(
         "disk_usage",
         lambda path: SimpleNamespace(free=6 * monitoring.GIB),
     )
-    era5_land.warn_low_disk_space("transform_or_resume")
+    monitoring.warn_low_disk_space("transform_or_resume")
     assert not any("[DISK]" in record.message for record in caplog.records)
 
 
@@ -168,7 +168,7 @@ def test_disk_warning_reports_unavailable_measurement(
 
     monkeypatch.setattr(monitoring.shutil, "disk_usage", unavailable)
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
-        era5_land.warn_low_disk_space("extract_or_resume")
+        monitoring.warn_low_disk_space("extract_or_resume")
     assert any(
         "[DISK] free space check unavailable" in record.message
         and "boundary=extract_or_resume" in record.message
