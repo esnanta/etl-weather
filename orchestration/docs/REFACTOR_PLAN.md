@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 complete. User-reported local verification: 208 unit/orchestration tests passed and 5 PostgreSQL integration tests passed. Ready for P2; implementation and database reset have not started.  
+Status: P1 complete. P2 configuration-separation implementation is complete in code; post-change local pytest verification is pending. Database reset and P3 have not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -221,12 +221,12 @@ logged separately. Do not silently fix behavior in a structural refactor.
 
 ### P2 — Configuration separation
 
-- [ ] Introduce root shared configuration and orchestration-specific configuration.
-- [ ] Set the single application schema source to `climate_data`.
-- [ ] Reuse the existing database credential configuration.
-- [ ] Relocate request construction/shared settings and update audited callers.
-- [ ] Eliminate duplicate setting definitions and schema literals in affected runtime code.
-- [ ] Add module purpose docstrings and comments above global variables.
+- [x] Introduce root shared configuration and orchestration-specific configuration.
+- [x] Set the single application schema source to `climate_data`.
+- [x] Reuse the existing database credential configuration.
+- [x] Relocate request construction/shared settings and update audited callers.
+- [x] Eliminate duplicate setting definitions and schema literals in affected runtime code.
+- [x] Add module purpose docstrings and comments above global variables.
 - [ ] Verify defaults, environment validation, import safety, and standalone request behavior.
 
 ### P3 — Database organization and fresh-schema support
@@ -314,9 +314,10 @@ For every subsequent fix:
 | 2026-09-29 | P0 | Planning document created from the user decisions and reviewed dev code; documentation-only change. No tests, reset, code refactor, or live requests executed. | Start P1; notify exact external paths before implementation. |
 | 2026-10-03 | P1 | Audited 96 source/config/test/document files at `2f8a93e`; verified baseline CI (208 passed, 5 skipped), 35 local direct assertions, 80 Python syntax parses, and 26 core modules without Airflow/orchestration imports. Recorded dependency map, external scope, behavior contracts, and gaps below. | Local full pytest unavailable; P2 not started; PostgreSQL integration and live-host state not verified. |
 | 2026-10-03 | P1 closure | User supplied local quiet-test results: unit/orchestration **208 passed in 6.15s**; PostgreSQL integration **5 passed in 1.30s**. No failures or skips. Local checkout SHA was not supplied. Marked P1 complete; earlier assistant dependency limitation does not apply to the user's successful environment. | Ready for P2; no application code or database changes in this documentation update. |
+| 2026-10-03 | P2 implementation | Added root `config.py`, `request_factory.py`, and `orchestration/config.py`; moved shared dataset/bbox/variable/schema settings and orchestration campaign/schedule/pacing/slot/availability/disk policy to their owners. Updated audited runtime callers and schema references while retaining `DatabaseConfig` credentials and compatibility exports. Static reference audit found no remaining old `climate.*` table literals or old request-factory imports in the changed runtime files. | Post-change local unit/orchestration and PostgreSQL integration pytest evidence is still required. P3 and database reset remain untouched. |
 
-Current next action: P2 configuration separation. P1 is complete using the recorded audit, exact-SHA historical CI, and the user's successful local unit/orchestration and PostgreSQL integration results. Require new test evidence after implementation changes.
-No implementation or database reset was performed during P1.
+Current next action: finish the P2 verification gate with new local quiet pytest evidence. P1 is complete; P2 code changes are implemented on `dev`. Do not start P3 or reset PostgreSQL until the post-change tests are reviewed.
+No database reset has been performed.
 
 
 ## 10. P1 audit evidence — 2026-10-03
