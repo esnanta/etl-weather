@@ -8,13 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import create_engine
-
-from orchestration.repositories.cds_pacing import (
-    create_cds_pacing_table,
-    reserve_cds_submission,
-)
-from pipeline.database import DatabaseConfig
+from orchestration.database import initialize_pacing_storage, runtime_database_engine
+from orchestration.repositories.cds_pacing import reserve_cds_submission
 from pipeline.extraction.cds import CdsSubmissionDeferred
 from pipeline.model import WeatherRequest
 
@@ -23,12 +18,9 @@ logger = logging.getLogger(__name__)
 
 def reserve_or_defer(request: WeatherRequest) -> None:
     """Reserve the database clock for one real CDS retrieval attempt."""
-    engine = create_engine(DatabaseConfig.from_env().url, future=True)
-    try:
-        create_cds_pacing_table(engine)
+    with runtime_database_engine() as engine:
+        initialize_pacing_storage(engine)
         decision = reserve_cds_submission(engine)
-    finally:
-        engine.dispose()
     if not decision.granted:
         logger.info(
             "CDS submission deferred\nchunk=%s..%s\nnext_allowed_at=%s",
