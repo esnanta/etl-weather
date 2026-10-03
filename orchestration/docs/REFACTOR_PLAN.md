@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1, P2, and P3 complete. P3 verification: 211 unit/orchestration tests passed and 6 PostgreSQL integration tests passed. P4 has not started; database reset has not started.  
+Status: P1, P2, and P3 complete. P4 task-responsibility implementation is complete in code; post-change local verification is pending. Database reset has not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -241,10 +241,10 @@ logged separately. Do not silently fix behavior in a structural refactor.
 
 ### P4 — Task responsibility refactor
 
-- [ ] Separate request planning, interval conversion, and monitoring from ETL wrappers.
-- [ ] Split extraction, transformation, load, and job preparation into named modules.
-- [ ] Separate shared progress recording and campaign-repair coordination as needed.
-- [ ] Update campaign, operator, DAG, repository exports, and audited callers.
+- [x] Separate request planning, interval conversion, and monitoring from ETL wrappers.
+- [x] Split extraction, transformation, load, and job preparation into named modules.
+- [x] Separate shared progress recording and campaign-repair coordination as needed.
+- [x] Update campaign, operator, DAG, repository exports, and audited callers.
 - [ ] Preserve task IDs, graph, XCom fields, exceptions, attempts, and deferral behavior.
 - [ ] Verify moved disk-path logic still resolves the repository data directory correctly.
 - [ ] Verify logging and process-memory measurements retain their original meaning.
@@ -319,8 +319,9 @@ For every subsequent fix:
 | 2026-10-03 | P2 closure | User reran the post-fix verification locally: unit/orchestration **208 passed in 5.64s**; PostgreSQL integration **5 passed in 1.28s**. No failures or skips were reported. P2 configuration separation is complete. | P3 is the next planned stage. Database recreation remains deferred to P6. |
 | 2026-10-03 | P3 implementation | Added `orchestration/database.py` for runtime engine lifecycle and bootstrap coordination, plus `repositories/load_evidence.py` for persisted-load verification. Progress preparation and CDS pacing now use the shared lifecycle while preserving their original bootstrap timing. Removed redundant fresh-schema `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` upgrade DDL; the columns remain in the canonical CREATE TABLE definition. Added isolated fresh/repeated bootstrap coverage and guarded P6 recreation procedure. | Run post-change unit/orchestration tests and six PostgreSQL integration tests, including fresh bootstrap. Do not start P4 or P6 until reviewed. |
 | 2026-10-04 | P3 closure | User ran post-change verification locally: unit/orchestration **211 passed in 6.32s** and PostgreSQL integration **6 passed in 1.46s**, including fresh/repeated bootstrap. No failures or skips were reported. P3 is complete. | Start P4 task responsibility refactor; database recreation remains deferred to P6. |
+| 2026-10-04 | P4 implementation | Split request planning, interval conversion, monitoring, job preparation, extraction, transformation, load, progress recording, and campaign repair into responsibility-specific modules. Updated campaign, DAG, CDS operator, and orchestration tests to the new owners. Kept `tasks/era5_land.py` and `tasks/progress.py` only as thin compatibility re-export facades; runtime callers no longer depend on them. Preserved historical logger names and added a focused repository-data-path assertion. | Run post-change unit/orchestration and PostgreSQL integration tests. Keep P4 behavioral verification items open until results are reviewed. |
 
-Current next action: P4 task responsibility refactor. P1, P2, and P3 are complete with successful local regression and PostgreSQL integration evidence. Database recreation remains deferred to P6.
+Current next action: complete the P4 verification gate with new local unit/orchestration and PostgreSQL integration evidence. P1, P2, and P3 are complete; P4 code changes are implemented on `dev`. Do not start P5 or reset PostgreSQL until the results are reviewed.
 No database reset has been performed.
 
 
