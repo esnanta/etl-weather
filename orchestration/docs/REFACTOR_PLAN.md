@@ -1,9 +1,10 @@
 # Orchestration Refactor Plan and Checklist
 
-Last updated: 2026-09-29 (Asia/Jakarta)  
+Last updated: 2026-10-03 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: Planning recorded; implementation and database reset have not started.  
-Reviewed baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`
+Status: P1 dependency audit complete; baseline CI verified. Local full pytest rerun blocked by unavailable dependencies. Implementation and database reset have not started.  
+Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
+P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
 ## 1. Purpose and ownership
 
@@ -208,12 +209,14 @@ logged separately. Do not silently fix behavior in a structural refactor.
 
 ### P1 — Audit and baseline verification
 
-- [ ] Refresh `dev` HEAD and applicable instructions; record implementation baseline SHA.
-- [ ] Audit configuration, schema literals, imports, request-factory callers, and reports.
-- [ ] Record exact files needed outside orchestration and notify the user before editing.
-- [ ] Run relevant existing offline tests; record actual results and pre-existing failures.
-- [ ] Capture graph, mapping, retry/defer, slot-anchor, XCom, and progress contracts.
-- [ ] Finalize module destinations and check that the proposed imports cannot cycle.
+- [x] Refresh `dev` HEAD and applicable instructions; record implementation baseline SHA.
+- [x] Audit configuration, schema literals, imports, request-factory callers, and reports.
+- [x] Record exact files needed outside orchestration and notify the user before editing.
+- [ ] Run relevant existing offline tests locally; record actual results and pre-existing failures. Full local rerun is blocked (see section 10.1).
+- [x] Verify the existing full-suite CI run for the exact audited baseline: 208 passed, 5 skipped; no failed tests. This is historical CI evidence, not a new local pytest execution.
+- [x] Run available dependency-free checks locally: 35 direct behavior assertions; syntax parsing for 80 Python files; core import-boundary check for 26 pipeline modules.
+- [x] Capture graph, mapping, retry/defer, slot-anchor, XCom, and progress contracts.
+- [x] Finalize module destinations and check that the proposed imports cannot cycle.
 
 ### P2 — Configuration separation
 
@@ -308,6 +311,238 @@ For every subsequent fix:
 | Date (Asia/Jakarta) | Step | Change / evidence | Remaining work |
 | --- | --- | --- | --- |
 | 2026-09-29 | P0 | Planning document created from the user decisions and reviewed dev code; documentation-only change. No tests, reset, code refactor, or live requests executed. | Start P1; notify exact external paths before implementation. |
+| 2026-10-03 | P1 | Audited 96 source/config/test/document files at `2f8a93e`; verified baseline CI (208 passed, 5 skipped), 35 local direct assertions, 80 Python syntax parses, and 26 core modules without Airflow/orchestration imports. Recorded dependency map, external scope, behavior contracts, and gaps below. | Local full pytest unavailable; P2 not started; PostgreSQL integration and live-host state not verified. |
 
-Current next action: P1 dependency/configuration audit and baseline verification.
-No implementation is started by the creation of this document.
+Current next action: P2 configuration separation after the audit review. Use the exact-SHA CI run as the available full-suite baseline; the local pytest rerun remains explicitly unchecked. Require new test evidence for implementation changes.
+No implementation or database reset was performed during P1.
+
+
+## 10. P1 audit evidence — 2026-10-03
+
+### 10.1 Verification results and limits
+
+All repository reads used `dev` or its exact commit
+`2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`. No application code was edited.
+
+| Check | Evidence | Result / limit |
+| --- | --- | --- |
+| Existing CI at the exact baseline | [Run 36558576961](https://github.com/esnanta/etl-weather/actions/runs/36558576961), job `109373628429`, push on 2026-09-29 | Python 3.12.14, pytest 7.4.4; 213 collected, **208 passed, 5 skipped in 6.31s** |
+| CI suite breakdown | Retrieved job log | 97 orchestration tests and 111 unit tests passed |
+| Skipped CI tests | Log shows pacing `s`, reconciliation `ss`, idempotency `ss` | All five PostgreSQL integration cases skipped; not evidence of database behavior |
+| New local full pytest attempt | `python -m pytest tests/unit tests/airflow_orchestration -q` | Blocked before collection: `No module named pytest`; this is an environment failure, not a test failure |
+| Isolated pytest installation attempt | `pytest==7.4.4` in a temporary virtual environment | Package access returned no matching distribution, including explicit PyPI index attempt; repository requirements were not changed |
+| New direct behavior checks | Imported original pure helpers, no replacement dependencies | **35 assertions passed**; these are not pytest suite results |
+| Python syntax | AST parsing of source and test files | **80 files parsed successfully** |
+| Core dependency boundary | AST import scan of `pipeline/` | **26 modules** without Airflow/orchestration imports |
+| Conservative internal dependency graph | Includes function-local and type-only imports | **47 runtime/script modules, 95 edges, no detected cycles**; not a proof of all dynamic imports |
+| Host/database runtime | No host access or configured `TEST_POSTGRES_*` values in this environment | No database queries, reset, live DAG execution, or CDS submissions |
+
+The 35 direct assertions cover manual/scheduled input validation, schedule
+defaults and accepted/invalid cadences, disabled-schedule behavior, Jakarta
+interval conversion and invalid boundaries, 40-quarter bounds, and upstream
+metadata validation. They do not exercise Airflow, PostgreSQL, extraction, or
+scientific transformations.
+
+No baseline regression was observed in the available evidence. Do not describe
+this audit as a new local run of all 208 tests or as a PostgreSQL integration pass.
+The retrieved CI run precedes this audit and matches its exact source commit.
+
+To complete the outstanding local rerun on the existing project host environment:
+
+```bash
+source activate-airflow.sh
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit tests/airflow_orchestration -q
+```
+
+Run integration tests only with the existing isolated `TEST_POSTGRES_*`
+configuration. Do not use the disposable development database as an implicit
+test target. Historical pilot counts and old test results remain separate.
+
+### 10.2 Current dependencies and relocation impact
+
+| Current owner | Direct consumers / dependency | Required treatment |
+| --- | --- | --- |
+| `scripts/config.py` | `scripts/run_pipeline_cds.py`, `scripts/read_daily_climate.py`, `tasks/era5_land.py`, `tests/unit/test_config_requests.py` | Move shared values and request factory; update all four consumers |
+| `tasks/era5_land.py` | `campaign.py`, `tasks/progress.py`; tests for tasks, progress, campaign, and progress wiring | Move request planning and availability setting out of task modules |
+| `tasks/progress.py` | DAG, extraction operator, wiring tests, offline selection pilot | Separate job preparation, boundary wrappers, shared recording, and repair |
+| `pipeline.database.DatabaseConfig` | Orchestration pacing/progress, report/capacity scripts, pipeline loader/read repository | Reuse credentials and connection behavior |
+| `pipeline/database/config.py` | `pipeline/database/__init__.py`, schema helpers and their consumers | Import root schema setting while retaining existing exports/defaults |
+| `orchestration/reporting.py` | Report entrypoint and reporting tests | Replace literal SQL schemas; derive report campaign labels/counts from campaign policy without changing output |
+| `pipeline/model.py` | Request configuration and pipeline functions | Imports Pandas and xarray; do not pull this dependency into a lightweight root settings module |
+| `pipeline/contracts/era5_land.py` | Scientific pipeline contracts | Keep scientific constants/algorithms under their existing owner; no changes planned in this audit |
+
+The existing graph has no detected cycle, but ownership is inverted where
+`campaign.py` imports task-level request planning and availability policy.
+Moving those to `orchestration/requests.py` and `orchestration/config.py`
+removes that dependency.
+
+Finalized direction for implementation:
+
+- Root `config.py` stores lightweight application settings, including schema,
+  dataset selection, bbox coordinates, requested variable values, and standalone
+  default dates. It imports neither pipeline infrastructure nor orchestration.
+- Root `request_factory.py` owns `build_cds_request()` and typed request/bbox
+  construction, consuming root settings and existing pipeline models. Preserve
+  the current request defaults, copied variable list, and credential-check behavior.
+- `scripts/config.py` is replaced after updating audited consumers; do not retain
+  a second definition of the same settings.
+- `pipeline/database/config.py` imports only the root schema value; preserve
+  `SCHEMA_NAME` as the existing public name and retain `DatabaseConfig`.
+- `orchestration/config.py` owns operational settings. Do not change scientific
+  constants merely because some operational defaults have the same values.
+- Use the task/monitoring/interval destinations in section 5. Shared recording
+  belongs in `orchestration/progress_tracking.py`; whole-month campaign repair
+  belongs in `orchestration/campaign_repair.py`.
+- Put persisted-load verification in
+  `orchestration/repositories/load_evidence.py`. Keep repositories below task
+  coordination; they must not import tasks, campaign repair, or the database
+  bootstrap coordinator.
+- Preserve the independent, read-only behavior of reporting. Reports must not
+  start creating schemas or reconciling state as a side effect.
+
+The intended direction is settings -> request factory/database configuration ->
+request and repository helpers -> progress/repair coordination -> tasks -> DAG.
+Dependencies point toward lower-level helpers; root settings and repositories
+never import their callers. Recheck actual imports after each implementation batch.
+
+### 10.3 Schema, settings, and engine inventory
+
+| Location | Existing value or literal |
+| --- | --- |
+| `pipeline/database/config.py` | `SCHEMA_NAME = "climate_data"`; canonical weather table names |
+| `repositories/pipeline_progress.py` | `PIPELINE_PROGRESS_SCHEMA = "climate"`; two progress table names; hard-coded `climate_data.daily_climate*` joins |
+| `repositories/cds_pacing.py` | `PACING_SCHEMA = "climate"`; pacing key/table, interval env name, 1,800-second default |
+| `tasks/progress.py` | Hard-coded `climate_data.daily_climate*` load-evidence query; one-hour slot calculation |
+| `orchestration/reporting.py` | Literal `climate.pipeline_progress*` queries; repeated 2016–2025 bounds and 40/4/3 display counts |
+| `scripts/inspect_campaign_capacity.py` | Five fully qualified table names spanning both schemas |
+| `schedule.py` | Enable/cadence env names, `2h` default, three-entry cron mapping |
+| `campaign.py` | Campaign key, 2016/2025 bounds, operational timezone |
+| `tasks/era5_land.py` | Operational timezone, six-day availability lag, 5 GiB warning threshold, GiB conversion |
+| DAG and `progress.py` | Repeated DAG/pipeline identity; task execution policies |
+| `scripts/config.py` | Aceh bbox, dataset, five variables, standalone dates 2022-01-01 through 2022-01-03 |
+
+The standalone default dates are not the campaign range; do not unify their
+values during configuration movement. Status vocabularies are internal contracts,
+not user-tunable environment settings.
+
+Pacing and progress each open a runtime engine and dispose it in `finally`.
+The report script does likewise; capacity inspection adds a five-second connection
+timeout. Preserve that timeout and read-only behavior if sharing helpers.
+`create_database_engine()` additionally ensures the database exists; normal
+orchestration currently does not do that.
+
+`prepare_monthly_jobs()` currently initializes the weather schema/tables and
+progress tables. Pacing creates its own table at submission-gate time.
+Extracting a bootstrap helper must preserve invocation timing and transaction
+boundaries; maintenance recreation remains explicit.
+
+### 10.4 Exact external-file scope for later implementation
+
+This records notice before implementation; this audit changes only this document.
+Reannounce any additional path before editing it.
+
+| Files outside orchestration | Planned reason |
+| --- | --- |
+| `config.py`, `request_factory.py` (new) | Lightweight shared settings and typed request factory |
+| `scripts/config.py` | Relocate definitions/factory and retire the old owner |
+| `scripts/run_pipeline_cds.py`, `scripts/read_daily_climate.py` | Update request/default imports; preserve command behavior and typed bbox |
+| `scripts/inspect_campaign_capacity.py` | Derive the five table names from shared settings |
+| `pipeline/database/config.py` | Replace only the duplicate schema definition with the shared import; retain the public interface |
+| `tests/unit/test_config_requests.py` | Update factory imports/monkeypatch targets and protect credential behavior |
+| `tests/airflow_orchestration/test_tasks.py`, `test_progress.py`, `test_campaign.py` | Update moved helper/constant references |
+| `tests/airflow_orchestration/test_progress_wiring.py`, `test_scheduled_selection_pilot.py` | Update recording/setup/selection monkeypatch targets after splitting progress wrappers |
+| `tests/airflow_orchestration/test_cds_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
+| `tests/integration/test_pipeline_progress_reconciliation.py`, `test_cds_submission_pacing.py` | Update schema/configuration references and test isolation targets |
+| `README.md`, `tests/AGENTS.md`, `docs/AIRFLOW_BEST_PRACTICE.md`, `docs/AIRFLOW_CODING_GUIDELINES.md` | Align configuration location, operational schema, six-task graph, and first-pass documentation |
+
+No changes are currently required to `scripts/report_campaign_progress.py` if
+its public reporting interface and independent engine lifecycle are retained.
+Likewise `tests/unit/test_database.py`, canonical loader/repository tests, and
+`test_postgresql_idempotency.py` should remain unchanged because canonical
+weather table names remain `climate_data.*`; run them as regression checks.
+The DAG and operator tests should continue using their stable public identities.
+
+No edits are planned to scientific pipeline modules, `requirements.txt`,
+Airflow SQLite configuration, activation/JWT scripts, or CI workflow. This is
+a narrower pipeline change than relocating the entire database package.
+
+### 10.5 Execution contract captured from source
+
+| Task ID | Retries | Explicit timeout | Additional policy |
+| --- | ---: | --- | --- |
+| `build_monthly_requests` | 0 | 5 minutes | Resolve run mode and initialize/select progress |
+| `first_extract_attempt` | 0 | 6 hours | Mapped, `cds_api`, `first_pass=True` |
+| `prepare_retry_pass` | 0 | Not explicitly set | Consume all first-pass results |
+| `extract_or_resume` | 1 | 6 hours | Mapped, `cds_api`; 10-minute delay, exponential backoff, maximum 1 hour |
+| `transform_or_resume` | 0 | 2 hours | Mapped from resolved extraction |
+| `load` | 1 | 2 hours | Mapped; 5-minute delay, exponential backoff, maximum 30 minutes |
+
+Keep the six-task dependency order in section 6. The DAG start date is fixed at
+2026-01-01 Asia/Jakarta. Earliest-start slots are lower bounds, not a guarantee
+that maps execute or finish in index order. The retry barrier does not establish
+a global chronological order among retry-pass maps.
+
+Payload contracts:
+
+| Boundary | Existing fields |
+| --- | --- |
+| Prepared monthly job | `request_spec`, `progress_id`, `run_mode`, `earliest_start_at` |
+| Successful extraction/transformation | `boundary`, `request`, `request_key`, `artifact_path`, `artifact_status`, plus progress ID and mode |
+| First-pass failure | `first_attempt_failed=True`, `request_spec`, `progress_id`, `run_mode`, `earliest_start_at` |
+| Prepared retry job | `request_spec`, `progress_id`, `run_mode`, `first_result` |
+| Successful load | `boundary`, `request`, `request_key`, `artifact_path`, `daily_climate_id`, `rows_processed`, `load_status`, plus progress ID and mode |
+
+Successful first-pass results are returned directly by the retry operator.
+Retry-job preparation does not copy `earliest_start_at` as an operator argument;
+preserve this existing detail. Pacing deferral propagates without marking the
+partition failed; wakeup calls execution again and rechecks the shared gate.
+
+Manual configuration must contain exactly the two canonical dates. Scheduled
+configuration must be empty; scheduled jobs select from campaign progress, not
+the Airflow data interval. The interval helper is currently independent of that
+selection path. A naive explicit `slot_anchor` is rejected even in manual mode;
+do not change that validation while moving code.
+
+Progress completion remains dependent on matching persisted request/source/
+dataset/period, transformed path/checksum, positive observation count, and every
+expected detail. A manual repair must match an exact whole campaign month.
+Keep the order of record, reconcile, and claim-release calls.
+
+### 10.6 Findings to preserve or review separately
+
+1. **Broad first-pass exception handling.** The operator catches all
+   `Exception` values from extraction in first-pass mode and returns failure
+   control metadata. Retry-pass exceptions propagate to Airflow. This does not
+   implement the guideline's transient/permanent classification. Preserve it
+   during structural movement; a policy fix needs its own decision and tests.
+   A worker termination or Airflow failure outside that handler is not proven to
+   follow the same barrier path.
+2. **Missing explicit retry-preparation timeout.** `prepare_retry_pass` has no
+   declared `execution_timeout`, although the guideline asks for finite task
+   timeouts. Adding one is a behavior change and is not part of P1.
+3. **Heavy transitive imports.** Root request configuration must not simply copy
+   the existing import of `pipeline.model` into the lightweight settings layer.
+   Model imports load Pandas/xarray. The factory boundary addresses this without
+   changing the model.
+4. **Monitoring path and logger identity.** Moving `era5_land.py` helpers changes
+   `__file__` depth and potentially `logging.getLogger(__name__)`. Resolve the
+   same repository `data/` directory and preserve logger identity/content where
+   consumers or tests rely on it. RSS remains process high-water RSS, not
+   per-task allocated memory.
+5. **Tests depend on old patch locations.** Several tests monkeypatch
+   `tasks.progress` or `tasks.era5_land`. Update patches at the new call sites;
+   passing old tests with unused patches is not evidence of equivalent behavior.
+6. **Coverage limits.** Existing tests cover graph/barrier, simulated retries,
+   pacing wakeup, job offsets, and manual mode. They do not directly establish
+   future `earliest_start_at` operator deferral, absence of external I/O during
+   DAG import, every timeout/backoff field, or a real scheduled worker ordering.
+   Add focused coverage during the relevant refactor phase, not blanket tests.
+7. **Documentation and dependency drift.** Older Airflow guidance still describes
+   three runtime tasks without the full six-task graph. `requirements.txt`
+   contains Dask/Zarr/Google storage packages despite the documented ARCO removal.
+   No active corresponding provider path was found in the runtime import audit.
+   Dependency cleanup is separate; do not alter pins or claim these packages are
+   removable without checking transitive requirements.
+8. **Live state remains unknown.** This audit reads source and CI, not the user's
+   current Airflow processes or PostgreSQL contents. P6 checks remain necessary
+   before the already-planned development reset.
