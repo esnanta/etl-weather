@@ -16,14 +16,15 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+
+from orchestration.config import (
+    AVAILABILITY_LAG_DAYS,
+    DISK_WARNING_GIB,
+    GIB,
+    PIPELINE_TIMEZONE,
+)
 
 logger = logging.getLogger(__name__)
-
-PIPELINE_TIMEZONE = ZoneInfo("Asia/Jakarta")
-AVAILABILITY_LAG_DAYS = 6
-DISK_WARNING_GIB = 5
-GIB = 1024**3
 
 
 def warn_low_disk_space(boundary: str) -> None:
@@ -119,7 +120,7 @@ def build_historical_request_specs(
         validate_request,
         weather_request_to_spec,
     )
-    from scripts.config import build_cds_request
+    from request_factory import build_cds_request
 
     if not start_date or not end_date:
         raise ValueError(
