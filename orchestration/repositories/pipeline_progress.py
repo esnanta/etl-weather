@@ -102,18 +102,6 @@ def create_pipeline_progress_tables(engine: Engine) -> None:
         )
         connection.execute(
             text(
-                f"ALTER TABLE {parent} "
-                "ADD COLUMN IF NOT EXISTS selection_owner TEXT"
-            )
-        )
-        connection.execute(
-            text(
-                f"ALTER TABLE {parent} "
-                "ADD COLUMN IF NOT EXISTS selection_claimed_at TIMESTAMPTZ"
-            )
-        )
-        connection.execute(
-            text(
                 f"""
                 CREATE TABLE IF NOT EXISTS {detail}
                 (
