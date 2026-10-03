@@ -77,7 +77,7 @@ def build_quarter_request_specs(
     current_local_date: date | None = None,
 ) -> list[dict[str, object]]:
     """Build exactly three validated monthly request specs for one campaign quarter."""
-    from orchestration.tasks.era5_land import build_historical_request_specs
+    from orchestration.requests import build_historical_request_specs
 
     specs = build_historical_request_specs(
         quarter.start_date.isoformat(),
