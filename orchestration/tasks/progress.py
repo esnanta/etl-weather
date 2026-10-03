@@ -9,14 +9,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from orchestration.config import MONTHLY_SLOT_SPACING_HOURS
+from orchestration.database import initialize_progress_storage, runtime_database_engine
 from orchestration.campaign import (
     CampaignBlocked,
     matching_campaign_progress_definition,
@@ -24,8 +23,8 @@ from orchestration.campaign import (
 )
 from orchestration.mode import resolve_run_mode
 from orchestration.progress import build_pipeline_progress_definition
+from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.repositories.pipeline_progress import (
-    create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
     release_pipeline_progress_claim,
@@ -37,15 +36,6 @@ from orchestration.tasks.era5_land import (
     load_partition,
     transform_partition,
 )
-from pipeline.database import (
-    DAILY_CLIMATE_DETAIL_TABLE,
-    DAILY_CLIMATE_TABLE,
-    DatabaseConfig,
-    SCHEMA_NAME,
-    create_daily_climate_detail_table,
-    create_daily_climate_table,
-    create_schema,
-)
 from pipeline.storage import (
     artifact_path_for_metadata,
     calculate_file_sha256,
@@ -53,15 +43,6 @@ from pipeline.storage import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@contextmanager
-def _progress_engine() -> Iterator[Engine]:
-    engine = create_engine(DatabaseConfig.from_env().url, future=True)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
 
 
 def prepare_monthly_jobs(
@@ -73,11 +54,8 @@ def prepare_monthly_jobs(
 ) -> list[dict[str, object]]:
     """Resolve one run and initialize its exact progress identity."""
     mode = resolve_run_mode(run_type, conf)
-    with _progress_engine() as engine:
-        create_schema(engine)
-        create_daily_climate_table(engine)
-        create_daily_climate_detail_table(engine)
-        create_pipeline_progress_tables(engine)
+    with runtime_database_engine() as engine:
+        initialize_progress_storage(engine)
         if mode.mode == "scheduled":
             if not run_id:
                 raise ValueError("Scheduled DagRuns require a non-empty run_id.")
@@ -131,7 +109,7 @@ def prepare_monthly_jobs(
 
 
 def _record(progress_id: int, request_key: str, **fields: Any) -> None:
-    with _progress_engine() as engine:
+    with runtime_database_engine() as engine:
         update_pipeline_progress_detail(engine, progress_id, request_key, **fields)
         reconcile_pipeline_progress(engine, progress_id)
         release_pipeline_progress_claim(
@@ -224,37 +202,6 @@ def transform_with_progress(extract_result: dict[str, object]) -> dict[str, obje
     }
 
 
-def _persisted_row_count(
-    engine: Engine,
-    result: Mapping[str, Any],
-    path: str,
-    checksum: str,
-) -> int:
-    with engine.connect() as connection:
-        row = connection.execute(
-            text(
-                f"""
-                SELECT metadata.request_key, metadata.transformed_artifact_path,
-                       metadata.transformed_sha256, COUNT(observation.id) AS row_count
-                FROM {SCHEMA_NAME}.{DAILY_CLIMATE_TABLE} AS metadata
-                LEFT JOIN {SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE} AS observation
-                  ON observation.daily_climate_id = metadata.id
-                WHERE metadata.id = :daily_climate_id
-                GROUP BY metadata.id
-                """
-            ),
-            {"daily_climate_id": result["daily_climate_id"]},
-        ).mappings().one_or_none()
-    if (
-        row is None
-        or row["request_key"] != result["request_key"]
-        or row["transformed_artifact_path"] != path
-        or row["transformed_sha256"] != checksum
-        or int(row["row_count"]) <= 0
-    ):
-        raise ValueError("Persisted partition evidence does not match the artifact.")
-    return int(row["row_count"])
-
 
 def _reconcile_campaign_repair(
     progress_id: int,
@@ -277,7 +224,7 @@ def _reconcile_campaign_repair(
             request_key,
         )
         return
-    with _progress_engine() as engine:
+    with runtime_database_engine() as engine:
         campaign_id = initialize_pipeline_progress(engine, definition)
         if campaign_id == progress_id:
             if manual_repair:
@@ -329,8 +276,8 @@ def load_with_progress(transform_result: dict[str, object]) -> dict[str, object]
         result = load_partition(transform_result)
         _require_request_key(result, request_key)
         path, checksum, size = _identity(result)
-        with _progress_engine() as engine:
-            row_count = _persisted_row_count(engine, result, path, checksum)
+        with runtime_database_engine() as engine:
+            row_count = persisted_row_count(engine, result, path, checksum)
         _record(
             progress_id, request_key, load_status="complete", validation_status="valid",
             transformed_artifact_path=path, transformed_sha256=checksum,
