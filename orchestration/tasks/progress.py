@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from orchestration.config import MONTHLY_SLOT_SPACING_HOURS
 from orchestration.campaign import (
     CampaignBlocked,
     matching_campaign_progress_definition,
@@ -37,7 +38,10 @@ from orchestration.tasks.era5_land import (
     transform_partition,
 )
 from pipeline.database import (
+    DAILY_CLIMATE_DETAIL_TABLE,
+    DAILY_CLIMATE_TABLE,
     DatabaseConfig,
+    SCHEMA_NAME,
     create_daily_climate_detail_table,
     create_daily_climate_table,
     create_schema,
@@ -118,7 +122,7 @@ def prepare_monthly_jobs(
                 "request_spec": spec, "progress_id": progress_id,
                 "run_mode": mode.mode,
                 "earliest_start_at": (
-                    (anchor + timedelta(hours=index)).isoformat()
+                    (anchor + timedelta(hours=index * MONTHLY_SLOT_SPACING_HOURS)).isoformat()
                     if mode.mode == "scheduled" else None
                 ),
             }
@@ -229,11 +233,11 @@ def _persisted_row_count(
     with engine.connect() as connection:
         row = connection.execute(
             text(
-                """
+                f"""
                 SELECT metadata.request_key, metadata.transformed_artifact_path,
                        metadata.transformed_sha256, COUNT(observation.id) AS row_count
-                FROM climate_data.daily_climate AS metadata
-                LEFT JOIN climate_data.daily_climate_detail AS observation
+                FROM {SCHEMA_NAME}.{DAILY_CLIMATE_TABLE} AS metadata
+                LEFT JOIN {SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE} AS observation
                   ON observation.daily_climate_id = metadata.id
                 WHERE metadata.id = :daily_climate_id
                 GROUP BY metadata.id
