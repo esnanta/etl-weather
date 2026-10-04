@@ -20,6 +20,7 @@ from psycopg import connect, sql
 
 from config import APP_ENV_DEV, resolve_app_environment
 from orchestration.database import initialize_application_storage
+from orchestration.schedule import campaign_schedule
 from pipeline.database import DatabaseConfig
 
 logging.basicConfig(
@@ -145,7 +146,17 @@ def _validate_static_guards(config: DatabaseConfig) -> None:
 
 
 def _validate_runtime_guards(config: DatabaseConfig) -> None:
+    if campaign_schedule() is not None:
+        raise RuntimeError(
+            "ERA5 campaign scheduling is enabled. Set "
+            "ERA5_CAMPAIGN_SCHEDULE_ENABLED=false before database recreation."
+        )
+
     task_counts = _airflow_task_state_counts(_airflow_metadata_path())
+    logger.info(
+        "Airflow task preflight | %s",
+        " | ".join(f"{state}={count}" for state, count in task_counts.items()),
+    )
     blocking_tasks = {state: count for state, count in task_counts.items() if count}
     if blocking_tasks:
         raise RuntimeError(
@@ -154,6 +165,7 @@ def _validate_runtime_guards(config: DatabaseConfig) -> None:
         )
 
     processes = _airflow_processes()
+    logger.info("Airflow process preflight | blocking_processes=%d", len(processes))
     if processes:
         rendered = "; ".join(f"pid={pid} cmd={command}" for pid, command in processes)
         raise RuntimeError(
@@ -162,6 +174,11 @@ def _validate_runtime_guards(config: DatabaseConfig) -> None:
         )
 
     session_count = _database_session_count(config)
+    logger.info(
+        "PostgreSQL session preflight | database=%s | other_sessions=%d",
+        config.database,
+        session_count,
+    )
     if session_count:
         raise RuntimeError(
             f"Target database {config.database!r} still has "
@@ -241,18 +258,18 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("Database maintenance unavailable | %s", error)
         return 3
 
+    try:
+        _validate_runtime_guards(config)
+    except (RuntimeError, ValueError) as error:
+        logger.warning("Database recreation preflight failed | %s", error)
+        return 4
+
     if not args.execute:
         logger.info(
-            "Inspect-only mode | no database changes requested. "
+            "Inspect-only preflight passed | no database changes requested. "
             "Use --execute only after reviewing the displayed target."
         )
         return 0
-
-    try:
-        _validate_runtime_guards(config)
-    except RuntimeError as error:
-        logger.warning("Database recreation preflight failed | %s", error)
-        return 4
 
     if not _confirmation(config):
         logger.info("Database recreation cancelled by operator.")
