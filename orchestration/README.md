@@ -596,7 +596,7 @@ airflow dags trigger cds_era5_land_etl \\
 airflow dags list-runs cds_era5_land_etl
 ```
 
-In the Airflow UI, open that run's mapped `extract_or_resume` log, including
+In the Airflow UI, open that run's mapped `resolve_extraction` log, including
 the log before a deferral and the log after resumption. Record these lines in
 chronological order: `CDS retrieval plan`, `CDS submission reserved`,
 `CDS submission deferred`, `Resumed CDS retrieval chunk`, provider timeout
@@ -711,7 +711,7 @@ manual dates or scheduled quarter
     prepare_retry_pass
                |
                v
- extract_or_resume [monthly]
+ resolve_extraction [monthly]
                |
                v
 transform_or_resume [monthly]
@@ -733,6 +733,26 @@ transform_or_resume [monthly]
 - **Pipeline-owned validation:** RAW and transformed validation remain inside
   the existing runtime boundaries rather than becoming separate Airflow tasks.
 
+### Mapped task labels
+
+Monthly mapped task instances use Airflow named mapping with a `YYYY-MM`
+display label derived from the request start date. The DAG ID and task IDs stay
+stable while the UI can distinguish the active month, for example:
+
+```text
+first_extract_attempt [2016-01]
+first_extract_attempt [2016-02]
+first_extract_attempt [2016-03]
+
+resolve_extraction [2016-01]
+transform_or_resume [2016-01]
+load [2016-01]
+```
+
+The display label is observability metadata only. Request identity, artifact
+paths, PostgreSQL progress identity, and pipeline boundary names do not depend
+on it.
+
 ### Task Breakdown
 
 | Task                      | Input                         | Output                            |
@@ -740,7 +760,7 @@ transform_or_resume [monthly]
 | `build_monthly_requests`  | Explicit inclusive dates      | Monthly request specifications    |
 | `first_extract_attempt`   | Monthly request specification | RAW metadata or failure control   |
 | `prepare_retry_pass`      | Three first-pass results      | Monthly retry/pass-through inputs |
-| `extract_or_resume`       | Monthly retry input           | RAW artifact metadata             |
+| `resolve_extraction`      | Monthly retry/pass-through    | RAW artifact metadata             |
 | `transform_or_resume`     | RAW artifact metadata         | Transformed artifact metadata     |
 | `load`                    | Transformed artifact metadata | PostgreSQL load status            |
 
@@ -868,7 +888,7 @@ scheduled runs share the same DAG and `max_active_runs=1`.
 
 ## Peak Memory in Task Logs
 
-Each mapped `extract_or_resume`, `transform_or_resume`, and `load` task
+Each mapped `resolve_extraction`, `transform_or_resume`, and `load` task
 logs a `[METRIC] task memory` line after its runtime boundary, including when
 that boundary raises an exception. For example:
 
@@ -1002,7 +1022,7 @@ Manual recovery receives no scheduled start offset.
 The `first_extract_attempt` map gives each month one attempt (including
 worker-free pacing deferrals). It records a real failure and emits bounded
 control metadata. `prepare_retry_pass` waits for all first-pass maps; then
-`extract_or_resume` passes through successes and retries failed partitions with
+`resolve_extraction` passes through successes and retries failed partitions with
 one Airflow retry, reusing validated checkpoints. Together with the first
 pass, this preserves the original maximum of three extraction attempts. Terminal failures
 remain failed in durable progress and block the next quarter until verified
