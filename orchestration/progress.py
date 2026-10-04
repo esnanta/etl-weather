@@ -34,6 +34,7 @@ def build_pipeline_progress_definition(
     request_specs: Iterable[Mapping[str, Any]],
     *,
     pipeline_name: str = PIPELINE_NAME,
+    identity_context: Mapping[str, Any] | None = None,
 ) -> PipelineProgressDefinition:
     """Build cadence-neutral durable progress identity from request partitions."""
     from pipeline.request import build_request_key, weather_request_from_spec
@@ -91,6 +92,8 @@ def build_pipeline_progress_definition(
         "bbox": bbox,
         "request_keys": [partition.request_key for partition in partitions],
     }
+    if identity_context is not None:
+        payload["identity_context"] = dict(identity_context)
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     configuration_identity = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
