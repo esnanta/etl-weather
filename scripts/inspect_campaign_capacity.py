@@ -7,6 +7,7 @@ memory, triggerer processes, and PostgreSQL size without printing credentials.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import tempfile
@@ -14,6 +15,16 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import disk_usage
+
+from config import validate_and_log_app_environment
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _disk(path: Path) -> dict[str, object]:
@@ -124,6 +135,7 @@ def _postgres() -> dict[str, object]:
 
 
 def main() -> None:
+    validate_and_log_app_environment(logger)
     root = Path(__file__).resolve().parents[1]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", root / "orchestration"))
     result = {
