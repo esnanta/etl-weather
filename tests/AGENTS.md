@@ -237,9 +237,12 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] historical ETL DAG parsing and policy
 ```
 
-Latest verified baseline:
+Latest verified baseline (2026-10-04):
 
 ```text
-119 unit/orchestration tests passed
-2 PostgreSQL integration tests passed against an isolated test database
+271 unit/orchestration tests passed
+6 PostgreSQL integration tests passed against an isolated test database
 ```
+
+The P7 verification baseline is offline-only. Live CDS/provider requests are not
+part of this test gate, and campaign scheduling remains disabled during the run.
