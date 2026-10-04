@@ -284,20 +284,20 @@ before presenting any deletion prompt or reaching any DROP/CREATE path.
 `APP_ENV=dev` may expose guarded recreation after displaying host, port,
 database, user, and schema without printing passwords. Immediately before
 deletion, it must ask an interactive yes/no question naming the exact target;
-`yes` or `y` proceeds, while `no` or `n` aborts cleanly. Missing
-`APP_ENV` fails closed to production behavior; unsupported values are invalid.
+`yes` or `y` proceeds, while `no` or `n` aborts cleanly. Missing, blank, or
+unsupported `APP_ENV` values log an actionable warning and abort; no mode is assumed.
 
 Use the actual active configuration; never infer or guess a database name.
 Future production or retained-development databases must not be made eligible
 for reset merely because they use the same schema or application code.
 
 - [ ] Resolve and display the exact configured host, port, database, user, schema, and validated `APP_ENV`.
-- [ ] Confirm that the current **development state** is explicitly authorized for this one-time recreation; do not label the database itself permanently disposable.
-- [ ] Define/verify a dedicated maintenance-only reset entrypoint that is unreachable from normal DAG/pipeline execution.
-- [ ] Enforce `APP_ENV=prod` as a hard deny: no reset option, no deletion prompt, and no DROP/CREATE path may execute.
-- [ ] Allow guarded recreation only when `APP_ENV=dev`; missing, blank, or unsupported `APP_ENV` values must abort before application startup.
-- [ ] In `dev`, display the exact target and ask an interactive confirmation before deletion; accept only `yes`/`y` to continue and `no`/`n` to abort.
-- [ ] Reject PostgreSQL system databases and never use a database-name pattern as the sole safety check.
+- [x] Confirm that the current **development state** is explicitly authorized for this one-time recreation; do not label the database itself permanently disposable.
+- [x] Define/verify a dedicated maintenance-only reset entrypoint that is unreachable from normal DAG/pipeline execution.
+- [x] Enforce `APP_ENV=prod` as a hard deny: no reset option, no deletion prompt, and no DROP/CREATE path may execute.
+- [x] Allow guarded recreation only when `APP_ENV=dev`; missing, blank, or unsupported `APP_ENV` values must abort before application startup.
+- [x] In `dev`, display the exact target and ask an interactive confirmation before deletion; accept only `yes`/`y` to continue and `no`/`n` to abort.
+- [x] Reject PostgreSQL system databases and never use a database-name pattern as the sole safety check.
 - [ ] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
 - [ ] Ensure no old worker or DagRun can resume against the replacement database.
 - [ ] Resolve old pending execution state deliberately while preserving SQLite and history.
@@ -357,6 +357,7 @@ For every subsequent fix:
 | 2026-10-04 | P6 safety clarification | Clarified that only the **current development contents** are authorized for one-time replacement; the application database is non-disposable by default. Revised P6 to require a dedicated maintenance-only reset path, dry-run default, explicit execute flag, ephemeral destructive-reset opt-in, exact configured database-name confirmation, system-database rejection, target display, and Airflow/process preflight. Normal DAG/pipeline/bootstrap code must never DROP or recreate the database. | P6 execution remains deferred; next work is to review/implement the guarded maintenance entrypoint before any destructive action. |
 | 2026-10-04 | P6 environment-mode guard | Added root `APP_ENV=dev|prod` policy. The mode is mandatory: missing, blank, or unsupported values log an actionable warning and abort; no mode is assumed. Production must not expose any database delete/recreate feature. Development may expose the maintenance reset only after showing the exact configured target and receiving an interactive confirmation: `yes`/`y` proceeds, `no`/`n` aborts. Startup validation/logging is wired into Airflow activation, DAG parsing, CLI entrypoints, and CI declares `APP_ENV=dev` explicitly. No reset has been executed. | Run regression after adding `APP_ENV` to the local `.env`, then implement/test the maintenance command before any database recreation. |
 | 2026-10-04 | P6 APP_ENV regression fix | User verified Airflow activation logs `Application environment | APP_ENV=dev`. The focused config run reported **12 passed, 1 failed**, and the full unit/orchestration run reported **221 passed, 1 failed**. The only failure was a stale regex expecting the superseded error text `APP_ENV must be either`; runtime correctly emitted the new actionable instruction `Set APP_ENV=dev or APP_ENV=prod`. Updated only the test assertion; runtime behavior is unchanged. | Rerun the focused config test and full unit/orchestration suite. P6 execution remains deferred. |
+| 2026-10-04 | P6 maintenance command implementation | Added `scripts/recreate_postgres_database.py` as a maintenance-only entrypoint. It hard-denies `APP_ENV=prod` before database configuration access; missing/invalid APP_ENV aborts; dev inspect mode displays the configured target and runs read-only preflight; system databases are rejected; campaign scheduling must be disabled; queued/running/deferred/scheduled/retry/reschedule/restarting task states, queued/running DagRuns, Airflow service processes, and other PostgreSQL sessions block execution. `--execute` reaches the interactive `y/yes` or `n/no` confirmation only after preflight. DROP/CREATE uses quoted PostgreSQL identifiers and then bootstraps the five application tables. Added focused unit tests; no real database recreation has been executed. | Run the new unit tests and inspect-only command on the development host. Record exact target and blockers before any `--execute` use. |
 
 Current next action: P6 guarded development PostgreSQL recreation, but execution remains deferred. P1 through P5 are complete. Before any destructive command, resolve and display the exact configured PostgreSQL target, verify the one-time development reset authorization, require the planned maintenance-only safety guards, keep scheduling disabled, and inspect active/queued/running/deferred Airflow work. Treat the database as non-disposable by default; only the current development contents have been authorized for one-time replacement. Preserve `pipeline/` as the ETL/scientific implementation owner.
 No database reset has been performed.
