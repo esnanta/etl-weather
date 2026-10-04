@@ -211,19 +211,27 @@ Activate the environment in the current shell before running the pipeline or tes
 source myvenv/bin/activate
 ```
 
-Copy `env-example` to `.env`, set the application environment explicitly,
-then set the CDS credentials:
+Copy `env-example` to `.env`, set the application environment and campaign
+identity/range explicitly, then set the CDS credentials:
 
 ```env
 APP_ENV=dev
+
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2017
+
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 ```
 
-`APP_ENV` is mandatory and accepts only `dev` or `prod`. Application
-entrypoints log the selected mode at startup. If it is missing, blank, or
-invalid, startup aborts with an instruction to set `APP_ENV=dev` or
-`APP_ENV=prod`; no mode is assumed.
+`APP_ENV` is mandatory and accepts only `dev` or `prod`. The three
+campaign variables are also mandatory for Airflow orchestration.
+`activate-airflow.sh` validates them before startup, while
+`orchestration/config.py` reads the same exported values for campaign
+selection and reporting. Application entrypoints log the selected mode and
+campaign values at startup. Missing or invalid required values abort startup;
+no campaign range is silently assumed.
 
 Generate the shared Airflow JWT secret without printing it to the terminal:
 
