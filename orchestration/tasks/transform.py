@@ -35,19 +35,19 @@ def _request_spec_from_result(
 
 
 def ensure_transformed_checkpoint_partition(
-    extract_result: Mapping[str, Any],
+    raw_checkpoint_result: Mapping[str, Any],
 ) -> dict[str, object]:
     """Ensure one mapped transformed checkpoint from RAW control metadata."""
     from pipeline.request import weather_request_from_spec
     from pipeline.runtime import ensure_transformed_checkpoint_partition as ensure_transformed_checkpoint_runtime
 
     request_spec = _request_spec_from_result(
-        extract_result, "ensure_raw_checkpoint"
+        raw_checkpoint_result, "ensure_raw_checkpoint"
     )
     request = weather_request_from_spec(request_spec)
     logger.info(
         "Ensuring transformed checkpoint for request_key=%s",
-        extract_result["request_key"],
+        raw_checkpoint_result["request_key"],
     )
     with measure_peak_memory("ensure_transformed_checkpoint"):
         warn_low_disk_space("ensure_transformed_checkpoint")
@@ -55,11 +55,11 @@ def ensure_transformed_checkpoint_partition(
 
 
 def ensure_transformed_checkpoint_with_progress(
-    extract_result: dict[str, object],
+    raw_checkpoint_result: dict[str, object],
 ) -> dict[str, object]:
     """Ensure a transformed checkpoint while recording durable progress evidence."""
-    progress_id = int(extract_result["progress_id"])
-    request_key = str(extract_result["request_key"])
+    progress_id = int(raw_checkpoint_result["progress_id"])
+    request_key = str(raw_checkpoint_result["request_key"])
     record_progress(
         progress_id,
         request_key,
@@ -68,7 +68,7 @@ def ensure_transformed_checkpoint_with_progress(
         validation_status="pending",
     )
     try:
-        result = ensure_transformed_checkpoint_partition(extract_result)
+        result = ensure_transformed_checkpoint_partition(raw_checkpoint_result)
         require_request_key(result, request_key)
         path, checksum, size = artifact_identity(result)
         record_progress(
@@ -85,5 +85,5 @@ def ensure_transformed_checkpoint_with_progress(
     return {
         **result,
         "progress_id": progress_id,
-        "run_mode": extract_result["run_mode"],
+        "run_mode": raw_checkpoint_result["run_mode"],
     }
