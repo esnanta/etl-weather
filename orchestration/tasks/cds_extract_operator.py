@@ -12,7 +12,7 @@ from typing import Any
 from airflow.providers.standard.triggers.temporal import DateTimeTrigger
 from airflow.sdk import BaseOperator, Context
 
-from orchestration.tasks.extract import extract_with_progress
+from orchestration.tasks.extract import ensure_raw_checkpoint_with_progress
 from pipeline.extraction.cds import CdsSubmissionDeferred
 
 
@@ -59,7 +59,7 @@ class CdsPacedExtractOperator(BaseOperator):
                 )
                 raise AssertionError("Airflow defer unexpectedly returned.")
         try:
-            return extract_with_progress(
+            return ensure_raw_checkpoint_with_progress(
                 self.request_spec, self.progress_id, self.run_mode, paced=True
             )
         except CdsSubmissionDeferred as deferred:
@@ -74,7 +74,7 @@ class CdsPacedExtractOperator(BaseOperator):
             if not self.first_pass:
                 raise
             self.log.warning(
-                "First extraction attempt failed; month=%s; error=%s",
+                "RAW checkpoint attempt failed; month=%s; error=%s",
                 self.request_spec.get("start_date"), type(error).__name__,
             )
             return {
