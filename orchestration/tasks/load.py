@@ -23,19 +23,19 @@ logger = logging.getLogger("orchestration.tasks.era5_land")
 
 
 def load_partition(
-    transform_result: Mapping[str, Any],
+    transformed_checkpoint_result: Mapping[str, Any],
 ) -> dict[str, object]:
     """Delegate one mapped load task using transform control metadata."""
     from pipeline.request import weather_request_from_spec
     from pipeline.runtime import load_request_partition
 
     request_spec = _request_spec_from_result(
-        transform_result, "ensure_transformed_checkpoint"
+        transformed_checkpoint_result, "ensure_transformed_checkpoint"
     )
     request = weather_request_from_spec(request_spec)
     logger.info(
         "Starting database load for request_key=%s",
-        transform_result["request_key"],
+        transformed_checkpoint_result["request_key"],
     )
     with measure_peak_memory("load"):
         warn_low_disk_space("load")
@@ -43,11 +43,11 @@ def load_partition(
 
 
 def load_with_progress(
-    transform_result: dict[str, object],
+    transformed_checkpoint_result: dict[str, object],
 ) -> dict[str, object]:
     """Run load, verify persisted evidence, and reconcile manual repair."""
-    progress_id = int(transform_result["progress_id"])
-    request_key = str(transform_result["request_key"])
+    progress_id = int(transformed_checkpoint_result["progress_id"])
+    request_key = str(transformed_checkpoint_result["request_key"])
     record_progress(
         progress_id,
         request_key,
@@ -55,7 +55,7 @@ def load_with_progress(
         validation_status="pending",
     )
     try:
-        result = load_partition(transform_result)
+        result = load_partition(transformed_checkpoint_result)
         require_request_key(result, request_key)
         path, checksum, size = artifact_identity(result)
         with runtime_database_engine() as engine:
@@ -72,7 +72,7 @@ def load_with_progress(
             transformed_file_size_bytes=size,
             row_count=row_count,
         )
-        request_spec = transform_result["request"]
+        request_spec = transformed_checkpoint_result["request"]
         if not isinstance(request_spec, Mapping):
             raise ValueError(
                 "Load control metadata is missing a request specification."
@@ -85,7 +85,7 @@ def load_with_progress(
             checksum,
             size,
             row_count,
-            manual_repair=transform_result["run_mode"] == "manual",
+            manual_repair=transformed_checkpoint_result["run_mode"] == "manual",
         )
     except Exception as error:
         record_failure(progress_id, request_key, "load", error)
@@ -93,5 +93,5 @@ def load_with_progress(
     return {
         **result,
         "progress_id": progress_id,
-        "run_mode": transform_result["run_mode"],
+        "run_mode": transformed_checkpoint_result["run_mode"],
     }
