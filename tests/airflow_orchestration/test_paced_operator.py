@@ -15,6 +15,27 @@ from orchestration.tasks import cds_extract_operator
 from pipeline.extraction.cds import CdsSubmissionDeferred
 
 
+def test_operator_exposes_month_label_from_request_spec() -> None:
+    operator = cds_extract_operator.CdsPacedExtractOperator(
+        task_id="label_test",
+        request_spec={"start_date": "2016-02-01"},
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
+    assert operator.month_label == "2016-02"
+
+
+def test_operator_rejects_missing_month_label_source() -> None:
+    with pytest.raises(ValueError, match="request_spec.start_date"):
+        cds_extract_operator.CdsPacedExtractOperator(
+            task_id="invalid_label",
+            request_spec={},
+            progress_id=42,
+            run_mode="scheduled",
+        )
+
+
 def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = []
 
