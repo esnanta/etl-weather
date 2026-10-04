@@ -18,7 +18,7 @@ from orchestration.schedule import campaign_schedule
 from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
 from orchestration.tasks.load import load_with_progress
-from orchestration.tasks.transform import transform_with_progress
+from orchestration.tasks.transform import ensure_transformed_checkpoint_with_progress
 
 DAG_ID = "cds_era5_land_etl"
 
@@ -80,12 +80,14 @@ with DAG(
         ]
 
     @task(
-        task_id="transform_or_resume",
+        task_id="ensure_transformed_checkpoint",
         map_index_template="{{ month_label }}",
         retries=0,
         execution_timeout=timedelta(hours=2),
     )
-    def transform_or_resume(extract_result: dict[str, object]) -> dict[str, object]:
+    def ensure_transformed_checkpoint(
+        extract_result: dict[str, object],
+    ) -> dict[str, object]:
         context = get_current_context()
         request = extract_result.get("request", extract_result.get("request_spec"))
         if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
@@ -94,7 +96,7 @@ with DAG(
                 "for the Airflow month label."
             )
         context["month_label"] = str(request["start_date"])[:7]
-        return transform_with_progress(extract_result)
+        return ensure_transformed_checkpoint_with_progress(extract_result)
 
     @task(
         task_id="load",
@@ -118,7 +120,7 @@ with DAG(
 
     monthly_jobs = build_monthly_requests()
     first_attempts = CdsPacedExtractOperator.partial(
-        task_id="first_extract_attempt",
+        task_id="attempt_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
         retries=0,
@@ -127,7 +129,7 @@ with DAG(
     ).expand_kwargs(monthly_jobs)
     retry_jobs = prepare_retry_pass(first_attempts.output)
     resolved_extraction = CdsPacedExtractOperator.partial(
-        task_id="resolve_extraction",
+        task_id="resolve_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
         retries=1,
@@ -136,7 +138,7 @@ with DAG(
         max_retry_delay=timedelta(hours=1),
         execution_timeout=timedelta(hours=6),
     ).expand_kwargs(retry_jobs)
-    transformed = transform_or_resume.expand(
+    transformed = ensure_transformed_checkpoint.expand(
         extract_result=resolved_extraction.output
     )
     load.expand(transform_result=transformed)
