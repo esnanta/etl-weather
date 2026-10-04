@@ -34,8 +34,19 @@ logger = logging.getLogger(__name__)
 # PostgreSQL maintenance databases must never be application reset targets.
 SYSTEM_DATABASES = frozenset({"postgres", "template0", "template1"})
 
-# Airflow task states that indicate work may still touch application storage.
-BLOCKING_TASK_STATES = ("queued", "running", "deferred")
+# Airflow task states that can execute now or resume automatically later.
+BLOCKING_TASK_STATES = (
+    "queued",
+    "running",
+    "deferred",
+    "scheduled",
+    "up_for_retry",
+    "up_for_reschedule",
+    "restarting",
+)
+
+# Airflow DagRun states that may still produce or resume task work.
+BLOCKING_DAGRUN_STATES = ("queued", "running")
 
 # Airflow service/process markers that can schedule, resume, or execute task work.
 AIRFLOW_PROCESS_MARKERS = (
@@ -89,6 +100,28 @@ def _airflow_task_state_counts(path: Path) -> dict[str, int]:
     except sqlite3.Error as error:
         raise RuntimeError(
             f"Unable to inspect Airflow SQLite metadata at {path}: "
+            f"{type(error).__name__}"
+        ) from error
+
+
+def _airflow_dag_run_state_counts(path: Path) -> dict[str, int]:
+    if not path.is_file():
+        return {state: 0 for state in BLOCKING_DAGRUN_STATES}
+    try:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)) as conn:
+            result = {}
+            for state in BLOCKING_DAGRUN_STATES:
+                result[state] = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM dag_run "
+                        "WHERE dag_id = ? AND state = ?",
+                        ("cds_era5_land_etl", state),
+                    ).fetchone()[0]
+                )
+            return result
+    except sqlite3.Error as error:
+        raise RuntimeError(
+            f"Unable to inspect Airflow DagRuns at {path}: "
             f"{type(error).__name__}"
         ) from error
 
@@ -160,8 +193,20 @@ def _validate_runtime_guards(config: DatabaseConfig) -> None:
     blocking_tasks = {state: count for state, count in task_counts.items() if count}
     if blocking_tasks:
         raise RuntimeError(
-            "Airflow task instances are still active: "
+            "Airflow task instances can still run or resume: "
             + ", ".join(f"{state}={count}" for state, count in blocking_tasks.items())
+        )
+
+    dag_run_counts = _airflow_dag_run_state_counts(_airflow_metadata_path())
+    logger.info(
+        "Airflow DagRun preflight | %s",
+        " | ".join(f"{state}={count}" for state, count in dag_run_counts.items()),
+    )
+    blocking_runs = {state: count for state, count in dag_run_counts.items() if count}
+    if blocking_runs:
+        raise RuntimeError(
+            "ERA5-Land DagRuns can still run or resume: "
+            + ", ".join(f"{state}={count}" for state, count in blocking_runs.items())
         )
 
     processes = _airflow_processes()
