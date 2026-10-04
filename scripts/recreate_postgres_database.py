@@ -128,8 +128,7 @@ def _database_session_count(config: DatabaseConfig) -> int:
             return int(row[0]) if row else 0
 
 
-def _display_target(app_env: str, config: DatabaseConfig) -> None:
-    logger.info("Application environment | APP_ENV=%s", app_env)
+def _display_target(config: DatabaseConfig) -> None:
     logger.info("PostgreSQL maintenance target")
     logger.info("  host=%s", config.host)
     logger.info("  port=%d", config.port)
@@ -138,11 +137,7 @@ def _display_target(app_env: str, config: DatabaseConfig) -> None:
     logger.info("  schema=%s", config.schema)
 
 
-def _validate_static_guards(app_env: str, config: DatabaseConfig) -> None:
-    if app_env != APP_ENV_DEV:
-        raise RuntimeError(
-            "Database recreation is unavailable unless APP_ENV=dev."
-        )
+def _validate_static_guards(config: DatabaseConfig) -> None:
     if config.database.lower() in SYSTEM_DATABASES:
         raise RuntimeError(
             f"Refusing to recreate PostgreSQL system database {config.database!r}."
@@ -228,11 +223,20 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("Database maintenance aborted | %s", error)
         return 2
 
+    logger.info("Application environment | APP_ENV=%s", app_env)
+    if app_env != APP_ENV_DEV:
+        logger.warning(
+            "Database maintenance unavailable | database recreation is disabled "
+            "when APP_ENV=%s.",
+            app_env,
+        )
+        return 3
+
     config = DatabaseConfig.from_env()
-    _display_target(app_env, config)
+    _display_target(config)
 
     try:
-        _validate_static_guards(app_env, config)
+        _validate_static_guards(config)
     except RuntimeError as error:
         logger.warning("Database maintenance unavailable | %s", error)
         return 3
