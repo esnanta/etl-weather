@@ -7,6 +7,18 @@ APP_ENV=dev
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
+# Airflow campaign scheduling.
+# Keep false until the controlled scheduled rollout is explicitly enabled.
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
+
+# Supported values: 30m, 1h, 2h.
+# Used only when ERA5_CAMPAIGN_SCHEDULE_ENABLED=true.
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+
+# Minimum interval between actual CDS submission POSTs, in seconds.
+# This is independent from the Airflow scheduler cadence.
+CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
+
 # The shared Airflow JWT secret is stored outside .env
 # Further instructions for generating
 # the secret are in the orchestration/README.md file.
