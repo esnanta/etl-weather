@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-04 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 through P5 complete. Final pre-reset regression: 211 unit/orchestration tests passed and 6 PostgreSQL integration tests passed. P6 database recreation is next and has not started.  
+Status: P1 through P6 complete. Guarded development reset, PostgreSQL recreation/bootstrap, filesystem cleanup, fresh Airflow SQLite metadata, pool recreation, and DAG rediscovery are verified. P7 controlled runtime verification is next.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -301,7 +301,7 @@ for reset merely because they use the same schema or application code.
 - [x] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
 - [x] Ensure no old worker or DagRun can resume against the replacement database.
 - [x] Resolve old pending execution state deliberately by replacing the development SQLite metadata with a fresh Airflow metadata database; historical runtime state was intentionally discarded as part of reset-all.
-- [ ] Record artifact retention and the consequences of resetting progress/pacing.
+- [x] Record artifact retention and the consequences of resetting progress/pacing.
 - [x] Recreate only the explicitly confirmed development target after all guards pass.
 - [x] Bootstrap the five application tables in the single application schema.
 - [x] Verify schema, constraints, connection settings, and fresh progress state.
@@ -367,8 +367,9 @@ For every subsequent fix:
 | 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `cds_submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
 | 2026-10-04 | P6 Airflow metadata reinitialization | User ran `airflow db migrate`; Airflow created a fresh SQLite metadata database at `orchestration/airflow.db` and reported migration success. `airflow db check` returned connection successful. Pool `cds_api` was recreated with **1 slot** and the expected description. The new SQLite file is present (~724K). Airflow emitted a Starlette/httpx deprecation warning during migration, but migration completed successfully. The final DAG-list grep returned no matching output, so DAG parse/registration is not yet verified. | Diagnose DAG discovery/import state with `airflow dags list-import-errors` and an unfiltered DAG list before closing P6. |
 | 2026-10-04 | P6 standalone runtime decision | User confirmed that local Airflow should be run with `airflow standalone` rather than separate scheduler/API-server/DAG-processor/triggerer terminals. Immediately after fresh metadata initialization, both `airflow dags list-import-errors` and `airflow dags list` returned `No data found`, consistent with a fresh metadata DB before a DAG processor has parsed the DAG. Updated the orchestration README so standalone is the canonical local runtime and documented this fresh-metadata behavior. | Start standalone with scheduling disabled, allow DAG parsing, then verify `cds_era5_land_etl` appears and no import errors are recorded. |
+| 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
 
-Current next action: finish P6 by starting the fresh local Airflow runtime in standalone mode, allowing its DAG processor to parse `cds_era5_land_etl`, and verifying the DAG appears without import errors. P1 through P5 are complete, the guarded development reset has been executed, PostgreSQL and filesystem post-reset state have been verified, and fresh Airflow SQLite metadata plus the `cds_api` pool have been recreated. Preserve `pipeline/` as the ETL/scientific implementation owner.
+Current next action: P7 controlled runtime verification. P1 through P6 are complete. Do not start live CDS work or enable unattended scheduling until an explicit P7 pilot scope is approved. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
 
 ## 10. P1 audit evidence — 2026-10-03
