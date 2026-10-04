@@ -65,6 +65,9 @@ echo "Application environment | APP_ENV=$APP_ENV"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_ENABLED=${ERA5_CAMPAIGN_SCHEDULE_ENABLED:-}"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_CADENCE=${ERA5_CAMPAIGN_SCHEDULE_CADENCE:-}"
 echo "Application environment | CDS_MIN_SUBMISSION_INTERVAL_SECONDS=${CDS_MIN_SUBMISSION_INTERVAL_SECONDS:-}"
+echo "Application environment | CAMPAIGN_KEY=${CAMPAIGN_KEY:-}"
+echo "Application environment | CAMPAIGN_START_YEAR=${CAMPAIGN_START_YEAR:-}"
+echo "Application environment | CAMPAIGN_END_YEAR=${CAMPAIGN_END_YEAR:-}"
 
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/myvenv/bin/activate"
