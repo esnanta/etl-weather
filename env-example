@@ -19,12 +19,24 @@ CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 #   selects the earliest eligible incomplete campaign quarter from durable
 #   PostgreSQL progress state.
 #
-# The campaign range itself is defined in orchestration/config.py:
-#   CAMPAIGN_START_YEAR = 2016
-#   CAMPAIGN_END_YEAR   = 2025
+# Campaign identity and bounded historical range.
 #
-# Change this value only while Airflow standalone is stopped, then restart
-# standalone so the DAG processor reparses the DAG with the new schedule.
+# CAMPAIGN_KEY:
+#   Stable logical identity used by campaign progress selection and reporting.
+#   Keep this value unchanged for the same logical historical campaign.
+#
+# CAMPAIGN_START_YEAR / CAMPAIGN_END_YEAR:
+#   First and last calendar years included in the bounded campaign.
+#   The current controlled rollout is limited to 2016 through 2017.
+#
+# These values are shown by activate-airflow.sh at startup so the operator can
+# verify the intended campaign configuration before Airflow begins scheduling.
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2017
+#
+# Change campaign or schedule settings only while Airflow standalone is
+# stopped, then restart standalone so the DAG processor reparses the DAG.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 
 # Airflow scheduler cadence used only when
