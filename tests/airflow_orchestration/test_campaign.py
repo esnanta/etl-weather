@@ -267,7 +267,7 @@ def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> Non
 
     partial = build_historical_request_specs(
         f"{CAMPAIGN_START_YEAR}-02-10",
-        (date(CAMPAIGN_START_YEAR, 3, 1) - __import__("datetime").timedelta(days=1)).isoformat(),
+        _month_end(CAMPAIGN_START_YEAR, 2),
         current_local_date=date.max
     )[0]
     assert matching_campaign_progress_definition(partial) is None
