@@ -31,8 +31,8 @@ provider clients in a DAG file.
 Task wrappers must delegate to the methods on `pipeline.runtime.WeatherPipeline`:
 
 ```text
-extract_or_resume()
-transform_or_resume()
+ensure_raw_checkpoint()
+ensure_transformed_checkpoint()
 load()
 ```
 
@@ -47,8 +47,8 @@ A wrapper should do only four things:
 3. build or call the Airflow-neutral runtime entrypoint for one boundary;
 4. return small control metadata or allow an exception to propagate.
 
-`extract_or_resume()` currently returns `RawWeatherDataset`, `DatasetArtifact`,
-and `LoadedWeatherDataset`; `transform_or_resume()` returns
+`ensure_raw_checkpoint()` currently returns `RawWeatherDataset`, `DatasetArtifact`,
+and `LoadedWeatherDataset`; `ensure_transformed_checkpoint()` returns
 `TransformedWeatherDataset` and `DatasetArtifact`. These values contain xarray
 or Pandas data and must not be passed through XCom.
 
@@ -238,8 +238,8 @@ Use stable names that communicate the active source and boundary. Prefer task
 IDs such as:
 
 ```text
-extract_or_resume
-transform_or_resume
+ensure_raw_checkpoint
+ensure_transformed_checkpoint
 load
 ```
 
@@ -271,7 +271,7 @@ and verify:
 
 1. the DagBag has no import errors;
 2. the expected DAG ID and three runtime tasks exist;
-3. dependencies are `extract_or_resume → transform_or_resume → load`;
+3. dependencies are `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`;
 4. timezone, schedule, fixed start date, `catchup`, and `max_active_runs` match
    policy;
 5. extraction uses the `cds_api` pool;
