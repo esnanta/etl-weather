@@ -29,8 +29,9 @@ CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 #   First and last calendar years included in the bounded campaign.
 #   The current controlled rollout is limited to 2016 through 2017.
 #
-# These values are shown by activate-airflow.sh at startup so the operator can
-# verify the intended campaign configuration before Airflow begins scheduling.
+# These values are required. activate-airflow.sh validates and displays them
+# at startup, and orchestration/config.py reads the same exported values for
+# campaign selection and reporting.
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2017
