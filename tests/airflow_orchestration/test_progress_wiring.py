@@ -364,7 +364,7 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
         ),
     )
     with pytest.raises(CdsSubmissionDeferred):
-        extract_tasks.extract_with_progress(_spec(), 42, "manual", paced=True)
+        extract_tasks.ensure_raw_checkpoint_with_progress(_spec(), 42, "manual", paced=True)
     assert updates == [{
         "extract_status": "running", "transform_status": "pending",
         "load_status": "pending", "validation_status": "pending",
