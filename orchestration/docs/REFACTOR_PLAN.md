@@ -267,20 +267,41 @@ logged separately. Do not silently fix behavior in a structural refactor.
 - [x] Review the diff for unrelated changes and record any deviations from this plan.
 - [x] Confirm all implementation changes are on `dev`.
 
-### P6 — Development PostgreSQL recreation
+### P6 — Guarded development PostgreSQL recreation
 
-This is authorized in principle, but deferred until implementation and testing
-are ready. Use the actual host configuration; never guess a database name.
+The current development database is intentionally allowed to be recreated once
+because the user has confirmed that its present contents are disposable. This
+is a **temporary development-state exception**, not an application property.
+The database must be treated as non-disposable by default now and in future
+environments.
 
-- [ ] Identify the exact host/database and verify it is the disposable project database.
-- [ ] Keep scheduling disabled and inspect active, queued, and deferred task instances.
+Normal runtime code must never drop or recreate the configured database.
+Destructive database maintenance belongs in a dedicated maintenance entrypoint,
+separate from DAGs, pipeline runtime, bootstrap helpers, and ordinary scripts.
+The maintenance entrypoint must be safe by default: inspect-only/dry-run unless
+the operator supplies an explicit execution flag, an ephemeral destructive-reset
+opt-in that is not stored in project configuration, and the exact configured
+database name as confirmation. It must reject mismatched confirmation and
+well-known PostgreSQL system databases. It must display host, port, database,
+user, and schema before any destructive command, without printing passwords.
+
+Use the actual active configuration; never infer or guess a database name.
+Future production or retained-development databases must not be made eligible
+for reset merely because they use the same schema or application code.
+
+- [ ] Resolve and display the exact configured host, port, database, user, and schema.
+- [ ] Confirm that the current **development state** is explicitly authorized for this one-time recreation; do not label the database itself permanently disposable.
+- [ ] Define/verify a dedicated maintenance-only reset entrypoint that is unreachable from normal DAG/pipeline execution.
+- [ ] Require dry-run by default, an explicit execute flag, an ephemeral destructive-reset opt-in, and exact database-name confirmation before DROP/CREATE.
+- [ ] Reject confirmation mismatches and PostgreSQL system databases; never use a name heuristic as the sole safety check.
+- [ ] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
 - [ ] Ensure no old worker or DagRun can resume against the replacement database.
 - [ ] Resolve old pending execution state deliberately while preserving SQLite and history.
 - [ ] Record artifact retention and the consequences of resetting progress/pacing.
-- [ ] Delete and recreate only the verified target PostgreSQL database.
+- [ ] Recreate only the explicitly confirmed development target after all guards pass.
 - [ ] Bootstrap the five application tables in the single application schema.
 - [ ] Verify schema, constraints, connection settings, and fresh progress state.
-- [ ] Confirm SQLite metadata, artifact files, credentials, and JWT key were not deleted.
+- [ ] Confirm SQLite metadata, artifact files, credentials, JWT key, and retained artifacts were not deleted.
 
 Old XCom may refer to progress IDs from the discarded database. Do not clear and
 resume old task instances against the new database; use new runs that initialize
@@ -329,8 +350,9 @@ For every subsequent fix:
 | 2026-10-04 | P4 implementation | Split request planning, interval conversion, monitoring, job preparation, extraction, transformation, load, progress recording, and campaign repair into responsibility-specific modules. Updated campaign, DAG, CDS operator, and orchestration tests to the new owners. Kept `tasks/era5_land.py` and `tasks/progress.py` only as thin compatibility re-export facades; runtime callers no longer depend on them. Preserved historical logger names and added a focused repository-data-path assertion. | Run post-change unit/orchestration and PostgreSQL integration tests. Keep P4 behavioral verification items open until results are reviewed. |
 | 2026-10-04 | P4 closure and pipeline-boundary audit | User ran post-change verification locally: unit/orchestration **211 passed in 5.76s** and PostgreSQL integration **6 passed in 1.34s**. Audited the new task modules against `pipeline/runtime.py`, `pipeline/request.py`, loader and CDS extraction owners: extraction, transformation, and loading remain delegated to existing pipeline functions; job preparation remains orchestration-only. No `pipeline/` files were changed for P4. | P4 complete. Start P5 regression/documentation; any future `pipeline/` change requires a separately stated technical reason. |
 | 2026-10-04 | P5 closure | Reused the immediately post-P4 regression evidence because it was run against the completed code refactor: **211 unit/orchestration passed in 5.76s** and **6 isolated PostgreSQL integration tests passed in 1.34s**, with no failures or skips reported. Direct HEAD audit of 46 affected runtime/test Python files found no active imports from the compatibility facades and no old `climate.*` operational SQL/schema references. Updated `orchestration/README.md`, `tests/AGENTS.md`, and the current Stage 8 notes in `IMPLEMENTATION_PLAN.md`; retained explicitly historical Stage 3 baseline text. Diff review from the audited baseline found only planned configuration/orchestration/scripts/tests/docs changes plus the previously approved `pipeline/database/config.py` shared-schema import; no scientific pipeline algorithms changed. | P5 complete. Proceed to P6 only with explicit target-database verification and scheduling/process preflight; no database reset has occurred yet. |
+| 2026-10-04 | P6 safety clarification | Clarified that only the **current development contents** are authorized for one-time replacement; the application database is non-disposable by default. Revised P6 to require a dedicated maintenance-only reset path, dry-run default, explicit execute flag, ephemeral destructive-reset opt-in, exact configured database-name confirmation, system-database rejection, target display, and Airflow/process preflight. Normal DAG/pipeline/bootstrap code must never DROP or recreate the database. | P6 execution remains deferred; next work is to review/implement the guarded maintenance entrypoint before any destructive action. |
 
-Current next action: P6 development PostgreSQL recreation. P1 through P5 are complete. Before any destructive command, identify and display the exact configured PostgreSQL host/database, keep scheduling disabled, inspect active/queued/deferred Airflow work, and confirm the target is disposable. Preserve `pipeline/` as the ETL/scientific implementation owner.
+Current next action: P6 guarded development PostgreSQL recreation, but execution remains deferred. P1 through P5 are complete. Before any destructive command, resolve and display the exact configured PostgreSQL target, verify the one-time development reset authorization, require the planned maintenance-only safety guards, keep scheduling disabled, and inspect active/queued/running/deferred Airflow work. Treat the database as non-disposable by default; only the current development contents have been authorized for one-time replacement. Preserve `pipeline/` as the ETL/scientific implementation owner.
 No database reset has been performed.
 
 
