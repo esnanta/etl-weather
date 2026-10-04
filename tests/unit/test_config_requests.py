@@ -71,7 +71,10 @@ def test_database_recreation_is_allowed_only_in_dev() -> None:
 
 
 def test_application_environment_rejects_ambiguous_values() -> None:
-    with pytest.raises(ValueError, match="APP_ENV must be either"):
+    with pytest.raises(
+        ValueError,
+        match="Set APP_ENV=dev or APP_ENV=prod",
+    ):
         resolve_app_environment({"APP_ENV": "development"})
 
 
