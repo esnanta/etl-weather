@@ -1,18 +1,49 @@
-# PostgreSQL Development Database Recreation Procedure
+# Guarded PostgreSQL Development Database Recreation Procedure
 
-This procedure prepares the explicit P6 database recreation. Do not execute the
-DROP/CREATE section during P3. Airflow metadata remains SQLite and is not part of
-this procedure.
+This procedure prepares the explicit P6 database recreation. The current
+development database contents are authorized for one-time replacement, but the
+application database itself must be treated as non-disposable by default.
 
-## 1. Resolve and record the exact configured target
+Airflow metadata remains SQLite and is outside this procedure. Normal DAG,
+pipeline, bootstrap, reporting, and application code must never DROP or recreate
+the configured PostgreSQL database.
 
-Activate the project environment first:
+## 1. Safety model
+
+Database recreation is a maintenance-only operation.
+
+The maintenance entrypoint implemented for P6 must:
+
+1. default to inspect-only or dry-run behavior;
+2. resolve host, port, database, user, and schema from the existing
+   `DatabaseConfig`;
+3. never print the database password;
+4. require an explicit execution flag before any destructive action;
+5. require an ephemeral destructive-reset opt-in supplied only for the current
+   maintenance session and not stored in `.env` or repository configuration;
+6. require the operator to supply the exact configured database name again as
+   confirmation;
+7. reject a confirmation value that does not exactly match the configured
+   database;
+8. reject well-known PostgreSQL system databases such as `postgres`,
+   `template0`, and `template1`;
+9. stop when Airflow/process preflight has not been completed;
+10. never use a database-name pattern such as `dev` or `test` as the sole
+    authorization for deletion.
+
+Future production or retained-development databases are therefore protected by
+default. Merely running the same application code or using the same
+`climate_data` schema does not make a database eligible for reset.
+
+## 2. Resolve and record the exact configured target
+
+Activate the project environment:
 
 ```bash
 source activate-airflow.sh
 ```
 
-Print the runtime target without exposing the password:
+Inspect the active runtime target without exposing the password:
 
 ```bash
 python - <<'PY'
@@ -27,13 +58,16 @@ print(f"schema={config.schema}")
 PY
 ```
 
-Record this output in the P6 work log before destructive work. The database name
-must come from the active `POSTGRES_DATABASE` configuration; never substitute a
-guessed name.
+Record this output in the P6 work log. The database name must come from the
+active `POSTGRES_DATABASE` configuration. Never substitute or infer another
+database name.
 
-## 2. Pre-reset checks required in P6
+This inspection does **not** authorize deletion. It only identifies the target
+that a later guarded maintenance invocation would have to confirm exactly.
 
-Before recreation:
+## 3. Pre-reset checks required in P6
+
+Before any destructive maintenance:
 
 1. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
 2. Inspect active, queued, running, and deferred Airflow task instances.
@@ -42,42 +76,41 @@ Before recreation:
    removes its durable submission timestamp.
 5. Confirm RAW NetCDF, transformed Parquet, chunk cache, Airflow SQLite metadata,
    logs, credentials, and JWT key are outside the database reset scope.
+6. Confirm explicitly in the P6 work log that the **current development
+   contents**, not the database as a permanent resource, are authorized for
+   one-time replacement.
 
-## 3. Recreate only the verified project database
+If any of these checks cannot be established, stop. Do not attempt to compensate
+with `dropdb --force` or by terminating unknown sessions automatically.
 
-After the exact target from step 1 is reviewed, export it from the same runtime
-configuration rather than typing a new value:
+## 4. Guarded maintenance entrypoint
 
-```bash
-TARGET_DB="$(python - <<'PY'
-from pipeline.database import DatabaseConfig
-print(DatabaseConfig.from_env().database)
-PY
-)"
+P6 should implement and test a dedicated maintenance script or command before
+database recreation is performed. Its interface should make destructive intent
+unambiguous. Conceptually, it should behave like:
+
+```text
+inspect target
+    -> dry-run output only
+
+explicit execute request
+    + ephemeral destructive opt-in
+    + exact configured database confirmation
+    + completed preflight
+    -> recreate the confirmed database
 ```
 
-Display it immediately before destructive commands:
+The exact CLI name and flags should be finalized during P6 implementation. Do
+not expose DROP/CREATE as a normal pipeline or orchestration helper.
 
-```bash
-printf 'PostgreSQL database selected for recreation: %s\n' "$TARGET_DB"
-```
+The maintenance implementation may invoke PostgreSQL administrative operations
+internally after all guards pass, but ordinary project documentation should
+direct operators through the guarded entrypoint rather than encourage copying
+raw `dropdb` / `createdb` commands.
 
-Only after the P6 verification gate approves that exact value, recreate it with
-the PostgreSQL administrative tools available on the host. The intended sequence
-is:
+## 5. Bootstrap the five application tables
 
-```bash
-dropdb --if-exists   --host "$POSTGRES_HOST"   --port "$POSTGRES_PORT"   --username "$POSTGRES_USER"   "$TARGET_DB"
-
-createdb   --host "$POSTGRES_HOST"   --port "$POSTGRES_PORT"   --username "$POSTGRES_USER"   "$TARGET_DB"
-```
-
-Do not add `--force` automatically. Active sessions are a reason to stop and
-investigate rather than silently terminate them.
-
-## 4. Bootstrap the five application tables
-
-After recreation, use the normal runtime credentials and bootstrap coordinator:
+After a successful guarded recreation, use the normal bootstrap coordinator:
 
 ```bash
 python - <<'PY'
@@ -104,9 +137,28 @@ climate_data.pipeline_progress_detail
 climate_data.cds_submission_pacing
 ```
 
-## 5. Post-reset verification
+The bootstrap coordinator creates application schema/tables only. It is not
+authorized to create, drop, or recreate the PostgreSQL database itself.
 
-Verify that the schema and five tables exist, that progress and pacing contain no
-unexpected historical state, and that Airflow SQLite metadata is unchanged.
-Start new DagRuns after the reset; do not clear and resume old task instances whose
-XCom may contain progress IDs from the discarded database.
+## 6. Post-reset verification
+
+After recreation:
+
+1. verify the configured database connection points to the exact target recorded
+   before reset;
+2. verify the `climate_data` schema and all five tables exist;
+3. verify progress and pacing contain no unexpected historical state;
+4. verify constraints and table ownership/permissions needed by runtime;
+5. verify Airflow SQLite metadata is unchanged;
+6. verify retained RAW/Parquet/chunk/log/credential/JWT files were not deleted.
+
+Start new DagRuns after the reset. Do not clear and resume old task instances
+whose XCom may contain progress IDs from the discarded development state.
+
+## 7. Long-term rule
+
+The one-time P6 development reset does not establish a general database-reset
+workflow for normal operations. After P6, destructive maintenance must remain
+explicitly gated and exceptional. Production and retained development databases
+must be treated as persistent assets that require an environment-specific
+backup, change, and recovery policy before any destructive operation.
