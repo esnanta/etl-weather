@@ -177,8 +177,8 @@ Python module movement must not rename Airflow task IDs.
 Verify these against the implementation baseline before editing:
 
 - One DAG: `cds_era5_land_etl`; keep the DAG identity stable.
-- Current graph: `build_monthly_requests`, mapped `first_extract_attempt`,
-  `prepare_retry_pass`, mapped `resolve_extraction`, mapped
+- Current graph: `build_monthly_requests`, mapped `attempt_raw_checkpoint`,
+  `prepare_retry_pass`, mapped `resolve_raw_checkpoint`, mapped
   `transform_or_resume`, and mapped `load`. Monthly mapped instances use a
   `YYYY-MM` display label for Airflow UI observability.
 - All first-pass extraction results reach the retry barrier before retry-pass work.
@@ -393,7 +393,8 @@ For every subsequent fix:
 | 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
 | 2026-10-04 | P7 offline scope | User explicitly prohibited live CDS execution and schedule enablement during P7, prioritizing refactor verification and correct tests. Audited current orchestration/integration coverage: DAG graph/policy, first-pass barrier, simulated pacing deferral/retry, offline scheduled selection with an assertion that unexpected CDS access fails, progress/load evidence, campaign repair, isolated PostgreSQL idempotency/reconciliation/pacing/bootstrap, and reset guards. Redefined P7 as an offline-only gate; live manual and scheduled pilots are deferred outside P7. | Run fresh full unit/orchestration regression and all four isolated PostgreSQL integration modules; review any warnings/skips before further changes. |
 | 2026-10-04 | P7 offline regression closure | User ran the full offline unit/orchestration suite with scheduling disabled: **271 passed in 7.72s**. User then ran all four isolated PostgreSQL integration modules: **6 passed in 1.27s**. No failures or skips were reported. Source/test audit confirmed scheduled-selection tests explicitly fail on unexpected CDS access; CDS client/transport behavior in unit tests is mocked/faked; integration tests use only isolated `TEST_POSTGRES_*` resources. The passing suite covers DAG parsing/policy, six-task graph, retry/timeout/pool/concurrency, first-pass barrier, bounded retry/pass-through, pacing deferral, +0/+1/+2-hour slot metadata, failed-quarter blocking, terminal no-op, manual preparation/repair, load evidence, idempotency/rollback, bootstrap, pacing serialization, and reset guards. | P7 offline gate complete. Keep live CDS disabled and campaign scheduling off; live manual/scheduled pilots remain deferred to a separately approved rollout phase. |
-| 2026-10-04 | Post-P7 mapped-instance observability | User approved keeping DAG ID `cds_era5_land_etl`, displaying mapped monthly instances as `YYYY-MM`, and renaming only the Airflow retry/pass-through task from `extract_or_resume` to `resolve_extraction`. Added Airflow named mapping labels to extraction, resolver, transform, and load mapped tasks. Kept the pipeline runtime method/payload boundary `extract_or_resume` unchanged because it remains the scientific/runtime checkpoint boundary. Added DAG/operator tests for the new task identity and label templates. | Run focused DAG/operator tests, then the full offline unit/orchestration regression before resetting/restarting the development Airflow runtime. |
+| 2026-10-04 | Post-P7 mapped-instance observability | User approved keeping DAG ID `cds_era5_land_etl`, displaying mapped monthly instances as `YYYY-MM`, and renaming only the Airflow retry/pass-through task from `extract_or_resume` to `resolve_raw_checkpoint`. Added Airflow named mapping labels to extraction, resolver, transform, and load mapped tasks. Kept the pipeline runtime method/payload boundary `extract_or_resume` unchanged because it remains the scientific/runtime checkpoint boundary. Added DAG/operator tests for the new task identity and label templates. | Run focused DAG/operator tests, then the full offline unit/orchestration regression before resetting/restarting the development Airflow runtime. |
+| 2026-10-04 | Checkpoint naming alignment | User approved postcondition-oriented pipeline API names `ensure_raw_checkpoint()` and `ensure_transformed_checkpoint()`, plus Airflow task identities `attempt_raw_checkpoint [YYYY-MM]`, `prepare_retry_pass`, `resolve_raw_checkpoint [YYYY-MM]`, `ensure_transformed_checkpoint [YYYY-MM]`, and `load [YYYY-MM]`. Runtime boundary metadata and orchestration helper names were aligned so code, tests, logs, and Airflow UI use the same checkpoint terminology. Historical references to old task IDs remain marked as historical where needed. | Run focused checkpoint/DAG tests and full offline regression before resetting/restarting Airflow. |
 
 Current next action: refactor follow-up only. P1 through P7 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not submit live CDS work until a separately approved rollout phase. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
@@ -572,10 +573,10 @@ a narrower pipeline change than relocating the entire database package.
 | Task ID | Retries | Explicit timeout | Additional policy |
 | --- | ---: | --- | --- |
 | `build_monthly_requests` | 0 | 5 minutes | Resolve run mode and initialize/select progress |
-| `first_extract_attempt` | 0 | 6 hours | Mapped, `cds_api`, `first_pass=True` |
+| `attempt_raw_checkpoint` | 0 | 6 hours | Mapped, `cds_api`, `first_pass=True` |
 | `prepare_retry_pass` | 0 | Not explicitly set | Consume all first-pass results |
-| `resolve_extraction` | 1 | 6 hours | Mapped, `cds_api`; retry/pass-through resolver with 10-minute delay, exponential backoff, maximum 1 hour |
-| `transform_or_resume` | 0 | 2 hours | Mapped from resolved extraction |
+| `resolve_raw_checkpoint` | 1 | 6 hours | Mapped, `cds_api`; retry/pass-through resolver with 10-minute delay, exponential backoff, maximum 1 hour |
+| `ensure_transformed_checkpoint` | 0 | 2 hours | Mapped from resolved extraction |
 | `load` | 1 | 2 hours | Mapped; 5-minute delay, exponential backoff, maximum 30 minutes |
 
 Keep the six-task dependency order in section 6. The DAG start date is fixed at
