@@ -1,4 +1,4 @@
-"""Run one extraction boundary and coordinate its durable progress state."""
+"""Ensure RAW checkpoints and coordinate their durable progress state."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def ensure_raw_checkpoint_partition(
 ) -> dict[str, object]:
     """Ensure one mapped RAW checkpoint through the pipeline runtime."""
     from pipeline.request import weather_request_from_spec
-    from pipeline.runtime import ensure_raw_checkpoint_partition
+    from pipeline.runtime import ensure_raw_checkpoint_partition as ensure_raw_checkpoint_runtime
 
     request = weather_request_from_spec(request_spec)
     logger.info(
@@ -38,10 +38,10 @@ def ensure_raw_checkpoint_partition(
         if paced:
             from orchestration.pacing import reserve_or_defer
 
-            return ensure_raw_checkpoint_partition(
+            return ensure_raw_checkpoint_runtime(
                 request, before_submission=reserve_or_defer
             )
-        return ensure_raw_checkpoint_partition(request)
+        return ensure_raw_checkpoint_runtime(request)
 
 
 def ensure_raw_checkpoint_with_progress(
