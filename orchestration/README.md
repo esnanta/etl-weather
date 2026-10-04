@@ -117,58 +117,24 @@ abort startup and instruct the operator to set `APP_ENV=dev` or
 
 ## Running the Orchestration
 
-For local development, run Airflow in standalone mode. This starts the
-required Airflow services in one process.
+For local development, use Airflow standalone mode as the canonical runtime.
+It starts the scheduler, API server, DAG processor, and triggerer together so
+the project does not require separate service terminals.
 
 ```bash
-source activate-airflow.sh
-airflow standalone
+source activate-airflow.sh -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false airflow standalone
 ```
 
-Open `http://localhost:8080`. Use the credentials displayed by the standalone
-command or written by the configured Airflow authentication manager. Stop the
-services with `Ctrl+C` in the terminal running Airflow.
+Open `http://localhost:8080`. Use the credentials displayed by standalone or
+written by the configured Airflow authentication manager. Keep the standalone
+process running while using the UI or triggering work, and stop it with
+`Ctrl+C` when finished.
 
-### Alternative: Running Services Individually
-
-For more granular control, open four terminals. Run the environment setup in
-each terminal before starting its service:
-
-```bash
-source activate-airflow.sh
-```
-
-Then start one service per terminal:
-
-1. **Terminal 1 — Scheduler**
-
-   ```bash
-   airflow scheduler
-   ```
-
-2. **Terminal 2 — API server and web UI**
-
-   ```bash
-   airflow api-server
-   ```
-
-3. **Terminal 3 — DAG processor**
-
-   ```bash
-   airflow dag-processor
-   ```
-
-4. **Terminal 4 — Triggerer**
-
-   ```bash
-   airflow triggerer
-   ```
-
-   The triggerer wakes extraction tasks after a CDS pacing deferral.
-
-The Airflow 3 CLI uses `api-server`; the older `airflow webserver` command does
-not apply to the pinned version. Stop each service with `Ctrl+C` in its own
-terminal.
+After a fresh Airflow metadata reset, `airflow dags list` may initially report
+`No data found` until standalone starts its DAG processor and the project DAG
+has been parsed into the new metadata database. This is expected immediately
+after recreation when there are no import errors.
 
 ## Project Structure
 
