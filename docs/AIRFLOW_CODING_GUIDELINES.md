@@ -234,14 +234,25 @@ DataFrames, NetCDF/Parquet contents, or excessively large request structures.
 
 ## 11. Name DAGs and Tasks by Runtime Intent
 
-Use stable names that communicate the active source and boundary. Prefer task
-IDs such as:
+Use stable names that communicate orchestration intent and checkpoint
+postconditions. For the current six-task graph, prefer:
 
 ```text
-ensure_raw_checkpoint
-ensure_transformed_checkpoint
-load
+build_monthly_requests
+attempt_raw_checkpoint [YYYY-MM]
+prepare_retry_pass
+resolve_raw_checkpoint [YYYY-MM]
+ensure_transformed_checkpoint [YYYY-MM]
+load [YYYY-MM]
 ```
+
+The pipeline runtime API beneath these tasks uses
+`ensure_raw_checkpoint()`, `ensure_transformed_checkpoint()`, and `load()`.
+The initial attempt task is intentionally named `attempt_raw_checkpoint`
+because a first-pass failure is converted to bounded control metadata so other
+months can finish before the retry barrier. A successful
+`resolve_raw_checkpoint` guarantees that downstream work receives valid RAW
+checkpoint metadata.
 
 Avoid generic or version-churn names such as `task1`, `process_data`,
 `final_task`, or `fixed_v2`. Do not encode a run date in a DAG or task ID.
@@ -270,16 +281,18 @@ Airflow-specific unit tests should load the DAG in an isolated test environment
 and verify:
 
 1. the DagBag has no import errors;
-2. the expected DAG ID and three runtime tasks exist;
-3. dependencies are `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`;
-4. timezone, schedule, fixed start date, `catchup`, and `max_active_runs` match
+2. the expected DAG ID and six task identities exist;
+3. dependencies preserve the initial RAW-checkpoint pass, retry barrier,
+   RAW-checkpoint resolver, transformed-checkpoint boundary, and load;
+4. monthly mapped tasks expose the expected `YYYY-MM` named-map label;
+5. timezone, schedule, fixed start date, `catchup`, and `max_active_runs` match
    policy;
-5. extraction uses the `cds_api` pool;
-6. retry and timeout values are correct per task;
-7. interval conversion produces the intended inclusive dates;
-8. task wrappers delegate to the intended runtime entrypoint and propagate errors;
-9. XCom payloads contain only approved metadata;
-10. importing the DAG performs no network, database, or artifact I/O.
+6. both RAW-checkpoint operator passes use the `cds_api` pool;
+7. retry and timeout values are correct per task;
+8. interval conversion produces the intended inclusive dates;
+9. task wrappers delegate to the intended runtime entrypoint and propagate errors;
+10. XCom payloads contain only approved metadata;
+11. importing the DAG performs no network, database, or artifact I/O.
 
 Do not retest scientific formulas, data schemas, checkpoint validation, or
 database UPSERT behavior through Airflow. Those remain core unit/integration
