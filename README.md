@@ -107,8 +107,8 @@ The `pipeline/` package is organized by responsibility: provider/request contrac
                               |      runtime.py         |
                               | orchestration/composition|
                               |                         |
-                              | extract_or_resume()     |
-                              | transform_or_resume()   |
+                              | ensure_raw_checkpoint()     |
+                              | ensure_transformed_checkpoint()   |
                               | load()                  |
                               +----+---------+--------+-+
                                    |         |        |
