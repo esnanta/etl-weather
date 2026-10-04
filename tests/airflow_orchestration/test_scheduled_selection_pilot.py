@@ -1,7 +1,7 @@
 """Pilot scheduled quarter selection without database writes or CDS requests.
 
 This exercises the actual mode, selector, and monthly mapping boundary against
-isolated progress state before a real scheduled DagRun can submit 2016 data.
+isolated progress state before a real scheduled DagRun can submit campaign data.
 """
 
 from __future__ import annotations
