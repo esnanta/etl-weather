@@ -36,10 +36,16 @@ CAMPAIGN_START_YEAR = _campaign_year("CAMPAIGN_START_YEAR")
 # Last calendar year included in the bounded historical campaign.
 CAMPAIGN_END_YEAR = _campaign_year("CAMPAIGN_END_YEAR")
 
-if CAMPAIGN_START_YEAR > CAMPAIGN_END_YEAR:
-    raise RuntimeError(
-        "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
-    )
+
+def _validate_campaign_bounds(start_year: int, end_year: int) -> None:
+    """Reject an inverted bounded historical campaign range."""
+    if start_year > end_year:
+        raise RuntimeError(
+            "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
+        )
+
+
+_validate_campaign_bounds(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR)
 
 # Local timezone used for campaign eligibility and interval interpretation.
 CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)
