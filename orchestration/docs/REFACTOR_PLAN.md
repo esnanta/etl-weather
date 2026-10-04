@@ -291,15 +291,15 @@ Use the actual active configuration; never infer or guess a database name.
 Future production or retained-development databases must not be made eligible
 for reset merely because they use the same schema or application code.
 
-- [ ] Resolve and display the exact configured host, port, database, user, schema, and validated `APP_ENV`.
+- [x] Resolve and display the exact configured host, port, database, user, schema, and validated `APP_ENV`.
 - [x] Confirm that the current **development state** is explicitly authorized for this one-time recreation; do not label the database itself permanently disposable.
 - [x] Define/verify a dedicated maintenance-only reset entrypoint that is unreachable from normal DAG/pipeline execution.
 - [x] Enforce `APP_ENV=prod` as a hard deny: no reset option, no deletion prompt, and no DROP/CREATE path may execute.
 - [x] Allow guarded recreation only when `APP_ENV=dev`; missing, blank, or unsupported `APP_ENV` values must abort before application startup.
 - [x] In `dev`, display the exact target and ask an interactive confirmation before deletion; accept only `yes`/`y` to continue and `no`/`n` to abort.
 - [x] Reject PostgreSQL system databases and never use a database-name pattern as the sole safety check.
-- [ ] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
-- [ ] Ensure no old worker or DagRun can resume against the replacement database.
+- [x] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
+- [x] Ensure no old worker or DagRun can resume against the replacement database.
 - [ ] Resolve old pending execution state deliberately while preserving SQLite and history.
 - [ ] Record artifact retention and the consequences of resetting progress/pacing.
 - [ ] Recreate only the explicitly confirmed development target after all guards pass.
