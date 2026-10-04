@@ -62,13 +62,14 @@ case "${APP_ENV,,}" in
 esac
 
 for _campaign_var in CAMPAIGN_KEY CAMPAIGN_START_YEAR CAMPAIGN_END_YEAR; do
-    if [[ -z "${!_campaign_var+x}" || -z "${!_campaign_var//[[:space:]]/}" ]]; then
+    _campaign_value="${!_campaign_var-}"
+    if [[ -z "${_campaign_value//[[:space:]]/}" ]]; then
         echo "ERROR: ${_campaign_var} is required in $PROJECT_ROOT/.env." >&2
-        unset _campaign_var
+        unset _campaign_var _campaign_value
         return 1 2>/dev/null || exit 1
     fi
 done
-unset _campaign_var
+unset _campaign_var _campaign_value
 
 if ! [[ "$CAMPAIGN_START_YEAR" =~ ^[0-9]{4}$ ]]; then
     echo "ERROR: CAMPAIGN_START_YEAR must be a four-digit integer year." >&2
