@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date
 from types import SimpleNamespace
 
@@ -16,12 +17,16 @@ from orchestration.campaign import (
     select_earliest_incomplete_quarter,
 )
 
+CAMPAIGN_QUARTER_COUNT = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+
+
+def _month_end(year: int, month: int) -> str:
+    return date(year, month, monthrange(year, month)[1]).isoformat()
+
 
 def test_campaign_contains_all_configured_ordered_quarters() -> None:
     quarters = iter_campaign_quarters()
-    expected_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
-
-    assert len(quarters) == expected_count
+    assert len(quarters) == CAMPAIGN_QUARTER_COUNT
     assert quarters[0] == CampaignQuarter(CAMPAIGN_START_YEAR, 1)
     assert quarters[-1] == CampaignQuarter(CAMPAIGN_END_YEAR, 4)
     assert quarters == tuple(sorted(quarters))
@@ -76,13 +81,7 @@ def test_quarter_request_specs_map_exactly_three_whole_months() -> None:
         ),
         (
             f"{CAMPAIGN_START_YEAR}-02-01",
-            date(
-                CAMPAIGN_START_YEAR,
-                3,
-                1,
-            ).replace(day=1).fromordinal(
-                date(CAMPAIGN_START_YEAR, 3, 1).toordinal() - 1
-            ).isoformat(),
+            _month_end(CAMPAIGN_START_YEAR, 2),
         ),
         (
             f"{CAMPAIGN_START_YEAR}-03-01",
@@ -102,13 +101,10 @@ def test_campaign_initialization_seeds_every_quarter(monkeypatch) -> None:
         "orchestration.repositories.pipeline_progress.initialize_pipeline_progress",
         record_progress,
     )
-    ids = initialize_campaign_progress(
-        object(), current_local_date=date(2026, 9, 26)
-    )
+    ids = initialize_campaign_progress(object(), current_local_date=date.max)
 
-    expected_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
-    assert ids == tuple(range(1, expected_count + 1))
-    assert len(definitions) == expected_count
+    assert ids == tuple(range(1, CAMPAIGN_QUARTER_COUNT + 1))
+    assert len(definitions) == CAMPAIGN_QUARTER_COUNT
     assert all(item.expected_partition_count == 3 for item in definitions)
     assert (definitions[0].start_date, definitions[0].end_date) == (
         f"{CAMPAIGN_START_YEAR}-01-01", f"{CAMPAIGN_START_YEAR}-03-31"
@@ -124,9 +120,7 @@ def progress_selection(monkeypatch):
     statuses = {}
     monkeypatch.setattr(
         "orchestration.campaign.initialize_campaign_progress",
-        lambda engine, **kwargs: tuple(
-            range(1, (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4 + 1)
-        ),
+        lambda engine, **kwargs: tuple(range(1, CAMPAIGN_QUARTER_COUNT + 1)),
     )
     monkeypatch.setattr(
         "orchestration.repositories.pipeline_progress.reconcile_pipeline_progress",
@@ -150,7 +144,11 @@ def progress_selection(monkeypatch):
         lambda engine, progress_id: (
             (
                 date(CAMPAIGN_START_YEAR, 2, 1),
-                date(CAMPAIGN_START_YEAR, 3, 1) - __import__("datetime").timedelta(days=1),
+                date(
+                    CAMPAIGN_START_YEAR,
+                    2,
+                    monthrange(CAMPAIGN_START_YEAR, 2)[1],
+                ),
                 "ValidationError",
             ),
         ),
@@ -162,7 +160,7 @@ def test_selection_starts_at_first_incomplete_quarter(progress_selection) -> Non
     _, reconciled = progress_selection
     selected = select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__one",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     )
 
     assert isinstance(selected, CampaignSelection)
@@ -178,11 +176,11 @@ def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) 
 
     first = select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__one",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     )
     second = select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__one",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     )
 
     assert first is not None and first.quarter == CampaignQuarter(CAMPAIGN_START_YEAR, 3)
@@ -192,14 +190,15 @@ def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) 
 
 def test_selection_is_no_op_when_all_quarters_are_complete(progress_selection) -> None:
     statuses, reconciled = progress_selection
-    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
-    statuses.update({number: "complete" for number in range(1, quarter_count + 1)})
+    statuses.update(
+        {number: "complete" for number in range(1, CAMPAIGN_QUARTER_COUNT + 1)}
+    )
 
     assert select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__one",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     ) is None
-    assert reconciled == list(range(1, quarter_count + 1))
+    assert reconciled == list(range(1, CAMPAIGN_QUARTER_COUNT + 1))
 
 
 def test_selection_waits_for_whole_quarter_eligibility(progress_selection) -> None:
@@ -218,7 +217,7 @@ def test_failed_quarter_blocks_automatic_resubmission(progress_selection) -> Non
 
     selected = select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__next",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     )
     assert isinstance(selected, CampaignBlocked)
     assert selected.quarter == CampaignQuarter(CAMPAIGN_START_YEAR, 1)
@@ -236,7 +235,7 @@ def test_claimed_quarter_blocks_competing_selector(
     )
     selected = select_earliest_incomplete_quarter(
         object(), claim_owner="scheduled__competing",
-        current_local_date=date(2026, 9, 26)
+        current_local_date=date.max
     )
     assert isinstance(selected, CampaignBlocked)
     assert selected.progress_id == 1
@@ -249,7 +248,7 @@ def test_manual_whole_month_matches_exact_campaign_partition() -> None:
 
     spec = build_historical_request_specs(
         f"{CAMPAIGN_START_YEAR}-02-01",
-        (date(CAMPAIGN_START_YEAR, 3, 1) - __import__("datetime").timedelta(days=1)).isoformat(),
+        _month_end(CAMPAIGN_START_YEAR, 2),
         current_local_date=date.max
     )[0]
     definition = matching_campaign_progress_definition(spec)
@@ -274,7 +273,9 @@ def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> Non
     assert matching_campaign_progress_definition(partial) is None
 
     changed = build_historical_request_specs(
-        "2024-02-01", "2024-02-29", current_local_date=date(2026, 9, 26)
+        f"{CAMPAIGN_START_YEAR}-02-01",
+        _month_end(CAMPAIGN_START_YEAR, 2),
+        current_local_date=date.max,
     )[0]
     changed["bbox"]["north_lat"] = 5.2
     assert matching_campaign_progress_definition(changed) is None
