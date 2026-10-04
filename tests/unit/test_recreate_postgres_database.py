@@ -64,16 +64,14 @@ def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
     assert maintenance.main([]) == 2
 
 
-def test_dev_inspect_mode_never_runs_runtime_or_recreate(monkeypatch) -> None:
+def test_dev_inspect_mode_runs_preflight_but_never_recreates(monkeypatch) -> None:
+    calls: list[str] = []
     monkeypatch.setattr(maintenance, "resolve_app_environment", lambda: "dev")
     monkeypatch.setattr(maintenance.DatabaseConfig, "from_env", lambda: _config())
-
     monkeypatch.setattr(
         maintenance,
         "_validate_runtime_guards",
-        lambda config: (_ for _ in ()).throw(
-            AssertionError("Inspect mode must not run destructive preflight.")
-        ),
+        lambda config: calls.append("preflight"),
     )
     monkeypatch.setattr(
         maintenance,
@@ -84,6 +82,7 @@ def test_dev_inspect_mode_never_runs_runtime_or_recreate(monkeypatch) -> None:
     )
 
     assert maintenance.main([]) == 0
+    assert calls == ["preflight"]
 
 
 @pytest.mark.parametrize("database", ["postgres", "template0", "template1"])
@@ -175,3 +174,15 @@ def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
     )
 
     assert maintenance.main(["--execute"]) == 4
+
+
+
+def test_runtime_guard_rejects_enabled_campaign_schedule(monkeypatch) -> None:
+    monkeypatch.setattr(
+        maintenance,
+        "campaign_schedule",
+        lambda: "0 */2 * * *",
+    )
+
+    with pytest.raises(RuntimeError, match="scheduling is enabled"):
+        maintenance._validate_runtime_guards(_config())
