@@ -170,8 +170,8 @@ Existing RAW/transformed checkpoints must be resumed and validated, not silently
 Runtime boundaries:
 
 ```text
-extract_or_resume()
-transform_or_resume()
+ensure_raw_checkpoint()
+ensure_transformed_checkpoint()
 load()
 ```
 
