@@ -1,3 +1,9 @@
+# Application environment.
+# dev  : development maintenance may expose guarded database recreation.
+# prod : database recreation is disabled.
+# If APP_ENV is missing, destructive maintenance must behave as prod.
+APP_ENV=dev
+
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
