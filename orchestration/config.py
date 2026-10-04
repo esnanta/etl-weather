@@ -2,18 +2,44 @@
 
 from __future__ import annotations
 
+import os
 from zoneinfo import ZoneInfo
 
 from config import APPLICATION_SCHEMA, APPLICATION_TIMEZONE_NAME
 
+
+def _required_environment(name: str) -> str:
+    """Return one required non-blank orchestration environment value."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(
+            f"{name} is required. Set it in the project .env before starting Airflow."
+        )
+    return value.strip()
+
+
+def _campaign_year(name: str) -> int:
+    """Parse one required campaign year from the environment."""
+    value = _required_environment(name)
+    try:
+        return int(value)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be an integer year; received {value!r}.") from error
+
+
 # Stable campaign identity used by progress selection and reporting.
-CAMPAIGN_KEY = "era5_land_2016_2025"
+CAMPAIGN_KEY = _required_environment("CAMPAIGN_KEY")
 
 # First calendar year included in the bounded historical campaign.
-CAMPAIGN_START_YEAR = 2016
+CAMPAIGN_START_YEAR = _campaign_year("CAMPAIGN_START_YEAR")
 
 # Last calendar year included in the bounded historical campaign.
-CAMPAIGN_END_YEAR = 2025
+CAMPAIGN_END_YEAR = _campaign_year("CAMPAIGN_END_YEAR")
+
+if CAMPAIGN_START_YEAR > CAMPAIGN_END_YEAR:
+    raise RuntimeError(
+        "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
+    )
 
 # Local timezone used for campaign eligibility and interval interpretation.
 CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)
