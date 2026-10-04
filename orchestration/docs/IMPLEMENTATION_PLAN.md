@@ -104,25 +104,11 @@ Still pending:
 
 ## Target Structure
 
-The initial orchestration layout is:
-
-```text
-etl-weather/
-├── activate-airflow.sh
-├── airflow-jwt-key.txt         # generated locally; ignored by Git
-├── generate-airflow-jwt-secret.sh
-└── orchestration/
-    ├── dags/
-    ├── docs/
-    │   └── IMPLEMENTATION_PLAN.md
-    ├── logs/                 # local runtime state; ignored by Git
-    ├── tasks/
-    ├── airflow.cfg           # local Airflow configuration
-    ├── airflow.db            # local metadata database; ignored by Git
-    └── README.md
-```
-
-The structure may grow when a demonstrated operational need requires it.
+The initial orchestration layout above was later refined during the P2–P4
+responsibility refactor. The current structure is documented in
+`orchestration/README.md`; the important boundary remains unchanged:
+`pipeline/` owns ETL/scientific behavior, while `orchestration/` owns
+scheduling, progress, pacing, monitoring, and Airflow control flow.
 
 Responsibilities:
 
@@ -489,16 +475,16 @@ Durable progress and recovery:
 
 - [x] Refactor durable operational progress into the existing PostgreSQL climate
       database using two cadence-neutral tables:
-      `climate.pipeline_progress` and
-      `climate.pipeline_progress_detail`. Do not create a separate database.
+      `climate_data.pipeline_progress` and
+      `climate_data.pipeline_progress_detail`. Do not create a separate database.
       Quarter/two-month/month grouping remains scheduler policy rather than
       persistence identity. SQLite metadata remains local development state.
-- [x] `climate.pipeline_progress` represents one logical requested range/batch.
+- [x] `climate_data.pipeline_progress` represents one logical requested range/batch.
       Store explicit `start_date` and `end_date`, pipeline/source/dataset identity,
       configuration identity, expected/completed/failed partition counts,
       execution status, validation status, timestamps, and the latest bounded
       diagnostic error. Do not encode quarter number as the durable identity.
-- [x] `climate.pipeline_progress_detail` represents one processed partition and
+- [x] `climate_data.pipeline_progress_detail` represents one processed partition and
       its artifact/database outcome. Store the parent progress ID, request key,
       exact period, RAW NetCDF path/checksum/file size, transformed artifact
       path/checksum/file size when available, temporal and spatial validation
@@ -554,8 +540,8 @@ multiple monthly partitions within one logical progress range. The Airflow
 schedule and the one-slot `cds_api` pool do not by themselves guarantee this
 minimum elapsed time between provider submissions.
 
-Neither value is part of `climate.pipeline_progress` or
-`climate.pipeline_progress_detail` durable identity. They may be recorded as
+Neither value is part of `climate_data.pipeline_progress` or
+`climate_data.pipeline_progress_detail` durable identity. They may be recorded as
 runtime/observability metadata when useful, but changing cadence or pacing must
 not invalidate otherwise identical request/progress identity.
 
@@ -593,16 +579,20 @@ Observability, validation, and rollout:
       pacing decision, completed/remaining quarters, and failure reason.
       Use the read-only 2016–2025 summary without creating annual DAGs or
       sending large payloads through XCom.
-- [ ] Update Airflow policy docs and README examples that currently say
-      `schedule=None` or recommend triggering all 120 months in one
-      DagRun; document manual quarter/month/year examples and status checks.
-- [ ] Add focused offline tests for mode selection, 2016–2025 quarter
+- [x] Update the orchestration README and current operating examples so
+      schedule-disabled-by-default behavior, quarterly automatic selection,
+      bounded manual recovery, status checks, and the warning against a
+      120-month campaign DagRun are explicit. Historical Stage 3 text remains
+      marked as the implemented manual baseline rather than current rollout
+      guidance.
+- [x] Add focused offline tests for mode selection, 2016–2025 quarter
       boundaries, stable progress and configuration identity, missed ticks,
-      incomplete/failing loads, manual repair, terminal no-op, spacing of
-      successive CDS submissions, and no overlapping active runs.
-- [ ] Run `python -m pytest tests/airflow_orchestration -q` and affected
-      core/integration tests. Pilot scheduled and manual recovery runs
-      before enabling the entire campaign.
+      incomplete/failing loads, manual repair, terminal no-op, scheduled
+      monthly offsets, first-pass/retry ordering, and CDS pacing behavior.
+- [x] Run the affected unit/orchestration and isolated PostgreSQL integration
+      tests after the P4 responsibility refactor: 211 passed and 6 passed on
+      2026-10-04. Controlled live scheduled verification remains a separate
+      rollout requirement before enabling the entire campaign.
 - [x] Provide a read-only host capacity snapshot and a repeatable manual
       post-change CDS pilot procedure without exposing secrets.
 - [x] Review the local June 2024 extraction pilot for actual POST spacing,
