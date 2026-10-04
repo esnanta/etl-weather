@@ -6,12 +6,14 @@ the eventual scheduler cadence and never occupies a worker while waiting.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import pendulum
 from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
+from config import validate_and_log_app_environment
 from orchestration.schedule import campaign_schedule
 from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
@@ -19,6 +21,9 @@ from orchestration.tasks.load import load_with_progress
 from orchestration.tasks.transform import transform_with_progress
 
 DAG_ID = "cds_era5_land_etl"
+
+logger = logging.getLogger(__name__)
+validate_and_log_app_environment(logger)
 
 
 with DAG(
