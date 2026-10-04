@@ -14,20 +14,20 @@ Database recreation is a maintenance-only operation.
 
 The maintenance entrypoint implemented for P6 must:
 
-1. default to inspect-only or dry-run behavior;
-2. resolve host, port, database, user, and schema from the existing
-   `DatabaseConfig`;
-3. never print the database password;
-4. require an explicit execution flag before any destructive action;
-5. require an ephemeral destructive-reset opt-in supplied only for the current
-   maintenance session and not stored in `.env` or repository configuration;
-6. require the operator to supply the exact configured database name again as
-   confirmation;
-7. reject a confirmation value that does not exactly match the configured
-   database;
-8. reject well-known PostgreSQL system databases such as `postgres`,
+1. resolve and validate `APP_ENV` using the shared root configuration;
+2. fail closed to production behavior when `APP_ENV` is missing;
+3. reject unsupported values; only `dev` and `prod` are valid;
+4. when `APP_ENV=prod`, terminate before exposing any reset option,
+   interactive deletion prompt, or DROP/CREATE path;
+5. when `APP_ENV=dev`, resolve host, port, database, user, and schema from
+   `DatabaseConfig` and display them without printing the password;
+6. reject well-known PostgreSQL system databases such as `postgres`,
    `template0`, and `template1`;
-9. stop when Airflow/process preflight has not been completed;
+7. stop when Airflow/process preflight has not been completed;
+8. immediately before deletion, ask an interactive yes/no question that names
+   the exact configured database target;
+9. accept `yes` or `y` case-insensitively to proceed, and `no` or `n`
+   to abort cleanly; invalid answers must never count as consent;
 10. never use a database-name pattern such as `dev` or `test` as the sole
     authorization for deletion.
 
@@ -43,13 +43,15 @@ Activate the project environment:
 source activate-airflow.sh
 ```
 
-Inspect the active runtime target without exposing the password:
+Inspect the active environment and runtime target without exposing the password:
 
 ```bash
 python - <<'PY'
+from config import resolve_app_environment
 from pipeline.database import DatabaseConfig
 
 config = DatabaseConfig.from_env()
+print(f"app_env={resolve_app_environment()}")
 print(f"host={config.host}")
 print(f"port={config.port}")
 print(f"database={config.database}")
@@ -90,18 +92,29 @@ database recreation is performed. Its interface should make destructive intent
 unambiguous. Conceptually, it should behave like:
 
 ```text
-inspect target
-    -> dry-run output only
-
-explicit execute request
-    + ephemeral destructive opt-in
-    + exact configured database confirmation
-    + completed preflight
-    -> recreate the confirmed database
+resolve APP_ENV
+    |
+    +-- prod or missing -> reset feature unavailable; stop
+    |
+    +-- dev
+          |
+          v
+    display exact configured target
+          |
+          v
+    completed Airflow/process preflight
+          |
+          v
+    prompt: delete and recreate this database? [y/n]
+          |
+          +-- no / n  -> abort cleanly
+          |
+          +-- yes / y -> recreate the displayed target
 ```
 
-The exact CLI name and flags should be finalized during P6 implementation. Do
-not expose DROP/CREATE as a normal pipeline or orchestration helper.
+The exact CLI name should be finalized during P6 implementation. When
+`APP_ENV=prod`, the reset feature must not be available at all. Do not expose
+DROP/CREATE as a normal pipeline or orchestration helper.
 
 The maintenance implementation may invoke PostgreSQL administrative operations
 internally after all guards pass, but ordinary project documentation should
