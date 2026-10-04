@@ -16,6 +16,9 @@ from contextlib import closing
 from pathlib import Path
 from typing import Callable
 
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
 from psycopg import connect, sql
 
 from config import APP_ENV_DEV, resolve_app_environment
