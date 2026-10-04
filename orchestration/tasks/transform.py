@@ -34,30 +34,30 @@ def _request_spec_from_result(
     return request_spec
 
 
-def transform_partition(
+def ensure_transformed_checkpoint_partition(
     extract_result: Mapping[str, Any],
 ) -> dict[str, object]:
-    """Delegate one mapped transform task using extraction control metadata."""
+    """Ensure one mapped transformed checkpoint from RAW control metadata."""
     from pipeline.request import weather_request_from_spec
-    from pipeline.runtime import transform_request_partition
+    from pipeline.runtime import ensure_transformed_checkpoint_partition
 
     request_spec = _request_spec_from_result(
-        extract_result, "extract_or_resume"
+        extract_result, "ensure_raw_checkpoint"
     )
     request = weather_request_from_spec(request_spec)
     logger.info(
-        "Starting transformation for request_key=%s",
+        "Ensuring transformed checkpoint for request_key=%s",
         extract_result["request_key"],
     )
-    with measure_peak_memory("transform_or_resume"):
-        warn_low_disk_space("transform_or_resume")
-        return transform_request_partition(request)
+    with measure_peak_memory("ensure_transformed_checkpoint"):
+        warn_low_disk_space("ensure_transformed_checkpoint")
+        return ensure_transformed_checkpoint_partition(request)
 
 
-def transform_with_progress(
+def ensure_transformed_checkpoint_with_progress(
     extract_result: dict[str, object],
 ) -> dict[str, object]:
-    """Run transformation while recording durable progress evidence."""
+    """Ensure a transformed checkpoint while recording durable progress evidence."""
     progress_id = int(extract_result["progress_id"])
     request_key = str(extract_result["request_key"])
     record_progress(
@@ -68,7 +68,7 @@ def transform_with_progress(
         validation_status="pending",
     )
     try:
-        result = transform_partition(extract_result)
+        result = ensure_transformed_checkpoint_partition(extract_result)
         require_request_key(result, request_key)
         path, checksum, size = artifact_identity(result)
         record_progress(
