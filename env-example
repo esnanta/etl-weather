@@ -1,7 +1,7 @@
 # Application environment.
-# dev  : development maintenance may expose guarded database recreation.
-# prod : database recreation is disabled.
-# If APP_ENV is missing, destructive maintenance must behave as prod.
+# dev  : development runtime; guarded database recreation may be available.
+# prod : production runtime; database recreation is unavailable.
+# APP_ENV is mandatory. Missing, blank, or unsupported values abort startup.
 APP_ENV=dev
 
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
