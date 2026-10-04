@@ -127,6 +127,10 @@ The scheduled campaign is configured before Airflow starts. The recommended
 local configuration lives in the untracked root `.env`:
 
 ```env
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2017
+
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
 CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
@@ -136,11 +140,15 @@ Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` while validating configuration.
 When scheduled rollout is deliberately enabled, change only that value to
 `true` and restart standalone so the DAG processor reparses the DAG.
 
-The campaign range itself is not supplied through a scheduled DagRun. It is
-bounded in `orchestration/config.py` by
-`CAMPAIGN_START_YEAR = 2016` and `CAMPAIGN_END_YEAR = 2025`. Each scheduled
-DagRun selects the earliest eligible incomplete quarter from PostgreSQL durable
-progress and maps that quarter's three calendar months.
+The campaign range itself is not supplied through a scheduled DagRun.
+`orchestration/config.py` requires `CAMPAIGN_KEY`,
+`CAMPAIGN_START_YEAR`, and `CAMPAIGN_END_YEAR` from the exported
+environment loaded from `.env`. The current controlled rollout example is
+2016 through 2017. Each scheduled DagRun selects the earliest eligible
+incomplete configured quarter from PostgreSQL durable progress and maps that
+quarter's three calendar months. `CAMPAIGN_KEY` is included in the campaign
+configuration identity used by selection, manual campaign reconciliation, and
+reporting.
 
 `ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h` means an Airflow scheduler tick every two
 Jakarta-local hours. It does not mean three months are downloaded every two
@@ -215,13 +223,14 @@ cds_era5_land_etl
 
 The currently implemented baseline is manually triggered with explicit
 inclusive `start_date` and `end_date` parameters. Stage 8 extends this same
-DAG with a bounded scheduled quarterly campaign for 2016-01-01 through
-2025-12-31 while preserving explicit manual recovery through the same DAG.
+DAG with a bounded scheduled quarterly campaign whose first and last years are
+configured by `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`, while
+preserving explicit manual recovery through the same DAG.
 
-The scheduled campaign consists of 40 calendar quarters and 120 monthly
-partitions in total, but each automatic DagRun selects at most one incomplete
+The total number of campaign quarters and monthly partitions is derived from
+those configured bounds. Each automatic DagRun selects at most one incomplete
 quarter and maps exactly its three monthly partitions. It does not infer a
-rolling ten-year range from the current date. The DAG retains
+rolling range from the current date. The DAG retains
 `max_active_runs=1`; mapped task concurrency remains bounded, and the
 one-slot `cds_api` pool allows only one extraction submission at a time.
 
@@ -233,8 +242,8 @@ manual-only during Stage 8 verification.
 `orchestration/mode.py` defines the contract used by the existing DAG.
 Airflow's DagRun `run_type` determines the mode; operators do not pass a
 `mode` parameter. A scheduled DagRun must have empty `dag_run.conf`. It will
-select the earliest eligible incomplete 2016–2025 quarter from durable
-progress when scheduled operation is enabled. It does not take dates from Airflow's
+select the earliest eligible incomplete configured campaign quarter from
+durable progress when scheduled operation is enabled. It does not take dates from Airflow's
 scheduled data interval.
 
 A manual DagRun must provide exactly two inclusive dates in `dag_run.conf`:
@@ -356,14 +365,14 @@ Stable identity, status, validation, period, checksum, and count fields remain
 ordinary columns. An optional JSONB metrics field may hold evolving operational
 measurements, but it must not replace core progress truth.
 
-The existing quarter helper remains scheduler policy for the bounded
-2016-2025 campaign; quarter number is not part of the durable persistence
-identity. Parent completion is derived from persisted detail evidence: every
+The existing quarter helper remains scheduler policy for the bounded campaign
+configured by environment; quarter number is not part of the durable
+persistence identity. Parent completion is derived from persisted detail evidence: every
 expected partition must have complete extract/transform/load state and valid
 validation state. The current DAG records each mapped boundary against the selected progress ID,
 while its schedule remains disabled.
 
-The campaign helper can now seed all 40 quarter batches idempotently. Parent
+The campaign helper can seed all configured quarter batches idempotently. Parent
 reconciliation requires each completed monthly detail to match a canonical
 `climate_data.daily_climate` row by request key, source, dataset, and exact
 period, with matching transformed path/checksum and observation count. Missing
@@ -372,8 +381,7 @@ reconciliation. Historical rows already in `daily_climate` are not
 automatically marked valid: checkpoint and progress-detail validation must
 still supply evidence. The selector seeds the fixed campaign identities, reconciles quarters in calendar
 order, and returns the first eligible incomplete quarter with exactly three
-monthly request specifications. It returns no selection once all 40 are verified
-complete, or when the next quarter has not cleared the six-day availability
+monthly request specifications. It returns no selection once all configured quarters are verified complete, or when the next quarter has not cleared the six-day availability
 boundary. It selects only the exact initialized campaign batch IDs, so unrelated
 manual ranges and configuration identities cannot displace a campaign quarter.
 The DAG invokes this selector for scheduled run provenance. Scheduling is
@@ -414,7 +422,7 @@ The test uses the real scheduled mode, earliest-incomplete selector, and
 monthly mapping boundary with isolated in-memory progress state. It verifies
 2016 Q1 maps January–March, a competing tick stays on the claimed Q1,
 completion moves to Q2, a failed month blocks further selection, a simulated
-manual repair allows Q3, and all 40 complete quarters produce no work. No
+manual repair allows Q3, and all configured complete quarters produce no work. No
 extraction task executes, and the test fails if it tries to call CDS. This
 checks orchestration decisions; it does not demonstrate a PostgreSQL-backed
 claim or a live scheduled DagRun. Keep the deployed schedule disabled until
