@@ -83,8 +83,12 @@ abort startup and instruct the operator to set `APP_ENV=dev` or
    source activate-airflow.sh
    ```
 
-   The project expects `CDSAPI_URL`, `CDSAPI_KEY`, and the pipeline
-   `POSTGRES_*` variables in `.env`.
+   The project expects `CDSAPI_URL`, `CDSAPI_KEY`, the pipeline
+   `POSTGRES_*` variables, and the Airflow campaign settings in `.env`.
+   For scheduled operation, configure `ERA5_CAMPAIGN_SCHEDULE_ENABLED`,
+   `ERA5_CAMPAIGN_SCHEDULE_CADENCE`, and
+   `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` there rather than passing them on
+   each terminal command.
    When the root `.env` file exists, `activate-airflow.sh` automatically loads
    and exports its values, preserving the shell's previous `allexport` state.
    The script then activates `myvenv`, validates the presence and permission
@@ -117,13 +121,40 @@ abort startup and instruct the operator to set `APP_ENV=dev` or
 
 ## Running the Orchestration
 
+### Campaign schedule configuration
+
+The scheduled campaign is configured before Airflow starts. The recommended
+local configuration lives in the untracked root `.env`:
+
+```env
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
+```
+
+Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` while validating configuration.
+When scheduled rollout is deliberately enabled, change only that value to
+`true` and restart standalone so the DAG processor reparses the DAG.
+
+The campaign range itself is not supplied through a scheduled DagRun. It is
+bounded in `orchestration/config.py` by
+`CAMPAIGN_START_YEAR = 2016` and `CAMPAIGN_END_YEAR = 2025`. Each scheduled
+DagRun selects the earliest eligible incomplete quarter from PostgreSQL durable
+progress and maps that quarter's three calendar months.
+
+`ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h` means an Airflow scheduler tick every two
+Jakarta-local hours. It does not mean three months are downloaded every two
+hours: `max_active_runs=1`, durable quarter claims, the one-slot `cds_api`
+pool, monthly earliest-start offsets, and the separate CDS pacing clock still
+limit actual work.
+
 For local development, use Airflow standalone mode as the canonical runtime.
 It starts the scheduler, API server, DAG processor, and triggerer together so
 the project does not require separate service terminals.
 
 ```bash
 source activate-airflow.sh -q
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false airflow standalone
+airflow standalone
 ```
 
 Open `http://localhost:8080`. Use the credentials displayed by standalone or
