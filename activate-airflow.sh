@@ -20,6 +20,25 @@ if [[ -f "$PROJECT_ROOT/.env" ]]; then
     unset _AIRFLOW_ALLEXPORT_WAS_SET
 fi
 
+if [[ -z "${APP_ENV+x}" || -z "${APP_ENV//[[:space:]]/}" ]]; then
+    echo "WARNING: APP_ENV is required." >&2
+    echo "Set APP_ENV=dev or APP_ENV=prod in $PROJECT_ROOT/.env before starting the application." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+case "${APP_ENV,,}" in
+    dev|prod)
+        export APP_ENV="${APP_ENV,,}"
+        ;;
+    *)
+        echo "WARNING: Invalid APP_ENV='${APP_ENV}'." >&2
+        echo "Set APP_ENV=dev or APP_ENV=prod in $PROJECT_ROOT/.env before starting the application." >&2
+        return 1 2>/dev/null || exit 1
+        ;;
+esac
+
+echo "Application environment | APP_ENV=$APP_ENV"
+
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/myvenv/bin/activate"
 
