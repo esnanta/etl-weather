@@ -6,6 +6,21 @@ orchestration can depend on it without importing Airflow or heavy data libraries
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
+
+# Environment variable selecting destructive-maintenance policy.
+APP_ENV_KEY = "APP_ENV"
+
+# Development is the only environment where database recreation may be exposed.
+APP_ENV_DEV = "dev"
+
+# Production disables database recreation completely.
+APP_ENV_PROD = "prod"
+
+# Missing environment mode fails closed to production behavior.
+DEFAULT_APP_ENV = APP_ENV_PROD
+
 # PostgreSQL application schema shared by weather and orchestration tables.
 APPLICATION_SCHEMA = "climate_data"
 
@@ -31,3 +46,23 @@ CDS_END_DATE = "2022-01-03"
 
 # Active ERA5-Land variables requested from CDS, in stable request order.
 CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
+
+
+def resolve_app_environment(
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Return the validated application environment, failing closed to prod."""
+    env_vars = env or os.environ
+    value = env_vars.get(APP_ENV_KEY, DEFAULT_APP_ENV).strip().lower()
+    if value not in {APP_ENV_DEV, APP_ENV_PROD}:
+        raise ValueError(
+            f"{APP_ENV_KEY} must be either '{APP_ENV_DEV}' or '{APP_ENV_PROD}'."
+        )
+    return value
+
+
+def database_recreation_allowed(
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    """Return whether destructive database recreation may be exposed."""
+    return resolve_app_environment(env) == APP_ENV_DEV
