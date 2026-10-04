@@ -1,7 +1,7 @@
 """Keep campaign summaries bound to exact quarter identities and read-only.
 
-Manual progress and alternative configurations must never inflate the ten-year
-completion count shown to operators.
+Manual progress and alternative configurations must never inflate the
+configured campaign completion count shown to operators.
 """
 
 from __future__ import annotations
