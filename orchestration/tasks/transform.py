@@ -1,4 +1,4 @@
-"""Run one transformation boundary and coordinate its durable progress state."""
+"""Ensure transformed checkpoints and coordinate durable progress state."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def ensure_transformed_checkpoint_partition(
 ) -> dict[str, object]:
     """Ensure one mapped transformed checkpoint from RAW control metadata."""
     from pipeline.request import weather_request_from_spec
-    from pipeline.runtime import ensure_transformed_checkpoint_partition
+    from pipeline.runtime import ensure_transformed_checkpoint_partition as ensure_transformed_checkpoint_runtime
 
     request_spec = _request_spec_from_result(
         extract_result, "ensure_raw_checkpoint"
@@ -51,7 +51,7 @@ def ensure_transformed_checkpoint_partition(
     )
     with measure_peak_memory("ensure_transformed_checkpoint"):
         warn_low_disk_space("ensure_transformed_checkpoint")
-        return ensure_transformed_checkpoint_partition(request)
+        return ensure_transformed_checkpoint_runtime(request)
 
 
 def ensure_transformed_checkpoint_with_progress(
