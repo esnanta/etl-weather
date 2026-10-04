@@ -30,7 +30,7 @@ def load_partition(
     from pipeline.runtime import load_request_partition
 
     request_spec = _request_spec_from_result(
-        transform_result, "transform_or_resume"
+        transform_result, "ensure_transformed_checkpoint"
     )
     request = weather_request_from_spec(request_spec)
     logger.info(
