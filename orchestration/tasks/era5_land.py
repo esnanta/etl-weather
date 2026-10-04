@@ -8,16 +8,16 @@ a second implementation.
 from orchestration.intervals import inclusive_local_dates
 from orchestration.monitoring import measure_peak_memory, warn_low_disk_space
 from orchestration.requests import build_historical_request_specs
-from orchestration.tasks.extract import extract_partition
+from orchestration.tasks.extract import ensure_raw_checkpoint_partition
 from orchestration.tasks.load import load_partition
-from orchestration.tasks.transform import transform_partition
+from orchestration.tasks.transform import ensure_transformed_checkpoint_partition
 
 __all__ = [
     "build_historical_request_specs",
-    "extract_partition",
+    "ensure_raw_checkpoint_partition",
     "inclusive_local_dates",
     "load_partition",
     "measure_peak_memory",
-    "transform_partition",
+    "ensure_transformed_checkpoint_partition",
     "warn_low_disk_space",
 ]
