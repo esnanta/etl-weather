@@ -1,4 +1,4 @@
-"""Run mapped CDS extraction with worker-free waits between provider calls.
+"""Ensure mapped RAW checkpoints with worker-free waits between provider calls.
 
 TaskFlow Python functions cannot defer in Airflow 3, so this operator resumes
 the same checkpoint-backed monthly partition when PostgreSQL denies a slot.
@@ -17,7 +17,7 @@ from pipeline.extraction.cds import CdsSubmissionDeferred
 
 
 class CdsPacedExtractOperator(BaseOperator):
-    """Defer without consuming an extraction worker or provider pool slot."""
+    """Ensure a RAW checkpoint while deferring provider-pacing waits."""
 
     def __init__(
         self,
