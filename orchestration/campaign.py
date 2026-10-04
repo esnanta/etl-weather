@@ -96,7 +96,7 @@ def initialize_campaign_progress(
     *,
     current_local_date: date | None = None,
 ) -> tuple[int, ...]:
-    """Idempotently seed all forty quarter batches before scheduled selection."""
+    """Idempotently seed all configured quarter batches before selection."""
     from orchestration.progress import build_pipeline_progress_definition
     from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
 
