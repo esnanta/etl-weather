@@ -253,7 +253,7 @@ Create one manual DAG named `cds_era5_land_etl`.
 - [x] Split the range into monthly requests with pipeline-owned code.
 - [x] Use dynamic task mapping for monthly partitions.
 - [x] Keep the dependency graph
-      `extract_or_resume -> transform_or_resume -> load`.
+      `attempt_raw_checkpoint -> prepare_retry_pass -> resolve_raw_checkpoint -> ensure_transformed_checkpoint -> load`.
 - [x] Assign extraction to the `cds_api` pool.
 - [x] Start the `cds_api` pool with one slot.
 - [x] Configure extraction for at most three attempts with bounded backoff.
@@ -393,7 +393,7 @@ by Stage 8.
 The campaign covers 2016-01-01 through 2025-12-31: 40 calendar
 quarters and 120 monthly partitions. Airflow lists **one DAG**.
 Each automatic DagRun selects at most one quarter and maps its three
-monthly `extract_or_resume -> transform_or_resume -> load` chains.
+monthly RAW-checkpoint attempt/resolution, transformed-checkpoint, and load chains.
 The 40 quarters are campaign progress, not 40 DAG definitions;
 manual recovery also uses the same DAG. A manual annual range is an
 optional operator input, not a separate DAG per year.
