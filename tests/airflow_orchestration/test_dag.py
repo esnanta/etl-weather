@@ -35,23 +35,29 @@ def test_etl_dag_task_graph(dag) -> None:
         "build_monthly_requests",
         "first_extract_attempt",
         "prepare_retry_pass",
-        "extract_or_resume",
+        "resolve_extraction",
         "transform_or_resume",
         "load",
     }
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
         "first_extract_attempt"
     }
-    assert dag.get_task("extract_or_resume").downstream_task_ids == {
+    assert dag.get_task("resolve_extraction").downstream_task_ids == {
         "transform_or_resume"
     }
     assert dag.get_task("transform_or_resume").downstream_task_ids == {"load"}
 
 
 def test_etl_dag_boundary_policies(dag) -> None:
-    extract = dag.get_task("extract_or_resume")
+    first = dag.get_task("first_extract_attempt")
+    extract = dag.get_task("resolve_extraction")
     transform = dag.get_task("transform_or_resume")
     load = dag.get_task("load")
+
+    assert first.map_index_template == "{{ task.month_label }}"
+    assert extract.map_index_template == "{{ task.month_label }}"
+    assert dag.get_task("transform_or_resume").map_index_template == "{{ month_label }}"
+    assert dag.get_task("load").map_index_template == "{{ month_label }}"
 
     assert extract.pool == "cds_api"
     assert extract.retries == 1
@@ -73,9 +79,9 @@ def test_pipeline_package_does_not_import_airflow() -> None:
 
 def test_first_attempt_barrier_and_retry_pass(dag) -> None:
     first = dag.get_task("first_extract_attempt")
-    retry = dag.get_task("extract_or_resume")
+    retry = dag.get_task("resolve_extraction")
     assert first.retries == 0
     assert first.pool == retry.pool == "cds_api"
     assert first.downstream_task_ids == {"prepare_retry_pass"}
-    assert dag.get_task("prepare_retry_pass").downstream_task_ids == {"extract_or_resume"}
+    assert dag.get_task("prepare_retry_pass").downstream_task_ids == {"resolve_extraction"}
     assert retry.retries == 1
