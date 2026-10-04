@@ -21,6 +21,18 @@ and validate the deployment again.
 
 ## Setup and Installation
 
+Before starting Airflow, set the application environment in the project `.env`:
+
+```env
+APP_ENV=dev
+```
+
+`APP_ENV` is mandatory and accepts only `dev` or `prod`. The activation
+script and DAG parser log the selected mode. Missing, blank, or invalid values
+abort startup and instruct the operator to set `APP_ENV=dev` or
+`APP_ENV=prod`; Airflow does not assume a mode.
+
+
 1. **Create and activate the project environment:**
 
    ```bash
