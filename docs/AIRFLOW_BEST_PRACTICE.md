@@ -33,9 +33,9 @@ The default DAG graph follows the retry and checkpoint boundaries already
 owned by the pipeline:
 
 ```text
-extract_or_resume
+ensure_raw_checkpoint
         ↓
-transform_or_resume
+ensure_transformed_checkpoint
         ↓
 load
 ```
@@ -43,8 +43,8 @@ load
 Validation stays inside these runtime operations:
 
 ```text
-extract_or_resume   → RAW checkpoint validation
-transform_or_resume → transformed checkpoint validation
+ensure_raw_checkpoint   → RAW checkpoint validation
+ensure_transformed_checkpoint → transformed checkpoint validation
 load                → transactional idempotency checks and persistence
 ```
 
@@ -135,8 +135,8 @@ global value.
 
 | Boundary | Retry candidates | Fail without repeated retry |
 | --- | --- | --- |
-| `extract_or_resume` | CDS throttling, network timeout, temporary service failure | invalid request, invalid/resumed RAW checkpoint, deterministic validation failure |
-| `transform_or_resume` | only a demonstrated transient infrastructure failure | scientific validation failure, changed RAW checksum, code/configuration error |
+| `ensure_raw_checkpoint` | CDS throttling, network timeout, temporary service failure | invalid request, invalid/resumed RAW checkpoint, deterministic validation failure |
+| `ensure_transformed_checkpoint` | only a demonstrated transient infrastructure failure | scientific validation failure, changed RAW checksum, code/configuration error |
 | `load` | temporary PostgreSQL connectivity or lock contention | schema/contract violation, invalid transformed artifact, deterministic data error |
 
 A sensible initial baseline is three extraction attempts, no transformation
@@ -251,7 +251,7 @@ Core pipeline tests remain Airflow-independent and follow `tests/AGENTS.md`.
 
 Before enabling a DAG, confirm all of the following:
 
-- [ ] The graph uses `extract_or_resume → transform_or_resume → load`.
+- [ ] The graph uses `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`.
 - [ ] Validation has not been split out of pipeline runtime boundaries.
 - [ ] `Asia/Jakarta` and interval conversion are explicit and tested.
 - [ ] The six-day availability lag is configurable and logged.
