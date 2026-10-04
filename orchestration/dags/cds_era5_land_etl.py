@@ -86,17 +86,17 @@ with DAG(
         execution_timeout=timedelta(hours=2),
     )
     def ensure_transformed_checkpoint(
-        extract_result: dict[str, object],
+        raw_checkpoint_result: dict[str, object],
     ) -> dict[str, object]:
         context = get_current_context()
-        request = extract_result.get("request", extract_result.get("request_spec"))
+        request = raw_checkpoint_result.get("request", raw_checkpoint_result.get("request_spec"))
         if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
             raise ValueError(
                 "Mapped transformation requires request.start_date "
                 "for the Airflow month label."
             )
         context["month_label"] = str(request["start_date"])[:7]
-        return ensure_transformed_checkpoint_with_progress(extract_result)
+        return ensure_transformed_checkpoint_with_progress(raw_checkpoint_result)
 
     @task(
         task_id="load",
@@ -107,16 +107,16 @@ with DAG(
         max_retry_delay=timedelta(minutes=30),
         execution_timeout=timedelta(hours=2),
     )
-    def load(transform_result: dict[str, object]) -> dict[str, object]:
+    def load(transformed_checkpoint_result: dict[str, object]) -> dict[str, object]:
         context = get_current_context()
-        request = transform_result.get("request", transform_result.get("request_spec"))
+        request = transformed_checkpoint_result.get("request", transformed_checkpoint_result.get("request_spec"))
         if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
             raise ValueError(
                 "Mapped load requires request.start_date "
                 "for the Airflow month label."
             )
         context["month_label"] = str(request["start_date"])[:7]
-        return load_with_progress(transform_result)
+        return load_with_progress(transformed_checkpoint_result)
 
     monthly_jobs = build_monthly_requests()
     first_attempts = CdsPacedExtractOperator.partial(
@@ -128,7 +128,7 @@ with DAG(
         execution_timeout=timedelta(hours=6),
     ).expand_kwargs(monthly_jobs)
     retry_jobs = prepare_retry_pass(first_attempts.output)
-    resolved_extraction = CdsPacedExtractOperator.partial(
+    resolved_raw_checkpoint = CdsPacedExtractOperator.partial(
         task_id="resolve_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
@@ -139,7 +139,7 @@ with DAG(
         execution_timeout=timedelta(hours=6),
     ).expand_kwargs(retry_jobs)
     transformed = ensure_transformed_checkpoint.expand(
-        extract_result=resolved_extraction.output
+        raw_checkpoint_result=resolved_raw_checkpoint.output
     )
-    load.expand(transform_result=transformed)
+    load.expand(transformed_checkpoint_result=transformed)
 
