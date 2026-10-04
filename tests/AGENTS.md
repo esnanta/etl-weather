@@ -120,12 +120,13 @@ Tests must protect the boundaries that become critical during retry/backfill:
 
 ## Pipeline Progress Persistence Rules
 
-The agreed durable operational model uses the existing PostgreSQL climate
-database:
+The agreed durable operational model uses the configured project PostgreSQL
+database and the shared `climate_data` application schema:
 
 ```text
-climate.pipeline_progress
-climate.pipeline_progress_detail
+climate_data.pipeline_progress
+climate_data.pipeline_progress_detail
+climate_data.cds_submission_pacing
 ```
 
 Tests must protect cadence-neutral persistence. The parent row uses explicit
@@ -189,8 +190,14 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `test_daily_climate_repository.py`: modelling-data selection, SQL contract, validation, ordering and missing values.
 - `airflow_orchestration/test_campaign.py`: fixed 2016–2025 quarter boundaries and exact three-month request specs as scheduler policy.
 - `airflow_orchestration/test_progress.py`: cadence-neutral progress-definition identity for one-month, multi-month, quarterly, or manual ranges.
-- `airflow_orchestration/test_pipeline_progress.py`: generic `climate.pipeline_progress` / `climate.pipeline_progress_detail` DDL, seeding, detail updates, and parent reconciliation before DAG integration.
-- `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test schema.
+- `airflow_orchestration/test_pipeline_progress.py`: generic `climate_data.pipeline_progress` / `climate_data.pipeline_progress_detail` DDL, seeding, detail updates, and parent reconciliation before DAG integration.
+- `airflow_orchestration/test_database.py`: orchestration engine lifecycle and five-table bootstrap coordination without creating a database.
+- `airflow_orchestration/test_tasks.py`: request, interval, monitoring, and pipeline-delegating task-boundary behavior after responsibility separation.
+- `airflow_orchestration/test_progress_wiring.py`: progress-aware extraction/load wiring, campaign repair, offsets, and persisted-load evidence.
+- `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test database.
+- `integration/test_pipeline_progress_reconciliation.py`: persisted weather evidence and parent-progress reconciliation.
+- `integration/test_cds_submission_pacing.py`: PostgreSQL-clock pacing reservation and row-lock behavior.
+- `integration/test_orchestration_database_bootstrap.py`: fresh and repeated five-table bootstrap in the isolated `TEST_POSTGRES_*` database.
 
 ## Dependency and Warning Policy
 
