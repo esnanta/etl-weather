@@ -90,7 +90,7 @@ def test_first_pass_failure_is_handed_to_bounded_retry_after_all_first_maps(
         if index == failed_index:
             with pytest.raises(RuntimeError):
                 operator.execute({})
-            assert operator.execute({})["boundary"] == "extract_or_resume"
+            assert operator.execute({})["boundary"] == "ensure_raw_checkpoint"
         else:
             assert operator.execute({}) is first[index]
     assert calls == ["2016-01-01", "2016-02-01", "2016-03-01",
