@@ -1,7 +1,7 @@
-"""Read the fixed campaign's exact progress identities for operator reporting.
+"""Read configured campaign progress identities for operator reporting.
 
 Manual ranges and changed configurations can coexist in PostgreSQL, so a
-yearly summary must match the forty current quarter definitions explicitly.
+yearly summary must match the current campaign quarter definitions explicitly.
 """
 
 from __future__ import annotations
@@ -12,7 +12,12 @@ from datetime import date, datetime
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from orchestration.campaign import CampaignQuarter, build_quarter_request_specs, iter_campaign_quarters
+from orchestration.campaign import (
+    CampaignQuarter,
+    build_campaign_progress_definition,
+    build_quarter_request_specs,
+    iter_campaign_quarters,
+)
 from orchestration.config import (
     CAMPAIGN_END_YEAR,
     CAMPAIGN_START_YEAR,
@@ -20,7 +25,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.progress import PipelineProgressDefinition, build_pipeline_progress_definition
+from orchestration.progress import PipelineProgressDefinition
 
 
 @dataclass(frozen=True)
@@ -130,7 +135,7 @@ def read_campaign_report(engine: Engine) -> tuple[QuarterReport, ...]:
     reports = []
     for quarter in iter_campaign_quarters():
         specs = build_quarter_request_specs(quarter, current_local_date=datetime.max.date())
-        definition = build_pipeline_progress_definition(specs)
+        definition = build_campaign_progress_definition(specs)
         reports.append(_load_quarter_report(engine, quarter, definition))
     return tuple(reports)
 
@@ -139,7 +144,7 @@ def format_campaign_report(reports: tuple[QuarterReport, ...]) -> str:
     """Render one bounded yearly summary with failed quarters and last load."""
     quarters = iter_campaign_quarters()
     if tuple(item.quarter for item in reports) != quarters:
-        raise ValueError("Campaign report must contain forty ordered quarters.")
+        raise ValueError("Campaign report must contain all configured ordered quarters.")
     completed = sum(item.status == "complete" for item in reports)
     failed = sum(item.status == "failed" for item in reports)
     lines = [
