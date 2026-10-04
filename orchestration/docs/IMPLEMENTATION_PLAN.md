@@ -161,10 +161,10 @@ validate and split by month
 monthly request specifications
           |
           v
-extract_or_resume (mapped)
+resolve_raw_checkpoint (mapped)
           |
           v
-transform_or_resume (mapped)
+ensure_transformed_checkpoint (mapped)
           |
           v
 load (mapped)
@@ -209,8 +209,8 @@ objects must not cross Airflow task boundaries or enter XCom.
       validates the deterministic RAW checkpoint.
 - [x] Add an Airflow-neutral load entrypoint that rehydrates and validates the
       deterministic transformed checkpoint.
-- [x] Delegate internally to `extract_or_resume()`,
-      `transform_or_resume()`, and `load()`.
+- [x] Delegate internally to `ensure_raw_checkpoint()`,
+      `ensure_transformed_checkpoint()`, and `load()`.
 - [x] Return only small status/control metadata from each boundary.
 - [x] Preserve the existing `run_monthly_batch()` CLI behavior.
 - [x] Add unit tests for fresh and resumed cross-process handoff.
@@ -680,7 +680,7 @@ is justified by this single run.
 
 ### Live follow-up — 2026-09-28
 
-- [x] Diagnose the June 2016 `first_extract_attempt[2]` pacing wait from the
+- [x] Diagnose the June 2016 `attempt_raw_checkpoint[2]` pacing wait from the
       operator log. It resumed at 10:30:27 Asia/Jakarta, reserved the May 31
       context POST at 10:30:28.994241, downloaded it, then deferred the June
       target POST until 11:00:28.994241. This is two separately paced chunks
