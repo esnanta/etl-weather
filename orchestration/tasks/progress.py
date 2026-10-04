@@ -1,7 +1,8 @@
 """Compatibility facade for responsibility-specific progress-aware task modules.
 
-Runtime DAG and operator code import the named task modules directly. These
-re-exports preserve older imports without retaining mixed task responsibilities.
+Runtime DAG and operator code import the named task modules directly. This
+facade preserves the module-level import path for current helper names without
+retaining mixed task responsibilities.
 """
 
 from orchestration.campaign_repair import reconcile_campaign_repair
