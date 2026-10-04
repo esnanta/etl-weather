@@ -7,6 +7,11 @@ manual progress rows or relying on large Airflow XCom payloads.
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from sqlalchemy import create_engine
 
