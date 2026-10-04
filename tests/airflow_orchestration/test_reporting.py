@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from orchestration.campaign import CampaignQuarter, iter_campaign_quarters
+from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
 from orchestration.reporting import MonthReport, QuarterReport, format_campaign_report, read_campaign_report
 
 
@@ -39,45 +40,91 @@ def test_report_queries_exact_quarter_definitions_without_writes() -> None:
             return Connection()
 
     reports = read_campaign_report(Engine())
-    assert len(reports) == 40
+    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+    assert len(reports) == quarter_count
     assert all(report.status == "not_initialized" for report in reports)
-    assert len({item["configuration_identity"] for item in queries}) == 40
-    assert queries[0]["start_date"] == "2016-01-01"
-    assert queries[-1]["end_date"] == "2025-12-31"
+    assert len({item["configuration_identity"] for item in queries}) == quarter_count
+    assert queries[0]["start_date"] == f"{CAMPAIGN_START_YEAR}-01-01"
+    assert queries[-1]["end_date"] == f"{CAMPAIGN_END_YEAR}-12-31"
 
 
 def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
     timestamp = datetime(2026, 9, 26, tzinfo=timezone.utc)
+    failed_quarter = CampaignQuarter(CAMPAIGN_START_YEAR, 4)
+    partial_quarter = CampaignQuarter(CAMPAIGN_END_YEAR, 2)
+    complete_quarters = {
+        CampaignQuarter(CAMPAIGN_START_YEAR, quarter)
+        for quarter in (1, 2, 3)
+    } - {partial_quarter}
+
     reports = tuple(
         QuarterReport(
             quarter,
-            "complete" if quarter.quarter <= 3 and quarter.year == 2016
-            else "failed" if quarter == CampaignQuarter(2016, 4)
-            else "running" if quarter == CampaignQuarter(2024, 2)
+            "running" if quarter == partial_quarter
+            else "failed" if quarter == failed_quarter
+            else "complete" if quarter in complete_quarters
             else "not_initialized",
-            completed_months=3 if quarter.quarter <= 3 and quarter.year == 2016
-            else 2 if quarter == CampaignQuarter(2024, 2) else 0,
-            failed_months=1 if quarter == CampaignQuarter(2016, 4) else 0,
-            last_error="ValidationError" if quarter == CampaignQuarter(2016, 4) else None,
-            last_load_at=timestamp if quarter == CampaignQuarter(2024, 2) else None,
-            last_loaded_month=date(2024, 6, 1) if quarter == CampaignQuarter(2024, 2) else None,
+            completed_months=2 if quarter == partial_quarter
+            else 3 if quarter in complete_quarters else 0,
+            failed_months=1 if quarter == failed_quarter else 0,
+            last_error="ValidationError" if quarter == failed_quarter else None,
+            last_load_at=timestamp if quarter == partial_quarter else None,
+            last_loaded_month=date(partial_quarter.year, 6, 1)
+            if quarter == partial_quarter else None,
             months=(
-                MonthReport(date(2024, 4, 1), "pending", "pending", "pending", "pending"),
-                MonthReport(date(2024, 5, 1), "complete", "complete", "complete", "valid"),
-                MonthReport(date(2024, 6, 1), "complete", "complete", "complete", "valid"),
-            ) if quarter == CampaignQuarter(2024, 2) else (),
+                MonthReport(
+                    date(partial_quarter.year, 4, 1),
+                    "pending",
+                    "pending",
+                    "pending",
+                    "pending",
+                ),
+                MonthReport(
+                    date(partial_quarter.year, 5, 1),
+                    "complete",
+                    "complete",
+                    "complete",
+                    "valid",
+                ),
+                MonthReport(
+                    date(partial_quarter.year, 6, 1),
+                    "complete",
+                    "complete",
+                    "complete",
+                    "valid",
+                ),
+            ) if quarter == partial_quarter else (),
         )
         for quarter in iter_campaign_quarters()
     )
+
+    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+    complete_count = len(complete_quarters)
     output = format_campaign_report(reports)
-    assert "3/40 quarters complete; 37 remaining; 1 failed" in output
-    assert "2016: 3/4 quarters complete" in output
-    assert "2017: 0/4 quarters complete" in output
-    assert "Failed 2016 Q4: 1 month(s); reason=ValidationError" in output
-    assert "Partial 2024 Q2: 2/3 months complete; status=running" in output
-    assert "2024-04: extract=pending, transform=pending, load=pending" in output
-    assert "2024-06: extract=complete, transform=complete, load=complete" in output
-    assert f"Last recorded valid load: 2024-06 (2024 Q2) at {timestamp.isoformat()}" in output
+    assert (
+        f"{complete_count}/{quarter_count} quarters complete; "
+        f"{quarter_count - complete_count} remaining; 1 failed"
+    ) in output
+    assert (
+        f"{CAMPAIGN_START_YEAR}: {sum(q.year == CAMPAIGN_START_YEAR for q in complete_quarters)}/4 "
+        "quarters complete"
+    ) in output
+    assert (
+        f"Failed {failed_quarter.label}: 1 month(s); reason=ValidationError"
+    ) in output
+    assert (
+        f"Partial {partial_quarter.label}: 2/3 months complete; status=running"
+    ) in output
+    assert (
+        f"{partial_quarter.year}-04: extract=pending, transform=pending, load=pending"
+    ) in output
+    assert (
+        f"{partial_quarter.year}-06: extract=complete, transform=complete, load=complete"
+    ) in output
+    assert (
+        f"Last recorded valid load: {partial_quarter.year}-06 "
+        f"({partial_quarter.label}) at {timestamp.isoformat()}"
+    ) in output
 
 
 def test_partial_quarter_details_use_exact_parent_id() -> None:
@@ -85,7 +132,7 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
     from orchestration.campaign import build_quarter_request_specs
     from orchestration.progress import build_pipeline_progress_definition
 
-    quarter = CampaignQuarter(2024, 2)
+    quarter = CampaignQuarter(CAMPAIGN_END_YEAR, 2)
     definition = build_pipeline_progress_definition(
         build_quarter_request_specs(quarter, current_local_date=date.max)
     )
@@ -95,7 +142,7 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
         "last_error": None, "last_load_at": None, "last_loaded_month": None,
     }
     month = {
-        "start_date": date(2024, 4, 1), "extract_status": "pending",
+        "start_date": date(CAMPAIGN_END_YEAR, 4, 1), "extract_status": "pending",
         "transform_status": "pending", "load_status": "pending",
         "validation_status": "pending",
     }
@@ -125,7 +172,7 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
                 assert params == {"progress_id": 42}
                 return Result([month])
             assert params["configuration_identity"] == definition.configuration_identity
-            assert params["start_date"] == "2024-04-01"
+            assert params["start_date"] == f"{CAMPAIGN_END_YEAR}-04-01"
             return Result([parent])
 
     class Engine:
@@ -134,5 +181,5 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
 
     report = _load_quarter_report(Engine(), quarter, definition)
     assert report.completed_months == 2
-    assert report.months[0].start_date == date(2024, 4, 1)
+    assert report.months[0].start_date == date(CAMPAIGN_END_YEAR, 4, 1)
     assert report.months[0].load_status == "pending"
