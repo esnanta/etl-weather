@@ -52,7 +52,7 @@ def resolve_app_environment(
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Return the validated application environment, failing closed to prod."""
-    env_vars = env or os.environ
+    env_vars = env if env is not None else os.environ
     value = env_vars.get(APP_ENV_KEY, DEFAULT_APP_ENV).strip().lower()
     if value not in {APP_ENV_DEV, APP_ENV_PROD}:
         raise ValueError(
