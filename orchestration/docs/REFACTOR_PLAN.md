@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-04 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 through P6 complete. Guarded development reset, PostgreSQL recreation/bootstrap, filesystem cleanup, fresh Airflow SQLite metadata, pool recreation, and DAG rediscovery are verified. P7 controlled runtime verification is next.  
+Status: P1 through P6 complete. P7 controlled runtime verification is active as an offline-only gate; live CDS requests and schedule enablement are explicitly deferred.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -314,14 +314,36 @@ that the replacement PostgreSQL database contains data. A reset pacing table als
 loses the last-submission time; account for the last actual CDS submission before
 any new live request.
 
-### P7 — Controlled runtime verification
+### P7 — Controlled runtime verification (offline)
 
-- [ ] Agree the bounded live pilot scope before initiating new CDS work.
-- [ ] Run a new manual pilot; verify checkpoints, load evidence, and progress reconciliation.
-- [ ] Rerun the same partition and verify validated resume and unchanged-load idempotency.
-- [ ] Run one clean scheduled pilot under the completed code version.
-- [ ] Verify monthly slots, pacing, first-pass/retry ordering, and database evidence.
-- [ ] Leave unattended campaign execution disabled pending explicit rollout review.
+P7 is an offline verification gate for the completed refactor. By explicit user
+decision, this phase must not submit live CDS requests and must not enable the
+campaign schedule. Live manual/scheduled pilots are deferred to a later rollout
+decision and are not required to close P7.
+
+- [ ] Run the complete unit and Airflow-orchestration regression with
+      `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
+- [ ] Run all isolated PostgreSQL integration tests, including idempotency,
+      reconciliation, pacing serialization, and repeated five-table bootstrap.
+- [ ] Verify DAG parsing, six-task graph, retries/timeouts, pool assignment,
+      concurrency limits, and schedule=None under the disabled schedule.
+- [ ] Verify first-pass barrier, bounded retry/pass-through, pacing deferral,
+      +0/+1/+2-hour scheduled slot metadata, failed-quarter blocking, and terminal
+      no-op entirely through mocks/offline state.
+- [ ] Verify manual-mode preparation, progress/load evidence, campaign repair,
+      resume/idempotency contracts, and database rollback without provider I/O.
+- [ ] Verify maintenance/reset guard tests remain green after P6 and that no
+      ordinary DAG/pipeline path exposes database recreation.
+- [ ] Verify the test suite used for P7 contains no live CDS/provider dependency;
+      isolated PostgreSQL is the only external runtime dependency allowed.
+- [ ] Review warnings/failures/skips explicitly; do not treat skipped PostgreSQL
+      integration tests as passing evidence.
+- [ ] Leave `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not initiate live CDS
+      work after P7 completion.
+
+Deferred rollout verification (outside P7): a bounded manual live pilot,
+same-partition resume/idempotency pilot, and one clean scheduled pilot may be
+performed only after separate explicit approval.
 
 ## 8. Completion and update discipline
 
@@ -362,14 +384,15 @@ For every subsequent fix:
 | 2026-10-04 | P6 reset component implementation | User reran the guarded maintenance tests: **33 passed in 1.46s**. Inspect-only preflight then passed against `APP_ENV=dev`, target `localhost:5432/weather`, user `postgres`, schema `climate_data`; all blocking Airflow task/DagRun/process counts and PostgreSQL other-session count were zero. Added three independent guarded reset entrypoints: `reset_data.py` clears only children of `data/`; `reset_airflow_logs.py` clears only children of `orchestration/logs/`; `reset_airflow_runtime.py` removes generated SQLite sidecars, PID files, and generated auth state while explicitly preserving tracked `orchestration/airflow.cfg`, DAGs, docs, JWT key, and source. Added isolated tmp-path unit tests. `reset_all` is intentionally not implemented until these three components are locally verified. | Run the three focused reset-component test modules and inspect-only commands. Do not execute destructive cleanup or create `reset_all` yet. |
 | 2026-10-04 | P6 reset component verification | User ran the three focused reset-component test modules with quiet Airflow activation: **11 passed in 0.03s**. Inspect-only execution of `reset_data.py`, `reset_airflow_logs.py`, and `reset_airflow_runtime.py` showed the expected repository paths, preserved `orchestration/airflow.cfg`, and confirmed that no files were deleted. User requested `source activate-airflow.sh -q` as the default activation form for subsequent commands. | Individual reset components are verified. Next: implement `reset_all` strictly as composition of the tested maintenance functions, then test it without executing real deletion. |
 | 2026-10-04 | P6 reset-all implementation | Added `scripts/reset_all.py` as an inspect-only-by-default orchestrator over the already verified maintenance functions. It validates mandatory `APP_ENV`, hard-denies prod before database configuration access, displays all reset targets, reuses the PostgreSQL static/runtime preflight, and shows one final yes/no confirmation only with `--execute`. Execution order is PostgreSQL recreation first, then data, Airflow logs, and Airflow runtime cleanup; a database recreation failure therefore prevents local artifact/runtime deletion. Added focused composition/guard tests, including direct-file execution under prod and verification that no deletion logic is duplicated. | Run `tests/unit/test_reset_all.py` together with the component tests, then run `python scripts/reset_all.py` in inspect-only mode. Do not use `--execute` until reviewed. |
-| 2026-10-04 | P6 reset-all verification | User ran the guarded maintenance/component/reset-all unit suite with quiet activation; the supplied output showed only passing progress dots and no failure/error lines, but no final pytest count was included, so no exact pass count is claimed. Inspect-only `reset_all.py` then verified `APP_ENV=dev`, PostgreSQL target `localhost:5432/weather` (user `postgres`, schema `climate_data`), data/log/runtime paths, preserved `orchestration/airflow.cfg`, zero blocking Airflow task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. Inspect-only completed with no reset actions executed. | All preflight guards are clear. Actual P6 reset may proceed only via `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python scripts/reset_all.py --execute` and explicit interactive confirmation. |
+| 2026-10-04 | P6 reset-all verification | User ran the guarded maintenance/component/reset-all unit suite with quiet activation: **49 passed in 1.98s**. Inspect-only `reset_all.py` then verified `APP_ENV=dev`, PostgreSQL target `localhost:5432/weather` (user `postgres`, schema `climate_data`), data/log/runtime paths, preserved `orchestration/airflow.cfg`, zero blocking Airflow task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. Inspect-only completed with no reset actions executed. | All preflight guards are clear. Actual P6 reset may proceed only via `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python scripts/reset_all.py --execute` and explicit interactive confirmation. |
 | 2026-10-04 | P6 destructive reset execution | User executed `reset_all.py --execute` under `APP_ENV=dev` with campaign scheduling explicitly disabled. Preflight again reported zero blocking task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. After one explicit `y` confirmation, PostgreSQL database `weather` was recreated, `climate_data` bootstrap logged ready status for canonical weather tables, then local cleanup removed **2** top-level data entries, **2** Airflow log entries, and **4** generated Airflow runtime files. Tracked `orchestration/airflow.cfg` was explicitly preserved. | Run post-reset verification before marking P6 complete: verify all five `climate_data` tables and empty fresh progress/pacing state; verify Airflow SQLite/runtime state is absent until reinitialized; verify retained config/credentials/JWT/source files remain present. |
 | 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `cds_submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
 | 2026-10-04 | P6 Airflow metadata reinitialization | User ran `airflow db migrate`; Airflow created a fresh SQLite metadata database at `orchestration/airflow.db` and reported migration success. `airflow db check` returned connection successful. Pool `cds_api` was recreated with **1 slot** and the expected description. The new SQLite file is present (~724K). Airflow emitted a Starlette/httpx deprecation warning during migration, but migration completed successfully. The final DAG-list grep returned no matching output, so DAG parse/registration is not yet verified. | Diagnose DAG discovery/import state with `airflow dags list-import-errors` and an unfiltered DAG list before closing P6. |
 | 2026-10-04 | P6 standalone runtime decision | User confirmed that local Airflow should be run with `airflow standalone` rather than separate scheduler/API-server/DAG-processor/triggerer terminals. Immediately after fresh metadata initialization, both `airflow dags list-import-errors` and `airflow dags list` returned `No data found`, consistent with a fresh metadata DB before a DAG processor has parsed the DAG. Updated the orchestration README so standalone is the canonical local runtime and documented this fresh-metadata behavior. | Start standalone with scheduling disabled, allow DAG parsing, then verify `cds_era5_land_etl` appears and no import errors are recorded. |
 | 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
+| 2026-10-04 | P7 offline scope | User explicitly prohibited live CDS execution and schedule enablement during P7, prioritizing refactor verification and correct tests. Audited current orchestration/integration coverage: DAG graph/policy, first-pass barrier, simulated pacing deferral/retry, offline scheduled selection with an assertion that unexpected CDS access fails, progress/load evidence, campaign repair, isolated PostgreSQL idempotency/reconciliation/pacing/bootstrap, and reset guards. Redefined P7 as an offline-only gate; live manual and scheduled pilots are deferred outside P7. | Run fresh full unit/orchestration regression and all four isolated PostgreSQL integration modules; review any warnings/skips before further changes. |
 
-Current next action: P7 controlled runtime verification. P1 through P6 are complete. Do not start live CDS work or enable unattended scheduling until an explicit P7 pilot scope is approved. Preserve `pipeline/` as the ETL/scientific implementation owner.
+Current next action: P7 offline controlled runtime verification. P1 through P6 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`; do not submit live CDS work. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
 
 ## 10. P1 audit evidence — 2026-10-03
