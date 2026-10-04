@@ -72,7 +72,10 @@ def _build_dataframe_ascii_table(dataframe: pd.DataFrame, rows: int = 10) -> str
 
 
 def main() -> None:
-    validate_and_log_app_environment(logger)
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
     selection = DailyClimateSelection(
         source=DataSource.CDS,
         dataset_name=CDS_DATASET,
