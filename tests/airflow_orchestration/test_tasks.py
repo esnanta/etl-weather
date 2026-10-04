@@ -131,7 +131,7 @@ def test_peak_memory_is_logged_when_partition_fails(
         with pytest.raises(RuntimeError, match="extract failed"):
             ensure_raw_checkpoint_partition(spec)
     assert any(
-        "[METRIC] task memory | boundary=extract_or_resume" in record.message
+        "[METRIC] task memory | boundary=ensure_raw_checkpoint" in record.message
         for record in caplog.records
     )
 
@@ -154,7 +154,7 @@ def test_disk_warning_reports_low_space_without_failing_task(
         monitoring.warn_low_disk_space("ensure_transformed_checkpoint")
     warnings = [record.message for record in caplog.records if "[DISK]" in record.message]
     assert len(warnings) >= 1
-    assert all("boundary=transform_or_resume" in message for message in warnings)
+    assert all("boundary=ensure_transformed_checkpoint" in message for message in warnings)
     assert any("available_gib=4.00" in message for message in warnings)
 
     caplog.clear()
@@ -178,6 +178,6 @@ def test_disk_warning_reports_unavailable_measurement(
         monitoring.warn_low_disk_space("ensure_raw_checkpoint")
     assert any(
         "[DISK] free space check unavailable" in record.message
-        and "boundary=extract_or_resume" in record.message
+        and "boundary=ensure_raw_checkpoint" in record.message
         for record in caplog.records
     )
