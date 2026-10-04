@@ -62,6 +62,9 @@ case "${APP_ENV,,}" in
 esac
 
 echo "Application environment | APP_ENV=$APP_ENV"
+echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_ENABLED=${ERA5_CAMPAIGN_SCHEDULE_ENABLED:-}"
+echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_CADENCE=${ERA5_CAMPAIGN_SCHEDULE_CADENCE:-}"
+echo "Application environment | CDS_MIN_SUBMISSION_INTERVAL_SECONDS=${CDS_MIN_SUBMISSION_INTERVAL_SECONDS:-}"
 
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/myvenv/bin/activate"
