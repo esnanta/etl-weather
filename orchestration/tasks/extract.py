@@ -18,40 +18,40 @@ from orchestration.progress_tracking import (
 logger = logging.getLogger("orchestration.tasks.era5_land")
 
 
-def extract_partition(
+def ensure_raw_checkpoint_partition(
     request_spec: Mapping[str, Any],
     *,
     paced: bool = False,
 ) -> dict[str, object]:
-    """Delegate one mapped extraction task to the pipeline runtime."""
+    """Ensure one mapped RAW checkpoint through the pipeline runtime."""
     from pipeline.request import weather_request_from_spec
-    from pipeline.runtime import extract_request_partition
+    from pipeline.runtime import ensure_raw_checkpoint_partition
 
     request = weather_request_from_spec(request_spec)
     logger.info(
-        "Starting extraction for %s through %s",
+        "Ensuring RAW checkpoint for %s through %s",
         request.start_date,
         request.end_date,
     )
-    with measure_peak_memory("extract_or_resume"):
-        warn_low_disk_space("extract_or_resume")
+    with measure_peak_memory("ensure_raw_checkpoint"):
+        warn_low_disk_space("ensure_raw_checkpoint")
         if paced:
             from orchestration.pacing import reserve_or_defer
 
-            return extract_request_partition(
+            return ensure_raw_checkpoint_partition(
                 request, before_submission=reserve_or_defer
             )
-        return extract_request_partition(request)
+        return ensure_raw_checkpoint_partition(request)
 
 
-def extract_with_progress(
+def ensure_raw_checkpoint_with_progress(
     request_spec: dict[str, object],
     progress_id: int,
     run_mode: str,
     *,
     paced: bool = False,
 ) -> dict[str, object]:
-    """Run extraction while preserving pacing deferral and failure semantics."""
+    """Ensure a RAW checkpoint while preserving pacing deferral and failure semantics."""
     from pipeline.extraction.cds import CdsSubmissionDeferred
     from pipeline.request import build_request_key, weather_request_from_spec
 
@@ -66,9 +66,9 @@ def extract_with_progress(
     )
     try:
         result = (
-            extract_partition(request_spec, paced=True)
+            ensure_raw_checkpoint_partition(request_spec, paced=True)
             if paced
-            else extract_partition(request_spec)
+            else ensure_raw_checkpoint_partition(request_spec)
         )
         require_request_key(result, request_key)
         path, checksum, size = artifact_identity(result)
@@ -82,7 +82,7 @@ def extract_with_progress(
         )
     except CdsSubmissionDeferred:
         logger.info(
-            "Extraction waiting for the next CDS submission slot; request_key=%s",
+            "RAW checkpoint waiting for the next CDS submission slot; request_key=%s",
             request_key,
         )
         raise
