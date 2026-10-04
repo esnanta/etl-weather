@@ -358,7 +358,7 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        extract_tasks, "extract_partition",
+        extract_tasks, "ensure_raw_checkpoint_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
             CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
