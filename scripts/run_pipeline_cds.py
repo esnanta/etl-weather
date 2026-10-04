@@ -5,6 +5,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
+from config import validate_and_log_app_environment
 from pipeline.runtime import run_monthly_batch
 from request_factory import build_cds_request
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Run a monthly pipeline batch for a CDS source."""
+    validate_and_log_app_environment(logger)
     request = build_cds_request()
     logger.info("Running monthly pipeline batch for source '%s'.", request.source.value)
     run_monthly_batch(request)
