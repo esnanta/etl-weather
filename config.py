@@ -10,6 +10,8 @@ import logging
 import os
 from collections.abc import Mapping
 
+from dotenv import load_dotenv
+
 # Environment variable selecting destructive-maintenance policy.
 APP_ENV_KEY = "APP_ENV"
 
@@ -50,7 +52,11 @@ def resolve_app_environment(
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Return the required validated application environment."""
-    env_vars = env if env is not None else os.environ
+    if env is None:
+        load_dotenv()
+        env_vars = os.environ
+    else:
+        env_vars = env
     raw_value = env_vars.get(APP_ENV_KEY)
     if raw_value is None or not raw_value.strip():
         raise ValueError(
