@@ -60,7 +60,7 @@ class WeatherPipeline:
         self.transformer = transformer
         self.loader = loader
 
-    def extract_or_resume(
+    def ensure_raw_checkpoint(
         self,
         request: WeatherRequest,
     ) -> tuple[RawWeatherDataset, DatasetArtifact, LoadedWeatherDataset]:
@@ -91,7 +91,7 @@ class WeatherPipeline:
         )
         return raw_dataset, artifact, loaded_dataset
 
-    def transform_or_resume(
+    def ensure_transformed_checkpoint(
         self,
         loaded_dataset: LoadedWeatherDataset,
         raw_artifact: DatasetArtifact,
@@ -149,7 +149,7 @@ class WeatherPipeline:
             downloaded_at=raw_dataset.downloaded_at,
             raw_data=self.storage.convert_to_dataframe(raw_artifact),
         )
-        return self.transform_or_resume(loaded_dataset, raw_artifact)
+        return self.ensure_transformed_checkpoint(loaded_dataset, raw_artifact)
 
     def load_from_checkpoint(self, request: WeatherRequest) -> tuple[int, int]:
         """Rehydrate a validated transformed checkpoint and run the load boundary."""
@@ -169,12 +169,12 @@ class WeatherPipeline:
         log_pipeline_header(request)
 
         extract_timer = log_section_start("EXTRACT")
-        raw_dataset, raw_artifact, loaded_dataset = self.extract_or_resume(request)
+        raw_dataset, raw_artifact, loaded_dataset = self.ensure_raw_checkpoint(request)
         normalized_request = raw_dataset.request
         log_section_completed("EXTRACT", extract_timer)
 
         transform_timer = log_section_start("TRANSFORM")
-        transformed_dataset, parquet_artifact = self.transform_or_resume(
+        transformed_dataset, parquet_artifact = self.ensure_transformed_checkpoint(
             loaded_dataset,
             raw_artifact,
         )
@@ -220,12 +220,12 @@ def build_default_pipeline(
     )
 
 
-def extract_request_partition(
+def ensure_raw_checkpoint_partition(
     request: WeatherRequest,
     *,
     before_submission: Callable[[WeatherRequest], None] | None = None,
 ) -> dict[str, object]:
-    """Run one extraction boundary and return small orchestration metadata."""
+    """Ensure one valid RAW checkpoint and return small orchestration metadata."""
     validate_request(request)
     normalized = build_request(request)
     chunk_cache_directory = (
@@ -240,14 +240,14 @@ def extract_request_partition(
     )
     expected_artifact = pipeline.storage.raw_artifact(normalized)
     resumed = pipeline.storage.exists(expected_artifact)
-    _, artifact, _ = pipeline.extract_or_resume(normalized)
+    _, artifact, _ = pipeline.ensure_raw_checkpoint(normalized)
     if chunk_cache_directory is not None and chunk_cache_directory.exists():
         try:
             shutil.rmtree(chunk_cache_directory)
         except OSError:
             logger.warning("Could not remove completed CDS chunk cache: %s", chunk_cache_directory)
     return {
-        "boundary": "extract_or_resume",
+        "boundary": "ensure_raw_checkpoint",
         "request": weather_request_to_spec(normalized),
         "request_key": build_request_key(normalized),
         "artifact_path": artifact.path.as_posix(),
@@ -255,8 +255,8 @@ def extract_request_partition(
     }
 
 
-def transform_request_partition(request: WeatherRequest) -> dict[str, object]:
-    """Run one checkpoint-backed transform and return control metadata."""
+def ensure_transformed_checkpoint_partition(request: WeatherRequest) -> dict[str, object]:
+    """Ensure one valid transformed checkpoint and return control metadata."""
     validate_request(request)
     normalized = build_request(request)
     pipeline = build_default_pipeline(normalized)
@@ -264,7 +264,7 @@ def transform_request_partition(request: WeatherRequest) -> dict[str, object]:
     resumed = pipeline.storage.exists(expected_artifact)
     _, artifact = pipeline.transform_from_checkpoint(normalized)
     return {
-        "boundary": "transform_or_resume",
+        "boundary": "ensure_transformed_checkpoint",
         "request": weather_request_to_spec(normalized),
         "request_key": build_request_key(normalized),
         "artifact_path": artifact.path.as_posix(),
