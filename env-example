@@ -7,16 +7,61 @@ APP_ENV=dev
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-# Airflow campaign scheduling.
-# Keep false until the controlled scheduled rollout is explicitly enabled.
+# Airflow historical campaign scheduling.
+#
+# false:
+#   The DAG is manual-only (schedule=None). Airflow will not create scheduled
+#   DagRuns automatically. Manual DagRuns can still be triggered explicitly.
+#
+# true:
+#   Airflow enables the bounded historical campaign scheduler. Each scheduled
+#   DagRun does not receive start_date/end_date from this file; instead it
+#   selects the earliest eligible incomplete campaign quarter from durable
+#   PostgreSQL progress state.
+#
+# The campaign range itself is defined in orchestration/config.py:
+#   CAMPAIGN_START_YEAR = 2016
+#   CAMPAIGN_END_YEAR   = 2025
+#
+# Change this value only while Airflow standalone is stopped, then restart
+# standalone so the DAG processor reparses the DAG with the new schedule.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 
-# Supported values: 30m, 1h, 2h.
-# Used only when ERA5_CAMPAIGN_SCHEDULE_ENABLED=true.
+# Airflow scheduler cadence used only when
+# ERA5_CAMPAIGN_SCHEDULE_ENABLED=true.
+#
+# Supported values:
+#   30m = scheduler tick every 30 minutes
+#   1h  = scheduler tick every 1 hour
+#   2h  = scheduler tick every 2 hours
+#
+# The cron expressions are evaluated in the DAG timezone (Asia/Jakarta).
+# A scheduler tick means "Airflow may start/select campaign work"; it does NOT
+# mean that one quarter must finish within the cadence interval.
+#
+# The DAG keeps max_active_runs=1, so a new scheduled run will not overlap an
+# already active run. Quarter selection is also protected by durable progress
+# claims in PostgreSQL.
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
 
-# Minimum interval between actual CDS submission POSTs, in seconds.
-# This is independent from the Airflow scheduler cadence.
+# Minimum interval between actual CDS submission POST requests, in seconds.
+#
+# This setting is independent from ERA5_CAMPAIGN_SCHEDULE_CADENCE.
+# It controls provider submission pacing, not how often Airflow schedules a DAG.
+#
+# Default:
+#   1800 seconds = 30 minutes
+#
+# The pacing gate is stored in climate_data.cds_submission_pacing and uses the
+# PostgreSQL clock plus row locking so separate workers/runs cannot submit CDS
+# requests too close together.
+#
+# A single monthly partition may require more than one CDS submission, for
+# example a previous-day/month context request plus the target-month request.
+# Each actual submission must pass this pacing gate.
+#
+# When a slot is not yet available, the extraction task defers and is resumed
+# later by Airflow; the wait is not counted as a provider failure.
 CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
 
 # The shared Airflow JWT secret is stored outside .env
