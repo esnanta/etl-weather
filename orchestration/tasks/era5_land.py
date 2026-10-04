@@ -1,8 +1,8 @@
 """Compatibility facade for responsibility-specific ERA5-Land orchestration helpers.
 
 Runtime code should import requests, intervals, monitoring, and boundary-specific
-task modules directly. These re-exports keep older imports working without owning
-a second implementation.
+task modules directly. This facade preserves the module-level import path for
+current helper names without owning a second implementation.
 """
 
 from orchestration.intervals import inclusive_local_dates
