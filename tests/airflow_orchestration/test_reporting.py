@@ -129,11 +129,13 @@ def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
 
 def test_partial_quarter_details_use_exact_parent_id() -> None:
     from orchestration.reporting import _load_quarter_report
-    from orchestration.campaign import build_quarter_request_specs
-    from orchestration.progress import build_pipeline_progress_definition
+    from orchestration.campaign import (
+        build_campaign_progress_definition,
+        build_quarter_request_specs,
+    )
 
     quarter = CampaignQuarter(CAMPAIGN_END_YEAR, 2)
-    definition = build_pipeline_progress_definition(
+    definition = build_campaign_progress_definition(
         build_quarter_request_specs(quarter, current_local_date=date.max)
     )
     parent = {
