@@ -596,7 +596,7 @@ airflow dags trigger cds_era5_land_etl \\
 airflow dags list-runs cds_era5_land_etl
 ```
 
-In the Airflow UI, open that run's mapped `resolve_extraction` log, including
+In the Airflow UI, open that run's mapped `resolve_raw_checkpoint` log, including
 the log before a deferral and the log after resumption. Record these lines in
 chronological order: `CDS retrieval plan`, `CDS submission reserved`,
 `CDS submission deferred`, `Resumed CDS retrieval chunk`, provider timeout
@@ -705,16 +705,16 @@ manual dates or scheduled quarter
     build_monthly_requests
                |
                v
- first_extract_attempt [monthly]
+ attempt_raw_checkpoint [monthly]
                |
                v
     prepare_retry_pass
                |
                v
- resolve_extraction [monthly]
+ resolve_raw_checkpoint [monthly]
                |
                v
-transform_or_resume [monthly]
+ensure_transformed_checkpoint [monthly]
                |
                v
         load [monthly]
@@ -740,12 +740,12 @@ display label derived from the request start date. The DAG ID and task IDs stay
 stable while the UI can distinguish the active month, for example:
 
 ```text
-first_extract_attempt [2016-01]
-first_extract_attempt [2016-02]
-first_extract_attempt [2016-03]
+attempt_raw_checkpoint [2016-01]
+attempt_raw_checkpoint [2016-02]
+attempt_raw_checkpoint [2016-03]
 
-resolve_extraction [2016-01]
-transform_or_resume [2016-01]
+resolve_raw_checkpoint [2016-01]
+ensure_transformed_checkpoint [2016-01]
 load [2016-01]
 ```
 
@@ -758,10 +758,10 @@ on it.
 | Task                      | Input                         | Output                            |
 | ---                       | ---                           | ---                               |
 | `build_monthly_requests`  | Explicit inclusive dates      | Monthly request specifications    |
-| `first_extract_attempt`   | Monthly request specification | RAW metadata or failure control   |
+| `attempt_raw_checkpoint`   | Monthly request specification | RAW metadata or failure control   |
 | `prepare_retry_pass`      | Three first-pass results      | Monthly retry/pass-through inputs |
-| `resolve_extraction`      | Monthly retry/pass-through    | RAW artifact metadata             |
-| `transform_or_resume`     | RAW artifact metadata         | Transformed artifact metadata     |
+| `resolve_raw_checkpoint`      | Monthly retry/pass-through    | RAW artifact metadata             |
+| `ensure_transformed_checkpoint`     | RAW artifact metadata         | Transformed artifact metadata     |
 | `load`                    | Transformed artifact metadata | PostgreSQL load status            |
 
 ## Triggering the ETL
@@ -888,12 +888,12 @@ scheduled runs share the same DAG and `max_active_runs=1`.
 
 ## Peak Memory in Task Logs
 
-Each mapped `resolve_extraction`, `transform_or_resume`, and `load` task
+Each mapped `resolve_raw_checkpoint`, `ensure_transformed_checkpoint`, and `load` task
 logs a `[METRIC] task memory` line after its runtime boundary, including when
 that boundary raises an exception. For example:
 
 ```text
-[METRIC] task memory | boundary=transform_or_resume | pid=12345 | process_peak_rss_mib=842.31 | peak_before_mib=215.42
+[METRIC] task memory | boundary=ensure_transformed_checkpoint | pid=12345 | process_peak_rss_mib=842.31 | peak_before_mib=215.42
 ```
 
 `process_peak_rss_mib` is the operating system's peak resident memory
@@ -911,8 +911,8 @@ these task-process peak RSS measurements:
 
 | April boundary | Peak RSS (MiB) | Outcome |
 | --- | ---: | --- |
-| `extract_or_resume` | 517.59 | RAW created and validated |
-| `transform_or_resume` | 572.22 | Parquet created; 15,900 daily observations |
+| `ensure_raw_checkpoint` | 517.59 | RAW created and validated |
+| `ensure_transformed_checkpoint` | 572.22 | Parquet created; 15,900 daily observations |
 | `load` | 307.30 | 15,900 observations processed |
 
 The April run succeeded in about 33 minutes 36 seconds. Seven CDS download
@@ -925,14 +925,14 @@ enter XCom.
 
 ## Disk Space Warnings
 
-Before each mapped `extract_or_resume`, `transform_or_resume`, and `load`
+Before each mapped `ensure_raw_checkpoint`, `ensure_transformed_checkpoint`, and `load`
 boundary, the worker checks available space on the filesystem holding the
 repository `data/` directory and on its temporary-file filesystem. If both
 locations share one filesystem, it checks that filesystem once. When less than
 5 GiB is available, task logs emit a warning such as:
 
 ```text
-[DISK] low free space | boundary=extract_or_resume | location=artifacts | path=/path/to/data | available_gib=3.60 | threshold_gib=5
+[DISK] low free space | boundary=ensure_raw_checkpoint | location=artifacts | path=/path/to/data | available_gib=3.60 | threshold_gib=5
 ```
 
 If the worker cannot determine free space, it logs
@@ -1019,11 +1019,13 @@ clock can delay actual starts and completion. The CDS clock has a separate
 scheduled and manual modes. Neither spacing value is a Copernicus requirement.
 Manual recovery receives no scheduled start offset.
 
-The `first_extract_attempt` map gives each month one attempt (including
-worker-free pacing deferrals). It records a real failure and emits bounded
-control metadata. `prepare_retry_pass` waits for all first-pass maps; then
-`resolve_extraction` passes through successes and retries failed partitions with
-one Airflow retry, reusing validated checkpoints. Together with the first
+The `attempt_raw_checkpoint` map gives each month one initial attempt to
+ensure a valid RAW checkpoint (including worker-free pacing deferrals). It may
+resume an existing checkpoint or download and validate a new one. A real
+failure is converted to bounded control metadata so the other months can finish
+their initial pass. `prepare_retry_pass` waits for all initial maps; then
+`resolve_raw_checkpoint` passes through successful months and retries failed
+months with one Airflow retry, reusing validated checkpoints. Together with the first
 pass, this preserves the original maximum of three extraction attempts. Terminal failures
 remain failed in durable progress and block the next quarter until verified
 manual repair. Transform and load follow the resolved extraction results.
