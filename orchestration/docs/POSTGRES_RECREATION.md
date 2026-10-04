@@ -88,9 +88,23 @@ with `dropdb --force` or by terminating unknown sessions automatically.
 
 ## 4. Guarded maintenance entrypoint
 
-P6 should implement and test a dedicated maintenance script or command before
-database recreation is performed. Its interface should make destructive intent
-unambiguous. Conceptually, it should behave like:
+P6 uses the dedicated maintenance command:
+
+```bash
+python scripts/recreate_postgres_database.py
+```
+
+Without arguments it is inspect-only: it displays the configured development
+target and runs the read-only schedule, Airflow state/process, and PostgreSQL
+session preflight. It never prompts for deletion and never changes the database.
+
+Only after the inspect result is reviewed should the operator invoke:
+
+```bash
+python scripts/recreate_postgres_database.py --execute
+```
+
+The execution path remains guarded and behaves like:
 
 ```text
 resolve APP_ENV
@@ -115,10 +129,17 @@ resolve APP_ENV
           +-- yes / y -> recreate the displayed target
 ```
 
-The exact CLI name should be finalized during P6 implementation. Application
-startup must already have logged the selected environment. When `APP_ENV=prod`,
-the reset feature must not be available at all. Do not expose
-DROP/CREATE as a normal pipeline or orchestration helper.
+Application startup must already have logged the selected environment. When
+`APP_ENV=prod`, this command exits before reading database configuration and
+the reset feature is unavailable. Missing, blank, or invalid `APP_ENV` values
+also abort. Do not expose DROP/CREATE as a normal pipeline or orchestration
+helper.
+
+The preflight blocks execution when the campaign schedule is enabled, when
+Airflow task/DagRun state can still run or resume, when scheduler/triggerer/
+worker/API processes are still able to schedule or execute work, or when another
+PostgreSQL session is connected to the target. The command reports these
+conditions; it does not terminate processes or database sessions automatically.
 
 The maintenance implementation may invoke PostgreSQL administrative operations
 internally after all guards pass, but ordinary project documentation should
