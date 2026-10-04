@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 # source activate-airflow.sh
 
+_AIRFLOW_QUIET=0
+for _airflow_arg in "$@"; do
+    case "$_airflow_arg" in
+        -q|--quiet)
+            _AIRFLOW_QUIET=1
+            ;;
+        -h|--help)
+            echo "Usage: source activate-airflow.sh [-q|--quiet]"
+            return 0 2>/dev/null || exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown option '$_airflow_arg'." >&2
+            echo "Usage: source activate-airflow.sh [-q|--quiet]" >&2
+            return 1 2>/dev/null || exit 1
+            ;;
+    esac
+done
+unset _airflow_arg
+
+_airflow_info() {
+    [[ $_AIRFLOW_QUIET -eq 1 ]] && return 0
+    echo "$@"
+}
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
@@ -70,11 +94,14 @@ export AIRFLOW__CORE__DAGS_FOLDER="$AIRFLOW_HOME/dags"
 export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="sqlite:///$AIRFLOW_HOME/airflow.db"
 export PYTHONPATH="$PROJECT_ROOT"
 
-echo "PROJECT_ROOT=$PROJECT_ROOT"
-echo "VIRTUAL_ENV=$VIRTUAL_ENV"
-echo "AIRFLOW_HOME=$AIRFLOW_HOME"
-echo "AIRFLOW_CONFIG=$AIRFLOW_CONFIG"
-echo "AIRFLOW__CORE__DAGS_FOLDER=$AIRFLOW__CORE__DAGS_FOLDER"
-echo "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
-echo "AIRFLOW_JWT_SECRET_FILE=$AIRFLOW_JWT_SECRET_FILE"
-echo "PYTHONPATH=$PYTHONPATH"
+_airflow_info "PROJECT_ROOT=$PROJECT_ROOT"
+_airflow_info "VIRTUAL_ENV=$VIRTUAL_ENV"
+_airflow_info "AIRFLOW_HOME=$AIRFLOW_HOME"
+_airflow_info "AIRFLOW_CONFIG=$AIRFLOW_CONFIG"
+_airflow_info "AIRFLOW__CORE__DAGS_FOLDER=$AIRFLOW__CORE__DAGS_FOLDER"
+_airflow_info "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
+_airflow_info "AIRFLOW_JWT_SECRET_FILE=$AIRFLOW_JWT_SECRET_FILE"
+_airflow_info "PYTHONPATH=$PYTHONPATH"
+
+unset -f _airflow_info
+unset _AIRFLOW_QUIET
