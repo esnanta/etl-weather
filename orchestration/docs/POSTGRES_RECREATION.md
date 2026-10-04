@@ -15,8 +15,9 @@ Database recreation is a maintenance-only operation.
 The maintenance entrypoint implemented for P6 must:
 
 1. resolve and validate `APP_ENV` using the shared root configuration;
-2. fail closed to production behavior when `APP_ENV` is missing;
-3. reject unsupported values; only `dev` and `prod` are valid;
+2. abort with an actionable warning when `APP_ENV` is missing or blank;
+3. reject unsupported values with an instruction to set `APP_ENV=dev` or
+   `APP_ENV=prod`; no mode is assumed;
 4. when `APP_ENV=prod`, terminate before exposing any reset option,
    interactive deletion prompt, or DROP/CREATE path;
 5. when `APP_ENV=dev`, resolve host, port, database, user, and schema from
@@ -94,7 +95,9 @@ unambiguous. Conceptually, it should behave like:
 ```text
 resolve APP_ENV
     |
-    +-- prod or missing -> reset feature unavailable; stop
+    +-- missing / blank / invalid -> warn and abort startup
+    |
+    +-- prod -> reset feature unavailable; stop
     |
     +-- dev
           |
@@ -112,8 +115,9 @@ resolve APP_ENV
           +-- yes / y -> recreate the displayed target
 ```
 
-The exact CLI name should be finalized during P6 implementation. When
-`APP_ENV=prod`, the reset feature must not be available at all. Do not expose
+The exact CLI name should be finalized during P6 implementation. Application
+startup must already have logged the selected environment. When `APP_ENV=prod`,
+the reset feature must not be available at all. Do not expose
 DROP/CREATE as a normal pipeline or orchestration helper.
 
 The maintenance implementation may invoke PostgreSQL administrative operations
