@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-04 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 through P6 complete. P7 controlled runtime verification is active as an offline-only gate; live CDS requests and schedule enablement are explicitly deferred.  
+Status: P1 through P7 complete. P7 closed as an offline-only verification gate with 271 unit/orchestration tests and 6 isolated PostgreSQL integration tests passing. Live CDS requests and schedule enablement remain explicitly deferred.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -321,24 +321,24 @@ decision, this phase must not submit live CDS requests and must not enable the
 campaign schedule. Live manual/scheduled pilots are deferred to a later rollout
 decision and are not required to close P7.
 
-- [ ] Run the complete unit and Airflow-orchestration regression with
+- [x] Run the complete unit and Airflow-orchestration regression with
       `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
-- [ ] Run all isolated PostgreSQL integration tests, including idempotency,
+- [x] Run all isolated PostgreSQL integration tests, including idempotency,
       reconciliation, pacing serialization, and repeated five-table bootstrap.
-- [ ] Verify DAG parsing, six-task graph, retries/timeouts, pool assignment,
+- [x] Verify DAG parsing, six-task graph, retries/timeouts, pool assignment,
       concurrency limits, and schedule=None under the disabled schedule.
-- [ ] Verify first-pass barrier, bounded retry/pass-through, pacing deferral,
+- [x] Verify first-pass barrier, bounded retry/pass-through, pacing deferral,
       +0/+1/+2-hour scheduled slot metadata, failed-quarter blocking, and terminal
       no-op entirely through mocks/offline state.
-- [ ] Verify manual-mode preparation, progress/load evidence, campaign repair,
+- [x] Verify manual-mode preparation, progress/load evidence, campaign repair,
       resume/idempotency contracts, and database rollback without provider I/O.
-- [ ] Verify maintenance/reset guard tests remain green after P6 and that no
+- [x] Verify maintenance/reset guard tests remain green after P6 and that no
       ordinary DAG/pipeline path exposes database recreation.
-- [ ] Verify the test suite used for P7 contains no live CDS/provider dependency;
+- [x] Verify the test suite used for P7 contains no live CDS/provider dependency;
       isolated PostgreSQL is the only external runtime dependency allowed.
-- [ ] Review warnings/failures/skips explicitly; do not treat skipped PostgreSQL
+- [x] Review warnings/failures/skips explicitly; do not treat skipped PostgreSQL
       integration tests as passing evidence.
-- [ ] Leave `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not initiate live CDS
+- [x] Leave `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not initiate live CDS
       work after P7 completion.
 
 Deferred rollout verification (outside P7): a bounded manual live pilot,
@@ -391,8 +391,9 @@ For every subsequent fix:
 | 2026-10-04 | P6 standalone runtime decision | User confirmed that local Airflow should be run with `airflow standalone` rather than separate scheduler/API-server/DAG-processor/triggerer terminals. Immediately after fresh metadata initialization, both `airflow dags list-import-errors` and `airflow dags list` returned `No data found`, consistent with a fresh metadata DB before a DAG processor has parsed the DAG. Updated the orchestration README so standalone is the canonical local runtime and documented this fresh-metadata behavior. | Start standalone with scheduling disabled, allow DAG parsing, then verify `cds_era5_land_etl` appears and no import errors are recorded. |
 | 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
 | 2026-10-04 | P7 offline scope | User explicitly prohibited live CDS execution and schedule enablement during P7, prioritizing refactor verification and correct tests. Audited current orchestration/integration coverage: DAG graph/policy, first-pass barrier, simulated pacing deferral/retry, offline scheduled selection with an assertion that unexpected CDS access fails, progress/load evidence, campaign repair, isolated PostgreSQL idempotency/reconciliation/pacing/bootstrap, and reset guards. Redefined P7 as an offline-only gate; live manual and scheduled pilots are deferred outside P7. | Run fresh full unit/orchestration regression and all four isolated PostgreSQL integration modules; review any warnings/skips before further changes. |
+| 2026-10-04 | P7 offline regression closure | User ran the full offline unit/orchestration suite with scheduling disabled: **271 passed in 7.72s**. User then ran all four isolated PostgreSQL integration modules: **6 passed in 1.27s**. No failures or skips were reported. Source/test audit confirmed scheduled-selection tests explicitly fail on unexpected CDS access; CDS client/transport behavior in unit tests is mocked/faked; integration tests use only isolated `TEST_POSTGRES_*` resources. The passing suite covers DAG parsing/policy, six-task graph, retry/timeout/pool/concurrency, first-pass barrier, bounded retry/pass-through, pacing deferral, +0/+1/+2-hour slot metadata, failed-quarter blocking, terminal no-op, manual preparation/repair, load evidence, idempotency/rollback, bootstrap, pacing serialization, and reset guards. | P7 offline gate complete. Keep live CDS disabled and campaign scheduling off; live manual/scheduled pilots remain deferred to a separately approved rollout phase. |
 
-Current next action: P7 offline controlled runtime verification. P1 through P6 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`; do not submit live CDS work. Preserve `pipeline/` as the ETL/scientific implementation owner.
+Current next action: refactor follow-up only. P1 through P7 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not submit live CDS work until a separately approved rollout phase. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
 
 ## 10. P1 audit evidence — 2026-10-03
