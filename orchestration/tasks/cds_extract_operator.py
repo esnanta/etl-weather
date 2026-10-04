@@ -32,6 +32,13 @@ class CdsPacedExtractOperator(BaseOperator):
     ) -> None:
         super().__init__(**kwargs)
         self.request_spec = request_spec
+        start_date = request_spec.get("start_date")
+        if not isinstance(start_date, str) or len(start_date) < 7:
+            raise ValueError(
+                "Mapped CDS extraction requires request_spec.start_date "
+                "in YYYY-MM-DD format."
+            )
+        self.month_label = start_date[:7]
         self.progress_id = progress_id
         self.run_mode = run_mode
         self.earliest_start_at = earliest_start_at
