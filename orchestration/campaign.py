@@ -71,6 +71,18 @@ def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
     )
 
 
+def build_campaign_progress_definition(
+    request_specs: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> PipelineProgressDefinition:
+    """Build durable progress identity scoped to the configured campaign key."""
+    from orchestration.progress import build_pipeline_progress_definition
+
+    return build_pipeline_progress_definition(
+        request_specs,
+        identity_context={"campaign_key": CAMPAIGN_KEY},
+    )
+
+
 def build_quarter_request_specs(
     quarter: CampaignQuarter,
     *,
@@ -97,7 +109,6 @@ def initialize_campaign_progress(
     current_local_date: date | None = None,
 ) -> tuple[int, ...]:
     """Idempotently seed all configured quarter batches before selection."""
-    from orchestration.progress import build_pipeline_progress_definition
     from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
 
     progress_ids = []
@@ -105,7 +116,7 @@ def initialize_campaign_progress(
         specs = build_quarter_request_specs(
             quarter, current_local_date=current_local_date
         )
-        definition = build_pipeline_progress_definition(specs)
+        definition = build_campaign_progress_definition(specs)
         progress_ids.append(initialize_pipeline_progress(engine, definition))
     return tuple(progress_ids)
 
@@ -114,7 +125,6 @@ def matching_campaign_progress_definition(
     request_spec: Mapping[str, Any],
 ) -> PipelineProgressDefinition | None:
     """Match one exact calendar-month request to the current campaign identity."""
-    from orchestration.progress import build_pipeline_progress_definition
     from pipeline.request import build_request_key, weather_request_from_spec
 
     request = weather_request_from_spec(request_spec)
@@ -130,7 +140,7 @@ def matching_campaign_progress_definition(
 
     quarter = CampaignQuarter(start.year, (start.month - 1) // 3 + 1)
     specs = build_quarter_request_specs(quarter, current_local_date=date.max)
-    definition = build_pipeline_progress_definition(specs)
+    definition = build_campaign_progress_definition(specs)
     request_key = build_request_key(request)
     if request_key not in {partition.request_key for partition in definition.partitions}:
         return None
