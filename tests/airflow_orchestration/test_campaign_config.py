@@ -39,3 +39,8 @@ def test_campaign_year_requires_integer(
 def test_loaded_campaign_bounds_match_environment() -> None:
     assert orchestration_config.CAMPAIGN_KEY
     assert orchestration_config.CAMPAIGN_START_YEAR <= orchestration_config.CAMPAIGN_END_YEAR
+
+
+def test_campaign_bounds_reject_inverted_range() -> None:
+    with pytest.raises(RuntimeError, match="less than or equal"):
+        orchestration_config._validate_campaign_bounds(2018, 2017)
