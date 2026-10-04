@@ -200,3 +200,35 @@ workflow for normal operations. After P6, destructive maintenance must remain
 explicitly gated and exceptional. Production and retained development databases
 must be treated as persistent assets that require an environment-specific
 backup, change, and recovery policy before any destructive operation.
+
+
+## 8. Complete development reset
+
+After the individual reset components are verified, the complete development
+reset is composed by:
+
+```bash
+python scripts/reset_all.py
+```
+
+Without `--execute`, this is inspect-only. It validates the same PostgreSQL
+and Airflow preflight and displays all targets:
+
+- the configured development PostgreSQL database;
+- children of `data/`;
+- children of `orchestration/logs/`;
+- generated Airflow SQLite/auth/PID runtime state.
+
+Tracked `orchestration/airflow.cfg`, DAGs, documentation, `.env`, the JWT key,
+and source code are preserved.
+
+The destructive path is:
+
+```bash
+python scripts/reset_all.py --execute
+```
+
+It presents one final yes/no confirmation. After consent, it recreates
+PostgreSQL first. Only if that succeeds does it clear project data, Airflow
+logs, and generated Airflow runtime state. This order avoids deleting local
+artifacts when PostgreSQL recreation fails.
