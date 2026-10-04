@@ -1,8 +1,8 @@
 # Orchestration Refactor Plan and Checklist
 
-Last updated: 2026-10-03 (Asia/Jakarta)  
+Last updated: 2026-10-04 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 through P4 complete. P4 verification: 211 unit/orchestration tests passed and 6 PostgreSQL integration tests passed. P5 is next; database reset has not started.  
+Status: P1 through P5 complete. Final pre-reset regression: 211 unit/orchestration tests passed and 6 PostgreSQL integration tests passed. P6 database recreation is next and has not started.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -258,14 +258,14 @@ logged separately. Do not silently fix behavior in a structural refactor.
 
 ### P5 — Regression and documentation
 
-- [ ] Run the offline unit and orchestration suite against the completed refactor.
-- [ ] Run relevant PostgreSQL integration tests on isolated resources; report skips honestly.
-- [ ] Verify scheduled selection, first-pass barrier, pass-through, offsets, and manual mode.
-- [ ] Verify core pipeline remains Airflow-independent and scientific behavior is unchanged.
-- [ ] Search affected callers/docs/tests for stale imports and old operational schema references.
-- [ ] Update orchestration README and affected documentation after the required scope notice.
-- [ ] Review the diff for unrelated changes and record any deviations from this plan.
-- [ ] Confirm all implementation changes are on `dev`.
+- [x] Run the offline unit and orchestration suite against the completed refactor.
+- [x] Run relevant PostgreSQL integration tests on isolated resources; report skips honestly.
+- [x] Verify scheduled selection, first-pass barrier, pass-through, offsets, and manual mode.
+- [x] Verify core pipeline remains Airflow-independent and scientific behavior is unchanged.
+- [x] Search affected callers/docs/tests for stale imports and old operational schema references.
+- [x] Update orchestration README and affected documentation after the required scope notice.
+- [x] Review the diff for unrelated changes and record any deviations from this plan.
+- [x] Confirm all implementation changes are on `dev`.
 
 ### P6 — Development PostgreSQL recreation
 
@@ -328,8 +328,9 @@ For every subsequent fix:
 | 2026-10-04 | P3 closure | User ran post-change verification locally: unit/orchestration **211 passed in 6.32s** and PostgreSQL integration **6 passed in 1.46s**, including fresh/repeated bootstrap. No failures or skips were reported. P3 is complete. | Start P4 task responsibility refactor; database recreation remains deferred to P6. |
 | 2026-10-04 | P4 implementation | Split request planning, interval conversion, monitoring, job preparation, extraction, transformation, load, progress recording, and campaign repair into responsibility-specific modules. Updated campaign, DAG, CDS operator, and orchestration tests to the new owners. Kept `tasks/era5_land.py` and `tasks/progress.py` only as thin compatibility re-export facades; runtime callers no longer depend on them. Preserved historical logger names and added a focused repository-data-path assertion. | Run post-change unit/orchestration and PostgreSQL integration tests. Keep P4 behavioral verification items open until results are reviewed. |
 | 2026-10-04 | P4 closure and pipeline-boundary audit | User ran post-change verification locally: unit/orchestration **211 passed in 5.76s** and PostgreSQL integration **6 passed in 1.34s**. Audited the new task modules against `pipeline/runtime.py`, `pipeline/request.py`, loader and CDS extraction owners: extraction, transformation, and loading remain delegated to existing pipeline functions; job preparation remains orchestration-only. No `pipeline/` files were changed for P4. | P4 complete. Start P5 regression/documentation; any future `pipeline/` change requires a separately stated technical reason. |
+| 2026-10-04 | P5 closure | Reused the immediately post-P4 regression evidence because it was run against the completed code refactor: **211 unit/orchestration passed in 5.76s** and **6 isolated PostgreSQL integration tests passed in 1.34s**, with no failures or skips reported. Direct HEAD audit of 46 affected runtime/test Python files found no active imports from the compatibility facades and no old `climate.*` operational SQL/schema references. Updated `orchestration/README.md`, `tests/AGENTS.md`, and the current Stage 8 notes in `IMPLEMENTATION_PLAN.md`; retained explicitly historical Stage 3 baseline text. Diff review from the audited baseline found only planned configuration/orchestration/scripts/tests/docs changes plus the previously approved `pipeline/database/config.py` shared-schema import; no scientific pipeline algorithms changed. | P5 complete. Proceed to P6 only with explicit target-database verification and scheduling/process preflight; no database reset has occurred yet. |
 
-Current next action: P5 regression and documentation. P1 through P4 are complete with successful local unit/orchestration and PostgreSQL integration evidence. Preserve `pipeline/` as the ETL/scientific implementation owner; orchestration task modules remain adapters only. Database recreation remains deferred to P6.
+Current next action: P6 development PostgreSQL recreation. P1 through P5 are complete. Before any destructive command, identify and display the exact configured PostgreSQL host/database, keep scheduling disabled, inspect active/queued/deferred Airflow work, and confirm the target is disposable. Preserve `pipeline/` as the ETL/scientific implementation owner.
 No database reset has been performed.
 
 
