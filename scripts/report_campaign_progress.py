@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    validate_and_log_app_environment(logger)
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
     engine = create_engine(DatabaseConfig.from_env().url, future=True)
     try:
         print(format_campaign_report(read_campaign_report(engine)))
