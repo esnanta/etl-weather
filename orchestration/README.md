@@ -162,19 +162,37 @@ terminal.
 
 ```text
 etl-weather/
+├── config.py                       # shared lightweight application settings
+├── request_factory.py              # typed CDS request construction
 ├── activate-airflow.sh
 ├── airflow-jwt-key.txt             # generated; ignored by Git; mode 600
 ├── generate-airflow-jwt-secret.sh
 └── orchestration/
+    ├── config.py                   # campaign, cadence, pacing, storage policy
+    ├── database.py                 # engine lifecycle and storage bootstrap
+    ├── requests.py                 # validated monthly request specifications
+    ├── intervals.py                # Airflow interval -> local inclusive dates
+    ├── monitoring.py               # disk and process-memory observations
+    ├── progress_tracking.py        # shared progress/artifact recording
+    ├── campaign_repair.py          # validated manual repair reconciliation
+    ├── repositories/               # operational SQL and persisted evidence
     ├── dags/
     │   └── cds_era5_land_etl.py
     ├── docs/
-    │   └── IMPLEMENTATION_PLAN.md
-    ├── logs/                    # generated; ignored by Git
+    │   ├── IMPLEMENTATION_PLAN.md
+    │   ├── REFACTOR_PLAN.md
+    │   └── POSTGRES_RECREATION.md
+    ├── logs/                       # generated; ignored by Git
     ├── tasks/
-    │   └── era5_land.py
+    │   ├── build_monthly_requests.py
+    │   ├── cds_extract_operator.py
+    │   ├── extract.py
+    │   ├── transform.py
+    │   ├── load.py
+    │   ├── era5_land.py            # compatibility re-export facade
+    │   └── progress.py             # compatibility re-export facade
     ├── airflow.cfg
-    ├── airflow.db               # generated; ignored by Git
+    ├── airflow.db                  # generated; ignored by Git
     └── README.md
 ```
 
@@ -266,7 +284,7 @@ select a fixed calendar quarter or change the 30-minute CDS submission gate.
 CDS submission interval controls provider pacing between actual retrieval
 submissions. Set `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` in the runtime environment;
 the default is `1800` seconds (30 minutes), an operational starting point rather
-than a provider quota. A dedicated `climate.cds_submission_pacing` row uses the
+than a provider quota. A dedicated `climate_data.cds_submission_pacing` row uses the
 PostgreSQL clock and a row lock to coordinate manual and scheduled attempts
 across workers. The CDS HTTP session reserves it immediately before each
 submission POST, including internal library retries, extra local-day context
@@ -295,18 +313,21 @@ classifying a repeat deferral as a failed retry.
 
 
 Neither cadence nor provider pacing belongs to the durable identity of
-`climate.pipeline_progress` or `climate.pipeline_progress_detail`.
+`climate_data.pipeline_progress` or `climate_data.pipeline_progress_detail`.
 
 ### Generic Progress Persistence Foundation
 
 Stage 8 has cadence-neutral PostgreSQL progress integrated into the existing
-DAG. The schedule is still disabled while recovery and provider pacing remain
-under development. Scheduler state is not stored using quarter-specific table names. The
-implemented model remains in the existing climate database:
+DAG. Scheduling remains disabled by default while controlled rollout remains
+pending. Scheduler state is not stored using quarter-specific table names. All
+five application tables now share the `climate_data` schema:
 
 ```text
-climate.pipeline_progress
-climate.pipeline_progress_detail
+climate_data.daily_climate
+climate_data.daily_climate_detail
+climate_data.pipeline_progress
+climate_data.pipeline_progress_detail
+climate_data.cds_submission_pacing
 ```
 
 `pipeline_progress` represents one logical requested range or batch using
@@ -346,9 +367,11 @@ monthly request specifications. It returns no selection once all 40 are verified
 complete, or when the next quarter has not cleared the six-day availability
 boundary. It selects only the exact initialized campaign batch IDs, so unrelated
 manual ranges and configuration identities cannot displace a campaign quarter.
-The DAG invokes this selector for scheduled run provenance, although
-`schedule=None` prevents scheduled DagRuns today. Manual triggers create or
-reuse their exact range identity. Each mapped boundary records status and
+The DAG invokes this selector for scheduled run provenance. Scheduling is
+disabled by default because `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` resolves
+to `schedule=None`; enabling it selects the configured cadence without
+changing request or progress identity. Manual triggers create or reuse their
+exact range identity. Each mapped boundary records status and
 artifact identity; loading becomes valid only after matching PostgreSQL
 metadata and a positive observation count are verified.
 
@@ -609,8 +632,8 @@ when deploying to another host.
 The local Airflow metadata database is SQLite, while the campaign truth is in
 PostgreSQL. Keep the PostgreSQL database, the shared `data/` artifacts, and
 Airflow metadata together when preparing a recoverable snapshot. The PostgreSQL
-backup must include both `climate.pipeline_progress` /
-`climate.pipeline_progress_detail` and `climate.cds_submission_pacing`,
+backup must include both `climate_data.pipeline_progress` /
+`climate_data.pipeline_progress_detail` and `climate_data.cds_submission_pacing`,
 as well as `climate_data.daily_climate` /
 `climate_data.daily_climate_detail`. A progress-only restore cannot prove
 completed loads and a missing pacing clock can permit an early CDS submission.
@@ -916,23 +939,32 @@ partition before manual repair or allowing that quarter to advance.
 Run `source activate-airflow.sh` before Airflow-specific tests. It activates
 `myvenv`, loads `.env`, and configures the repository-local Airflow runtime.
 
-Core and Airflow-neutral orchestration helpers:
+Offline unit and orchestration regression:
 
 ```bash
-python -m pytest tests/unit tests/airflow_orchestration/test_tasks.py -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit tests/airflow_orchestration -q
 ```
 
-Airflow DAG parsing and policy:
+This suite covers DAG parsing and graph policy, scheduled/manual selection,
+first-pass barrier and pass-through, +0/+1/+2-hour scheduled offsets, pacing
+deferral behavior, monitoring paths, and the Airflow-independent pipeline
+boundary.
+
+PostgreSQL integration behavior on the isolated `TEST_POSTGRES_*` database:
 
 ```bash
-python -m pytest tests/airflow_orchestration -q
+python -m pytest \
+  tests/integration/test_postgresql_idempotency.py \
+  tests/integration/test_pipeline_progress_reconciliation.py \
+  tests/integration/test_cds_submission_pacing.py \
+  tests/integration/test_orchestration_database_bootstrap.py \
+  -q
 ```
 
-PostgreSQL integration behavior:
-
-```bash
-python -m pytest tests/integration/test_postgresql_idempotency.py -q
-```
+The bootstrap integration test drops only the `climate_data` schema inside
+the explicitly isolated test database, then verifies fresh and repeated
+creation of all five application tables.
 
 ## Cleanup and Local State
 
