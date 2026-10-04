@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Run a monthly pipeline batch for a CDS source."""
-    validate_and_log_app_environment(logger)
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
     request = build_cds_request()
     logger.info("Running monthly pipeline batch for source '%s'.", request.source.value)
     run_monthly_batch(request)
