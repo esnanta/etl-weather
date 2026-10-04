@@ -135,7 +135,10 @@ def _postgres() -> dict[str, object]:
 
 
 def main() -> None:
-    validate_and_log_app_environment(logger)
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
     root = Path(__file__).resolve().parents[1]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", root / "orchestration"))
     result = {
