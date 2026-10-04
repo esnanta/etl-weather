@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -186,3 +190,23 @@ def test_runtime_guard_rejects_enabled_campaign_schedule(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="scheduling is enabled"):
         maintenance._validate_runtime_guards(_config())
+
+
+
+def test_direct_script_execution_resolves_root_config_without_shadowing() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["APP_ENV"] = "prod"
+
+    result = subprocess.run(
+        [sys.executable, str(project_root / "scripts" / "recreate_postgres_database.py")],
+        cwd=project_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 3
+    assert "database recreation is disabled when APP_ENV=prod" in result.stderr
+    assert "ImportError" not in result.stderr
