@@ -278,22 +278,26 @@ environments.
 Normal runtime code must never drop or recreate the configured database.
 Destructive database maintenance belongs in a dedicated maintenance entrypoint,
 separate from DAGs, pipeline runtime, bootstrap helpers, and ordinary scripts.
-The maintenance entrypoint must be safe by default: inspect-only/dry-run unless
-the operator supplies an explicit execution flag, an ephemeral destructive-reset
-opt-in that is not stored in project configuration, and the exact configured
-database name as confirmation. It must reject mismatched confirmation and
-well-known PostgreSQL system databases. It must display host, port, database,
-user, and schema before any destructive command, without printing passwords.
+The maintenance entrypoint must be gated by the root `APP_ENV` setting.
+`APP_ENV=prod` disables database recreation completely: the command must stop
+before presenting any deletion prompt or reaching any DROP/CREATE path.
+`APP_ENV=dev` may expose guarded recreation after displaying host, port,
+database, user, and schema without printing passwords. Immediately before
+deletion, it must ask an interactive yes/no question naming the exact target;
+`yes` or `y` proceeds, while `no` or `n` aborts cleanly. Missing
+`APP_ENV` fails closed to production behavior; unsupported values are invalid.
 
 Use the actual active configuration; never infer or guess a database name.
 Future production or retained-development databases must not be made eligible
 for reset merely because they use the same schema or application code.
 
-- [ ] Resolve and display the exact configured host, port, database, user, and schema.
+- [ ] Resolve and display the exact configured host, port, database, user, schema, and validated `APP_ENV`.
 - [ ] Confirm that the current **development state** is explicitly authorized for this one-time recreation; do not label the database itself permanently disposable.
 - [ ] Define/verify a dedicated maintenance-only reset entrypoint that is unreachable from normal DAG/pipeline execution.
-- [ ] Require dry-run by default, an explicit execute flag, an ephemeral destructive-reset opt-in, and exact database-name confirmation before DROP/CREATE.
-- [ ] Reject confirmation mismatches and PostgreSQL system databases; never use a name heuristic as the sole safety check.
+- [ ] Enforce `APP_ENV=prod` as a hard deny: no reset option, no deletion prompt, and no DROP/CREATE path may execute.
+- [ ] Allow guarded recreation only when `APP_ENV=dev`; missing `APP_ENV` behaves as `prod`, and unsupported values fail validation.
+- [ ] In `dev`, display the exact target and ask an interactive confirmation before deletion; accept only `yes`/`y` to continue and `no`/`n` to abort.
+- [ ] Reject PostgreSQL system databases and never use a database-name pattern as the sole safety check.
 - [ ] Keep scheduling disabled and inspect active, queued, running, and deferred task instances.
 - [ ] Ensure no old worker or DagRun can resume against the replacement database.
 - [ ] Resolve old pending execution state deliberately while preserving SQLite and history.
@@ -351,6 +355,7 @@ For every subsequent fix:
 | 2026-10-04 | P4 closure and pipeline-boundary audit | User ran post-change verification locally: unit/orchestration **211 passed in 5.76s** and PostgreSQL integration **6 passed in 1.34s**. Audited the new task modules against `pipeline/runtime.py`, `pipeline/request.py`, loader and CDS extraction owners: extraction, transformation, and loading remain delegated to existing pipeline functions; job preparation remains orchestration-only. No `pipeline/` files were changed for P4. | P4 complete. Start P5 regression/documentation; any future `pipeline/` change requires a separately stated technical reason. |
 | 2026-10-04 | P5 closure | Reused the immediately post-P4 regression evidence because it was run against the completed code refactor: **211 unit/orchestration passed in 5.76s** and **6 isolated PostgreSQL integration tests passed in 1.34s**, with no failures or skips reported. Direct HEAD audit of 46 affected runtime/test Python files found no active imports from the compatibility facades and no old `climate.*` operational SQL/schema references. Updated `orchestration/README.md`, `tests/AGENTS.md`, and the current Stage 8 notes in `IMPLEMENTATION_PLAN.md`; retained explicitly historical Stage 3 baseline text. Diff review from the audited baseline found only planned configuration/orchestration/scripts/tests/docs changes plus the previously approved `pipeline/database/config.py` shared-schema import; no scientific pipeline algorithms changed. | P5 complete. Proceed to P6 only with explicit target-database verification and scheduling/process preflight; no database reset has occurred yet. |
 | 2026-10-04 | P6 safety clarification | Clarified that only the **current development contents** are authorized for one-time replacement; the application database is non-disposable by default. Revised P6 to require a dedicated maintenance-only reset path, dry-run default, explicit execute flag, ephemeral destructive-reset opt-in, exact configured database-name confirmation, system-database rejection, target display, and Airflow/process preflight. Normal DAG/pipeline/bootstrap code must never DROP or recreate the database. | P6 execution remains deferred; next work is to review/implement the guarded maintenance entrypoint before any destructive action. |
+| 2026-10-04 | P6 environment-mode guard | Added root `APP_ENV=dev|prod` policy. Missing mode fails closed to `prod`. Production must not expose any database delete/recreate feature. Development may expose the maintenance reset only after showing the exact configured target and receiving an interactive confirmation: `yes`/`y` proceeds, `no`/`n` aborts. Added the setting to `env-example` and root lightweight config with unit coverage; no reset has been executed. | Implement and test the maintenance command under these guards before any database recreation. |
 
 Current next action: P6 guarded development PostgreSQL recreation, but execution remains deferred. P1 through P5 are complete. Before any destructive command, resolve and display the exact configured PostgreSQL target, verify the one-time development reset authorization, require the planned maintenance-only safety guards, keep scheduling disabled, and inspect active/queued/running/deferred Airflow work. Treat the database as non-disposable by default; only the current development contents have been authorized for one-time replacement. Preserve `pipeline/` as the ETL/scientific implementation owner.
 No database reset has been performed.
