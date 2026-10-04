@@ -211,12 +211,19 @@ Activate the environment in the current shell before running the pipeline or tes
 source myvenv/bin/activate
 ```
 
-Copy `env-example` to `.env`, then set the CDS credentials:
+Copy `env-example` to `.env`, set the application environment explicitly,
+then set the CDS credentials:
 
 ```env
+APP_ENV=dev
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 ```
+
+`APP_ENV` is mandatory and accepts only `dev` or `prod`. Application
+entrypoints log the selected mode at startup. If it is missing, blank, or
+invalid, startup aborts with an instruction to set `APP_ENV=dev` or
+`APP_ENV=prod`; no mode is assumed.
 
 Generate the shared Airflow JWT secret without printing it to the terminal:
 
