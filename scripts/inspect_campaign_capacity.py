@@ -15,6 +15,10 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import disk_usage
+import sys
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from config import validate_and_log_app_environment
 
