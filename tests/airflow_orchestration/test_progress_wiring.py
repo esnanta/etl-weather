@@ -27,7 +27,7 @@ def _engine():
     yield object()
 
 
-def _campaign_campaign_spec():
+def _campaign_spec():
     year = CAMPAIGN_START_YEAR
     return build_historical_request_specs(
         f"{year}-01-01", f"{year}-01-31", current_local_date=date.max
