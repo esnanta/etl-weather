@@ -6,14 +6,26 @@ the same checkpoint-backed monthly partition when PostgreSQL denies a slot.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from airflow.providers.standard.triggers.temporal import DateTimeTrigger
 from airflow.sdk import BaseOperator, Context
 
+from orchestration.database import runtime_database_engine
+from orchestration.repositories.pipeline_progress import are_extract_attempts_terminal
 from orchestration.tasks.extract import ensure_raw_checkpoint_with_progress
 from pipeline.extraction.cds import CdsSubmissionDeferred
+
+
+# Failed first-pass resolvers poll the durable barrier without occupying a worker.
+FIRST_PASS_BARRIER_POLL_SECONDS = 30
+
+
+def first_pass_barrier_complete(progress_id: int) -> bool:
+    """Check whether every expected partition reached a terminal first-pass state."""
+    with runtime_database_engine() as engine:
+        return are_extract_attempts_terminal(engine, progress_id)
 
 
 class CdsPacedExtractOperator(BaseOperator):
@@ -46,8 +58,24 @@ class CdsPacedExtractOperator(BaseOperator):
         self.first_pass = first_pass
 
     def execute(self, context: Context) -> dict[str, object]:
-        if self.first_result is not None and not self.first_result.get("first_attempt_failed"):
-            return self.first_result
+        if self.first_result is not None:
+            if not self.first_result.get("first_attempt_failed"):
+                return self.first_result
+            if not first_pass_barrier_complete(self.progress_id):
+                next_check = datetime.now(timezone.utc) + timedelta(
+                    seconds=FIRST_PASS_BARRIER_POLL_SECONDS
+                )
+                self.log.info(
+                    "RAW retry waiting for first-pass barrier; month=%s; "
+                    "next_check_at=%s",
+                    self.month_label,
+                    next_check.isoformat(),
+                )
+                self.defer(
+                    trigger=DateTimeTrigger(moment=next_check),
+                    method_name="execute_complete",
+                )
+                raise AssertionError("Airflow defer unexpectedly returned.")
         if self.earliest_start_at is not None:
             earliest = datetime.fromisoformat(self.earliest_start_at)
             if earliest.tzinfo is None:
