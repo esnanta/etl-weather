@@ -651,6 +651,107 @@ graph but unnecessarily delays successful monthly partitions.
 - [ ] Run the focused DAG/operator suite, full unit/orchestration regression, and
       PostgreSQL integration regression before the next live scheduled pilot.
 
+
+### 10.8 Structural package and module naming agenda — 2026-10-05
+
+This is a planning agenda only. Do not move modules or change imports before a
+dedicated dependency/caller audit and a clean regression baseline. The user
+requested that package roots become easier to scan and that module names state
+their actual responsibility rather than only a broad provider/dataset label.
+
+#### Structural principles
+
+- [ ] Keep package roots intentionally small. For `orchestration/`, evaluate a
+      target root containing only `__init__.py`, `airflow.cfg`, `config.py`,
+      `README.md`, and responsibility-oriented subpackages.
+- [ ] Group orchestration modules by responsibility rather than accumulating
+      peer files at the package root. Candidate groups to evaluate include
+      campaign policy/state, scheduling/request planning, monitoring/runtime
+      support, repositories, operators, tasks, DAGs, and documentation.
+- [ ] Do not create folders solely to reduce the root file count. Every new
+      subpackage must have a coherent ownership boundary and must reduce import
+      ambiguity rather than add indirection.
+- [ ] Prefer names that describe behavior/postcondition. Avoid names that expose
+      an incidental provider when the module implements a generic orchestration
+      concern, and avoid generic names when the implementation is actually
+      ERA5-Land-specific.
+- [ ] Remove compatibility facades when all callers have migrated instead of
+      preserving empty or misleading aliases indefinitely.
+
+#### Orchestration naming findings
+
+- [ ] `orchestration/tasks/era5_land.py` is currently only a compatibility
+      facade. Prefer removing it after caller migration rather than renaming it.
+- [ ] Review `orchestration/repositories/cds_pacing.py`. The repository owns a
+      durable provider-submission clock, not an Airflow attempt. Prefer a
+      responsibility name such as `submission_pacing.py` over
+      `attempt_pacing.py`; keep provider-specific identifiers inside the
+      implementation only where the persisted clock is intentionally CDS-scoped.
+- [ ] Move the custom deferrable operator out of `tasks/` into a dedicated
+      operator package. Evaluate a responsibility-oriented target such as
+      `orchestration/operators/raw_checkpoint.py`. Review whether the class
+      `CdsPacedExtractOperator` should become `RawCheckpointOperator` after
+      its provider-specific exception dependency is isolated.
+- [ ] Audit root modules `campaign.py`, `campaign_repair.py`, `database.py`,
+      `intervals.py`, `mode.py`, `monitoring.py`, `pacing.py`,
+      `progress.py`, `progress_tracking.py`, `reporting.py`,
+      `requests.py`, and `schedule.py` and propose coherent subpackages
+      before moving any of them.
+
+#### Pipeline package and naming findings
+
+- [ ] Audit the root `pipeline/` modules (`interfaces.py`, `model.py`,
+      `request.py`, `runtime.py`, and `logging.py`). Keep a root module only
+      when it is genuinely package-wide; otherwise group it by responsibility.
+- [ ] `pipeline/extraction/cds.py` currently combines credentials, CDS payload
+      construction, ERA5-Land local-day context, monthly chunking, chunk-cache
+      resume, download, and extractor behavior. Do not solve this only with a
+      rename. First define the split between provider transport/payload logic,
+      ERA5-Land retrieval policy, and resumable chunk extraction. A likely
+      dataset-specific module name after that split is `cds_era5_land.py`.
+- [ ] Keep provider and scientific contract ownership distinct. The current
+      `pipeline/providers/cds.py` contains CDS ERA5-Land dataset profiles and
+      variable mappings, so `providers/cds_era5_land.py` is a reasonable
+      candidate. Do not rename `contracts/era5_land.py` to
+      `contracts/cds_era5_land.py` solely for filename symmetry: UTC+7 daily
+      semantics, accumulated/mean-variable classes, and output units are
+      scientific ERA5-Land contracts and should remain provider-independent
+      unless the audit proves otherwise.
+- [ ] Review `pipeline/transformation/era5_land.py`. Its responsibility is
+      specifically ERA5-Land hourly-to-local-daily transformation; prefer a name
+      that states that output, for example `era5_land_daily.py` or
+      `era5_land_daily_statistics.py`.
+- [ ] `pipeline/validation/era5_land.py` currently validates both RAW hourly
+      provider data and transformed local-daily data. Prefer splitting by
+      contract boundary (for example RAW ERA5-Land validation and daily
+      ERA5-Land validation) rather than only renaming one large mixed module.
+- [ ] Review `pipeline/repositories/daily_climate.py` by repository
+      responsibility, not by a strict one-file-per-table rule. A repository may
+      legitimately coordinate `daily_climate` and `daily_climate_detail`
+      because they form one aggregate/read model. Split repositories only when
+      tables have independent lifecycle/query responsibilities. In particular,
+      operational tables (`pipeline_progress`, `pipeline_progress_detail`,
+      `cds_submission_pacing`) remain orchestration-owned and should not be
+      mirrored into `pipeline/repositories/` merely to achieve table symmetry.
+- [ ] Review whether `daily_climate.py` is accurately named for its current
+      read-only modelling-query responsibility. If its only public concern is
+      loading canonical daily climate data for modelling, consider a more
+      explicit name such as `daily_climate_reader.py` rather than splitting it
+      mechanically by physical table.
+
+#### Required implementation gate
+
+- [ ] Produce a caller/import inventory before any move or rename.
+- [ ] Define the proposed target tree and old -> new module mapping before edits.
+- [ ] Preserve public runtime behavior, request/checkpoint identity, database
+      schema/table ownership, and scientific calculations.
+- [ ] Update imports, exports, tests, documentation, and any monkeypatch targets
+      in the same refactor batch; do not leave long-lived compatibility aliases
+      unless an external caller requires them.
+- [ ] Run focused tests after each package group, then the full
+      unit/orchestration suite and all isolated PostgreSQL integration tests
+      before the next live pilot.
+
 ### 10.6 Findings to preserve or review separately
 
 1. **Broad first-pass exception handling.** The operator catches all
