@@ -1,30 +1,97 @@
 # Testing
 
-This document explains how testing is organized for the ERA5-Land ETL project, what each test layer protects, and how to run the current test suites.
+This document explains how testing is organized for the ERA5-Land ETL project, what each test level and domain protects, and how to run the current suites.
 
 For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules are kept in [`tests/AGENTS.md`](./AGENTS.md).
 
-## Testing Strategy
+## Testing Structure
 
-The project uses three main test layers:
+Tests are organized by **test level first** and **domain second**:
+
+```text
+tests/
+├── unit/
+│   ├── pipeline/
+│   ├── orchestration/
+│   └── operations/
+└── integration/
+    ├── pipeline/
+    └── orchestration/
+```
+
+The three domains mean:
+
+- **pipeline** — scientific ETL, artifacts, canonical climate persistence, and read-only climate access;
+- **orchestration** — Airflow scheduling, campaign selection, progress, pacing, retry/deferral, reporting, and orchestration policy;
+- **operations** — maintenance and administrative scripts such as reset, cleanup, and database recreation.
+
+A domain directory is created only when tests actually exist for that level. There is currently no `tests/integration/operations/` directory.
+
+Scientific correctness is part of software correctness: tests must protect the meaning of local daily climate observations, not only whether code executes successfully.
+
+## Unit Tests
+
+Unit tests live under:
 
 ```text
 tests/unit/
-      ↓
-fast, offline behavior
-
-tests/airflow_orchestration/
-      ↓
-scheduling and orchestration policy
-
-tests/integration/
-      ↓
-real isolated PostgreSQL behavior
 ```
 
-Unit tests and Airflow orchestration tests should not require live CDS requests. PostgreSQL integration tests use a dedicated test database configured through `TEST_POSTGRES_*`.
+They are expected to be fast, deterministic, and offline-first.
 
-Scientific correctness is part of software correctness: tests must protect the meaning of local daily climate observations, not only whether code executes successfully.
+### Pipeline unit tests
+
+```text
+tests/unit/pipeline/
+```
+
+They cover request construction, CDS normalization, transformation, validation, artifacts, idempotency decisions, database contracts without a live database, runtime boundaries, and read-only climate-data access.
+
+### Orchestration unit tests
+
+```text
+tests/unit/orchestration/
+```
+
+They cover DAG structure, scheduled/manual behavior, campaign selection, monthly mapping, retry/deferral, progress wiring, pacing policy, reporting, concurrency, pools, and task metadata handoff.
+
+### Operations unit tests
+
+```text
+tests/unit/operations/
+```
+
+They cover maintenance and administrative commands such as data cleanup, Airflow runtime/log reset, database recreation, and combined reset behavior.
+
+Routine unit tests should not require live CDS or live PostgreSQL.
+
+## Integration Tests
+
+Integration tests live under:
+
+```text
+tests/integration/
+```
+
+They use real external behavior only where mocks are not sufficient.
+
+### Pipeline integration tests
+
+```text
+tests/integration/pipeline/
+```
+
+They protect real PostgreSQL climate persistence behavior such as idempotent repeated loads and transaction rollback.
+
+### Orchestration integration tests
+
+```text
+tests/integration/orchestration/
+```
+
+They protect real PostgreSQL coordination for campaign-progress reconciliation, submission pacing/locking, and orchestration database bootstrap.
+
+Integration tests use the isolated `TEST_POSTGRES_*` configuration and must not fall back to development or production data.
 
 ## What the Tests Protect
 
@@ -38,81 +105,12 @@ The suite should give confidence that:
 - repeated processing does not create duplicate canonical observations;
 - database failures do not leave partially committed climate data;
 - read-only modelling access does not change canonical climate observations;
-- Airflow scheduling, retry, pacing, progress, and recovery rules behave as intended.
+- Airflow scheduling, retry, pacing, progress, and recovery rules behave as intended;
+- maintenance commands remain guarded and predictable.
 
 Detailed invariants such as exact database identities, provenance fields, and persistence rules belong in `tests/AGENTS.md`.
 
-## Unit Tests
-
-Unit tests live in:
-
-```text
-tests/unit/
-```
-
-They cover pipeline and maintenance behavior that can be tested quickly and deterministically without live CDS or PostgreSQL.
-
-Typical responsibilities include:
-
-- request construction and validation;
-- CDS normalization;
-- local-day transformation and units;
-- source and transformed-data validation;
-- deterministic artifact storage and resume behavior;
-- database schema/configuration logic without a live database;
-- load/idempotency decisions through isolated test doubles;
-- read-only climate-data access behavior;
-- logging, pacing helpers, and local maintenance scripts.
-
-Unit tests should be small, readable, and focused on one responsibility.
-
-## Airflow Orchestration Tests
-
-Airflow-specific tests live in:
-
-```text
-tests/airflow_orchestration/
-```
-
-They protect orchestration behavior rather than scientific calculations.
-
-Typical responsibilities include:
-
-- DAG parsing and task dependencies;
-- scheduled versus manual mode;
-- campaign selection and configuration;
-- monthly mapping and start-slot policy;
-- retry and deferral behavior;
-- durable progress and reconciliation wiring;
-- CDS submission pacing policy;
-- reporting and monitoring behavior;
-- concurrency, pools, and task metadata handoff.
-
-Scientific transformation behavior should stay covered by unit tests instead of being duplicated in DAG tests.
-
-## PostgreSQL Integration Tests
-
-PostgreSQL integration tests live in:
-
-```text
-tests/integration/
-```
-
-These tests use real PostgreSQL behavior with the isolated `TEST_POSTGRES_*` configuration.
-
-They protect areas that cannot be proven reliably with mocks alone, including:
-
-- repeated loads remaining idempotent;
-- transaction rollback after a database failure;
-- campaign-progress reconciliation against persisted climate evidence;
-- CDS submission pacing coordination using the PostgreSQL clock and locking;
-- database bootstrap being safe to run on both a fresh and an already-initialized test database.
-
-The integration database must be separate from development or production data. `TEST_POSTGRES_DATABASE` is expected to identify a test database.
-
 ## Idempotency and Recovery Examples
-
-### Reprocessing the same climate partition
 
 If January 2024 has already been loaded and the same logical request is processed again:
 
@@ -121,8 +119,6 @@ first run  → canonical January partition stored
 second run → existing partition validated/reused
 result     → no duplicate daily observations
 ```
-
-### Database failure during a load
 
 If a database error occurs while writing a partition:
 
@@ -136,39 +132,50 @@ transaction rolled back
 no partial canonical partition
 ```
 
-### Resuming artifacts
-
 If a valid RAW or transformed artifact already exists, tests verify that the pipeline resumes and validates it rather than silently replacing it.
-
-The exact technical rules behind these behaviors are documented in `tests/AGENTS.md`.
 
 ## Running Tests
 
-Run unit and Airflow orchestration regression tests with scheduling disabled:
+Activate the project environment first:
 
 ```bash
 source activate-airflow.sh
-
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
-python -m pytest tests/unit tests/airflow_orchestration -q
 ```
 
-Run the isolated PostgreSQL integration tests with:
+Run all unit tests:
 
 ```bash
-source activate-airflow.sh
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit -q
+```
 
-python -m pytest \
-  tests/integration/test_postgresql_idempotency.py \
-  tests/integration/test_pipeline_progress_reconciliation.py \
-  tests/integration/test_submission_pacing.py \
-  tests/integration/test_orchestration_database_bootstrap.py \
-  -q
+Run one unit domain when a focused check is useful:
+
+```bash
+python -m pytest tests/unit/pipeline -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit/orchestration -q
+
+python -m pytest tests/unit/operations -q
+```
+
+Run all PostgreSQL integration tests:
+
+```bash
+python -m pytest tests/integration -q
+```
+
+Or run by integration domain:
+
+```bash
+python -m pytest tests/integration/pipeline -q
+python -m pytest tests/integration/orchestration -q
 ```
 
 Integration tests use the `TEST_POSTGRES_*` variables from `env-example`.
 
-The README intentionally does not keep a permanent "N tests passed" baseline because the number changes as the suite evolves. The reproducible command and a clean result are the important contract.
+The README intentionally does not keep a permanent numeric pass-count baseline because the suite changes over time.
 
 ## Test Style
 
@@ -177,7 +184,7 @@ The README intentionally does not keep a permanent "N tests passed" baseline bec
 - Keep routine unit tests offline.
 - Mock external systems rather than internal scientific logic.
 - Use explicit expected values for climate formulas, units, and timestamps.
-- Include negative cases for validation, persistence, retry, and recovery behavior.
+- Include negative cases for validation, persistence, retry, recovery, and guarded operations.
 - Use temporary directories for generated artifacts.
 - Never write test artifacts into the real project `data/` directory.
 
