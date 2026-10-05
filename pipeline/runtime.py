@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from pipeline.extraction import CdsExtractor
+from pipeline.extraction import CdsEra5LandExtractor
 from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.loaders import PostgresDataLoader
 from pipeline.logging import (
@@ -207,7 +207,7 @@ def build_default_pipeline(
     """Build the default pipeline for a preselected source dataset."""
     if request.source is not DataSource.CDS:
         raise ValueError("Unsupported source for runtime pipeline.")
-    extractor = CdsExtractor(
+    extractor = CdsEra5LandExtractor(
         before_submission=before_submission,
         chunk_cache_directory=chunk_cache_directory,
     )

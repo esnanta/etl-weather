@@ -13,7 +13,8 @@ import sys
 import pytest
 import xarray as xr
 
-from pipeline.extraction import cds
+from pipeline.extraction import cds_era5_land as cds
+from pipeline.providers import cds_client
 from orchestration.scheduling.submission_gate import SubmissionDeferred
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
 
@@ -118,7 +119,7 @@ def test_guard_precedes_actual_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(requests.Session, "request", transport)
     monkeypatch.setitem(sys.modules, "cdsapi", SimpleNamespace(Client=FakeClient))
-    monkeypatch.setattr(cds, "_resolve_cds_credentials", lambda: ("url", "key"))
+    monkeypatch.setattr(cds_client, "_resolve_cds_credentials", lambda: ("url", "key"))
 
     def denied(_request):
         raise SubmissionDeferred(
@@ -155,7 +156,7 @@ def test_internal_post_retry_requires_new_slot(
                 datetime(2026, 9, 26, tzinfo=timezone.utc)
             )
 
-    session = cds._PacedSubmissionSession(request, reserve)
+    session = cds_client._PacedSubmissionSession(request, reserve)
     session.get("https://cds.example/status")
     session.get("https://cdn.example/download.nc")
     session.post("https://cds.example/resources/reanalysis-era5-land")
@@ -195,7 +196,7 @@ def test_real_cdsapi_retry_is_deferred_before_second_post(
     monkeypatch.setattr(requests.Session, "request", transport)
     client = cdsapi.Client(
         url="https://cds.example/api", key="123:fake",
-        session=cds._PacedSubmissionSession(request, reserve),
+        session=cds_client._PacedSubmissionSession(request, reserve),
         quiet=True, retry_max=3, sleep_max=0, forget=True,
     )
 

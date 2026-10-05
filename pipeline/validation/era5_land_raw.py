@@ -8,7 +8,7 @@ import xarray as xr
 
 from pipeline.logging import log_metric
 from pipeline.model import RawWeatherDataset, WeatherRequest
-from pipeline.providers.cds import get_source_dataset_profile
+from pipeline.providers.catalog import get_source_dataset_profile
 
 
 class ValidationError(Exception):

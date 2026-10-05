@@ -1,8 +1,4 @@
-"""Retrieve ERA5-Land hourly chunks while preserving local-day context.
-
-Orchestrated downloads need resumable chunks so provider pacing can release a
-worker between submissions without repeating an already completed request.
-"""
+"""Retrieve ERA5-Land CDS chunks with local-day context and resumable cache."""
 
 from __future__ import annotations
 
@@ -14,9 +10,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import requests
 import xarray as xr
-from dotenv import load_dotenv
 
 from pipeline.contracts.era5_land import (
     ERA5_LAND_START_DATE,
@@ -25,108 +19,21 @@ from pipeline.contracts.era5_land import (
 from pipeline.interfaces import WeatherExtractor
 from pipeline.logging import log_metric
 from pipeline.model import RawWeatherDataset, WeatherRequest
-from pipeline.providers.cds import (
-    CDS_API_TO_PROVIDER_VARIABLES,
-    CDS_API_VARIABLE_NAMES,
+from pipeline.providers.catalog import get_source_dataset_profile
+from pipeline.providers.cds_client import retrieve_cds_dataset
+from pipeline.providers.cds_era5_land import (
     VARIABLE_DESCRIPTIONS,
-    get_source_dataset_profile,
+    build_cds_request_payload,
+    normalize_cds_dataset,
 )
 from pipeline.request import (
-    build_request, build_request_key, split_request_by_month, validate_request,
+    build_request,
+    build_request_key,
+    split_request_by_month,
+    validate_request,
 )
 
-logger = logging.getLogger(__name__)
-
-CDSAPI_URL_ENV_KEY = "CDSAPI_URL"
-CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
-DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
-
-
-class _PacedSubmissionSession(requests.Session):
-    """Reserve a durable slot for each provider POST, including library retries."""
-
-    def __init__(
-        self,
-        request: WeatherRequest,
-        before_submission: Callable[[WeatherRequest], None],
-    ) -> None:
-        super().__init__()
-        self._chunk_request = request
-        self._before_submission = before_submission
-
-    def request(self, method: str, url: str, *args, **kwargs):
-        if method.upper() == "POST":
-            self._before_submission(self._chunk_request)
-        return super().request(method, url, *args, **kwargs)
-
-
-
-def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
-    """Normalize schema mechanics while preserving provider variable names."""
-    if "time" in dataset.coords and "valid_time" not in dataset.coords:
-        dataset = dataset.rename({"time": "valid_time"})
-
-    rename_map = {
-        api_name: provider_name
-        for api_name, provider_name in CDS_API_TO_PROVIDER_VARIABLES.items()
-        if api_name in dataset.data_vars and provider_name not in dataset.data_vars
-    }
-    if rename_map:
-        dataset = dataset.rename(rename_map)
-    return dataset
-
-
-def _resolve_cds_credentials() -> tuple[str, str]:
-    load_dotenv()
-    cdsapi_url = os.getenv(CDSAPI_URL_ENV_KEY, DEFAULT_CDSAPI_URL).strip()
-    cdsapi_key = os.getenv(CDSAPI_KEY_ENV_KEY, "").strip()
-    if not cdsapi_key:
-        raise ValueError(
-            f"{CDSAPI_KEY_ENV_KEY} is missing. Set it in .env as "
-            "CDSAPI_KEY=YOUR_UID:YOUR_API_KEY"
-        )
-    return cdsapi_url, cdsapi_key
-
-
-def _build_cds_request_payload(request: WeatherRequest) -> dict[str, object]:
-    start = datetime.strptime(request.start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(request.end_date, "%Y-%m-%d").date()
-    if start.month != end.month or start.year != end.year:
-        raise ValueError(
-            "CDS request interval must stay in one month. "
-            "Use split_request_by_month before extraction."
-        )
-
-    request_days: list[str] = []
-    current_day = start
-    while current_day <= end:
-        request_days.append(f"{current_day.day:02d}")
-        current_day += timedelta(days=1)
-
-    profile = get_source_dataset_profile(request.source, request.dataset)
-    api_variables = [
-        CDS_API_VARIABLE_NAMES.get(variable, variable)
-        for variable in request.variables
-    ]
-
-    payload: dict[str, object] = {
-        "variable": api_variables,
-        "year": f"{start.year}",
-        "month": f"{start.month:02d}",
-        "day": request_days,
-        "time": [f"{hour:02d}:00" for hour in range(24)],
-        "area": [
-            request.bbox.north_lat,
-            request.bbox.west_lon,
-            request.bbox.south_lat,
-            request.bbox.east_lon,
-        ],
-        "data_format": "netcdf",
-        "download_format": "unarchived",
-    }
-    if profile.get("requires_product_type", False):
-        payload["product_type"] = "reanalysis"
-    return payload
+logger = logging.getLogger("pipeline.extraction.cds")
 
 
 def _build_era5_land_retrieval_request(request: WeatherRequest) -> WeatherRequest:
@@ -177,44 +84,16 @@ def _download_cds(
     purpose: str,
     before_submission: Callable[[WeatherRequest], None] | None = None,
 ) -> xr.Dataset:
-    try:
-        import cdsapi
-    except ModuleNotFoundError as error:
-        raise RuntimeError(
-            "Missing dependency 'cdsapi'. Install it to use source='cds'."
-        ) from error
-
-    cdsapi_url, cdsapi_key = _resolve_cds_credentials()
+    """Retrieve and normalize one ERA5-Land CDS calendar-month chunk."""
     profile = get_source_dataset_profile(request.source, request.dataset)
-    payload = _build_cds_request_payload(request)
-    client_options = {"url": cdsapi_url, "key": cdsapi_key, "quiet": True}
-    if before_submission is not None:
-        client_options["session"] = _PacedSubmissionSession(request, before_submission)
-    client = cdsapi.Client(**client_options)
-
-    temp_path = Path(tempfile.gettempdir()) / (
-        f"cds_{request.start_date}_{request.end_date}_"
-        f"{'_'.join(request.variables)}.nc"
+    dataset = retrieve_cds_dataset(
+        request,
+        api_dataset=str(profile["api_dataset"]),
+        payload=build_cds_request_payload(request),
+        purpose=purpose,
+        before_submission=before_submission,
     )
-    if temp_path.exists():
-        temp_path.unlink()
-
-    logger.info(
-        "Downloading CDS dataset from Copernicus API | "
-        "chunk_period=%s -> %s | purpose=%s.",
-        request.start_date,
-        request.end_date,
-        purpose,
-    )
-    try:
-        client.retrieve(profile["api_dataset"], payload, str(temp_path))
-        with xr.open_dataset(temp_path) as opened_dataset:
-            dataset = opened_dataset.load()
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
-
-    return _normalize_cds_dataset(dataset)
+    return normalize_cds_dataset(dataset)
 
 
 def _download_cds_period(
@@ -246,7 +125,9 @@ def _download_cds_period(
             if cache_path is not None:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 with tempfile.NamedTemporaryFile(
-                    dir=cache_path.parent, prefix=".chunk-", suffix=".nc",
+                    dir=cache_path.parent,
+                    prefix=".chunk-",
+                    suffix=".nc",
                     delete=False,
                 ) as temporary:
                     temporary_path = Path(temporary.name)
@@ -276,7 +157,9 @@ def _download_cds_period(
     return combined
 
 
-class CdsExtractor(WeatherExtractor):
+class CdsEra5LandExtractor(WeatherExtractor):
+    """Extract validated ERA5-Land provider variables through CDS."""
+
     def __init__(
         self,
         *,
@@ -289,9 +172,7 @@ class CdsExtractor(WeatherExtractor):
     def extract(self, request: WeatherRequest) -> RawWeatherDataset:
         validate_request(request)
         normalized_request = build_request(request)
-        retrieval_request = _build_era5_land_retrieval_request(
-            normalized_request
-        )
+        retrieval_request = _build_era5_land_retrieval_request(normalized_request)
 
         retrieval_chunks = split_request_by_month(retrieval_request)
         log_metric(

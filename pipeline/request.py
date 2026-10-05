@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from pipeline.model import BoundingBox, DataSource, WeatherRequest
-from pipeline.providers.cds import get_source_dataset_profile
+from pipeline.providers.catalog import get_source_dataset_profile
 
 
 def validate_request(request: WeatherRequest) -> None:

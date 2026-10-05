@@ -68,7 +68,7 @@ def test_scheduled_selection_recovery_and_terminal_noop(
     def unexpected_cds(*args, **kwargs):
         raise AssertionError("The offline selection pilot must not call CDS.")
 
-    monkeypatch.setattr("pipeline.extraction.cds._download_cds", unexpected_cds)
+    monkeypatch.setattr("pipeline.extraction.cds_era5_land._download_cds", unexpected_cds)
 
     first = job_tasks.prepare_monthly_jobs("scheduled", {}, "scheduled__first")
     assert [item["request_spec"]["start_date"] for item in first] == [

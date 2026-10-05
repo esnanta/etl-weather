@@ -14,7 +14,7 @@ from pipeline.contracts.era5_land import (
 )
 from pipeline.logging import log_metric
 from pipeline.model import TransformedWeatherDataset, WeatherRequest
-from pipeline.providers.cds import get_source_dataset_profile
+from pipeline.providers.catalog import get_source_dataset_profile
 from pipeline.validation.era5_land_raw import ValidationError
 
 ERA5_LAND_TRANSFORMED_HARD_RANGES = {
