@@ -235,12 +235,11 @@ DataFrames, NetCDF/Parquet contents, or excessively large request structures.
 ## 11. Name DAGs and Tasks by Runtime Intent
 
 Use stable names that communicate orchestration intent and checkpoint
-postconditions. For the current six-task graph, prefer:
+postconditions. For the current five-task graph, prefer:
 
 ```text
 build_monthly_requests
 attempt_raw_checkpoint [YYYY-MM]
-prepare_retry_pass
 resolve_raw_checkpoint [YYYY-MM]
 ensure_transformed_checkpoint [YYYY-MM]
 load [YYYY-MM]
@@ -249,10 +248,12 @@ load [YYYY-MM]
 The pipeline runtime API beneath these tasks uses
 `ensure_raw_checkpoint()`, `ensure_transformed_checkpoint()`, and `load()`.
 The initial attempt task is intentionally named `attempt_raw_checkpoint`
-because a first-pass failure is converted to bounded control metadata so other
-months can finish before the retry barrier. A successful
-`resolve_raw_checkpoint` guarantees that downstream work receives valid RAW
-checkpoint metadata.
+because a first-pass failure is converted to bounded control metadata instead
+of immediately failing the mapped task. Successful first results continue
+directly through `resolve_raw_checkpoint` as pass-through results. Only failed
+first results wait for every expected first attempt to reach terminal extraction
+state before retrying. A successful `resolve_raw_checkpoint` guarantees that
+downstream work receives valid RAW checkpoint metadata.
 
 Avoid generic or version-churn names such as `task1`, `process_data`,
 `final_task`, or `fixed_v2`. Do not encode a run date in a DAG or task ID.
