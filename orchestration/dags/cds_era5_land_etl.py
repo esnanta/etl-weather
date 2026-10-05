@@ -26,6 +26,24 @@ logger = logging.getLogger(__name__)
 validate_and_log_app_environment(logger)
 
 
+def prepare_resolve_raw_checkpoint_kwargs(
+    attempt_raw_checkpoint_result: dict[str, object],
+) -> dict[str, object]:
+    """Build one resolver mapping payload from one first-attempt result."""
+    request_spec = attempt_raw_checkpoint_result.get(
+        "request_spec",
+        attempt_raw_checkpoint_result.get("request"),
+    )
+    if not isinstance(request_spec, dict):
+        raise ValueError("RAW resolver requires first-attempt request metadata.")
+    return {
+        "request_spec": request_spec,
+        "progress_id": attempt_raw_checkpoint_result["progress_id"],
+        "run_mode": attempt_raw_checkpoint_result["run_mode"],
+        "first_result": attempt_raw_checkpoint_result,
+    }
+
+
 with DAG(
     dag_id=DAG_ID,
     description="ERA5-Land ETL with durable partition progress",
@@ -64,20 +82,6 @@ with DAG(
         return prepare_monthly_jobs(
             dag_run.run_type, dag_run.conf, dag_run.run_id
         )
-
-    @task(task_id="prepare_retry_pass", retries=0)
-    def prepare_retry_pass(
-        first_results: list[dict[str, object]],
-    ) -> list[dict[str, object]]:
-        return [
-            {
-                "request_spec": result.get("request_spec", result.get("request")),
-                "progress_id": result["progress_id"],
-                "run_mode": result["run_mode"],
-                "first_result": result,
-            }
-            for result in first_results
-        ]
 
     @task(
         task_id="ensure_transformed_checkpoint",
@@ -119,7 +123,7 @@ with DAG(
         return load_with_progress(transformed_checkpoint_result)
 
     monthly_jobs = build_monthly_requests()
-    first_attempts = CdsPacedExtractOperator.partial(
+    attempt_raw_checkpoint_results = CdsPacedExtractOperator.partial(
         task_id="attempt_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
@@ -127,8 +131,11 @@ with DAG(
         first_pass=True,
         execution_timeout=timedelta(hours=6),
     ).expand_kwargs(monthly_jobs)
-    retry_jobs = prepare_retry_pass(first_attempts.output)
-    resolved_raw_checkpoint = CdsPacedExtractOperator.partial(
+
+    resolve_raw_checkpoint_inputs = attempt_raw_checkpoint_results.output.map(
+        prepare_resolve_raw_checkpoint_kwargs
+    )
+    resolve_raw_checkpoint_results = CdsPacedExtractOperator.partial(
         task_id="resolve_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
@@ -137,9 +144,12 @@ with DAG(
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(hours=1),
         execution_timeout=timedelta(hours=6),
-    ).expand_kwargs(retry_jobs)
-    transformed = ensure_transformed_checkpoint.expand(
-        raw_checkpoint_result=resolved_raw_checkpoint.output
+    ).expand_kwargs(resolve_raw_checkpoint_inputs)
+
+    ensure_transformed_checkpoint_results = ensure_transformed_checkpoint.expand(
+        raw_checkpoint_result=resolve_raw_checkpoint_results.output
     )
-    load.expand(transformed_checkpoint_result=transformed)
+    load_results = load.expand(
+        transformed_checkpoint_result=ensure_transformed_checkpoint_results
+    )
 
