@@ -641,28 +641,52 @@ For each:
 
 # Phase 5 — Final Documentation Validation
 
-- [ ] Read `/README.md` from the perspective of a new user who does not know the source code.
-- [ ] Confirm the root README explains the business process before implementation details.
-- [ ] Read `/orchestration/README.md` from the perspective of an operator who has already installed the project.
-- [ ] Confirm the orchestration README can answer normal run, failure, retry, recovery, and scheduled-operation questions without reading development history.
-- [ ] Check all code blocks for current commands and filenames.
-- [ ] Check all environment-variable names against current `env-example`.
-- [ ] Check all Airflow commands against the current DAG name.
-- [ ] Check all test commands against current test filenames.
-- [ ] Check all relative Markdown links.
-- [ ] Check that no documentation-only edit changes or implies changed runtime behavior.
-- [ ] Review the final diff and confirm only documentation files were modified.
+- [x] Read `/README.md` from the perspective of a new user who does not know the source code.
+- [x] Confirm the root README explains the business process before implementation details.
+- [x] Read `/orchestration/README.md` from the perspective of an operator who has already installed the project.
+- [x] Confirm the orchestration README can answer normal run, failure, retry, recovery, and scheduled-operation questions without reading development history.
+- [x] Check all code blocks for current commands and filenames.
+- [x] Check all environment-variable names against current `env-example`.
+- [x] Check all Airflow commands against the current DAG name.
+- [x] Check all test commands against current test filenames.
+- [x] Check all relative Markdown links.
+- [x] Check that no documentation-only edit changes or implies changed runtime behavior.
+- [x] Review the final diff and confirm only documentation files were modified.
 
 ## Completion Criteria
 
 This refactor is complete when:
 
-- [ ] `/README.md` is a concise global introduction and operating entry point for the ETL project.
-- [ ] `/orchestration/README.md` is a concise Airflow operations guide rather than a development-history log.
-- [ ] Installation and prerequisites are not unnecessarily duplicated.
-- [ ] Local-day semantics are understandable through a concrete example.
-- [ ] Architecture is explained conceptually rather than through source filenames.
-- [ ] Persistence and progress behavior are explained with examples.
-- [ ] Airflow JWT setup is documented only where Airflow-specific operation is explained.
-- [ ] Safety-critical retry, recovery, and deployment rules remain documented.
-- [ ] The documentation accurately describes the current `dev` behavior without any implementation change.
+- [x] `/README.md` is a concise global introduction and operating entry point for the ETL project.
+- [x] `/orchestration/README.md` is a concise Airflow operations guide rather than a development-history log.
+- [x] Installation and prerequisites are not unnecessarily duplicated.
+- [x] Local-day semantics are understandable through a concrete example.
+- [x] Architecture is explained conceptually rather than through source filenames.
+- [x] Persistence and progress behavior are explained with examples.
+- [x] Airflow JWT setup is documented only where Airflow-specific operation is explained.
+- [x] Safety-critical retry, recovery, and deployment rules remain documented.
+- [x] The documentation accurately describes the current `dev` behavior without any implementation change.
+
+## Phase 5 Result
+
+- `/README.md` was reread as a new-user entry point and now introduces purpose, prerequisites, business process, local-day semantics, conceptual architecture, environment setup, standalone execution, data layout, persistence, modelling access, and basic tests in that order.
+- `/orchestration/README.md` was reread as an operator guide after installation and covers Airflow-specific setup, startup, scheduled/manual execution, status inspection, progress, retry, recovery, observability, safe deployment, tests, and cleanup without depending on historical rollout notes.
+- Root local-day documentation was checked against `pipeline/transformation/era5_land_daily.py`; the documented accumulated-variable boundary formula matches the implemented calculation.
+- `source activate-airflow.sh -q` was checked against `activate-airflow.sh`; quiet mode is supported.
+- JWT setup was checked against `generate-airflow-jwt-secret.sh`; it generates `airflow-jwt-key.txt`, applies permission `600`, and instructs operators to restart Airflow components after rotation.
+- DAG ID, task IDs, `max_active_runs=1`, and deferrable RAW retry/pacing behavior were checked against the active DAG/operator implementation.
+- Scheduler enable/cadence behavior was checked against `orchestration/scheduling/schedule.py`.
+- Environment-variable names in the documentation match current `env-example`.
+- Test commands reference current files under `tests/unit`, `tests/airflow_orchestration`, and `tests/integration`.
+- Relative links between root, orchestration, and testing documentation resolve to files present on branch `dev`.
+- Final repository diff from the initial README-refactor checklist commit to current `dev` contains only:
+  - `README.md`;
+  - `orchestration/README.md`;
+  - `orchestration/docs/refactor_readme.md`.
+- No `pipeline/`, DAG, configuration implementation, `.env`, database schema, or script file was modified by this README refactor.
+- No runtime behavior change is implied or required by the final documentation.
+
+## Refactor Status
+
+README refactor Phases 1 through 5 are complete on branch `dev`.
+
