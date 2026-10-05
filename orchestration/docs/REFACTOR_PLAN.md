@@ -827,3 +827,304 @@ provider-transport versus ERA5-Land-retrieval-policy audit is complete.
 8. **Live state remains unknown.** This audit reads source and CI, not the user's
    current Airflow processes or PostgreSQL contents. P6 checks remain necessary
    before the already-planned development reset.
+
+
+### 10.9 Dependency/import audit and proposed target tree — 2026-10-05
+
+This section records the dependency audit performed against branch `dev` at
+commit `672dafd3684dd4929d46fc47f00c889028552449`. It is a structural plan only;
+no source module is moved by this section.
+
+The latest verified regression baseline before structural moves is:
+
+```text
+focused orchestration     : 40 passed
+unit + orchestration      : 283 passed
+PostgreSQL integration    : 6 passed
+```
+
+#### Audit conclusions
+
+1. The current `orchestration/` root mixes campaign policy, scheduling,
+   progress definitions/tracking, database bootstrap, monitoring, reporting, and
+   provider submission gating. These responsibilities should become subpackages.
+2. Add a dedicated `orchestration/progress/` package to the previously agreed
+   tree. Progress identity and progress tracking are used by both scheduled and
+   manual flows, so placing them inside `campaign/` would create the wrong
+   ownership boundary.
+3. `orchestration/tasks/era5_land.py` and
+   `orchestration/tasks/progress.py` are compatibility/facade modules rather
+   than distinct runtime responsibilities. Remove them after all callers are
+   migrated; do not preserve them as permanent aliases.
+4. `orchestration/tasks/cds_extract_operator.py` is an Airflow operator, not a
+   task helper. Move it to `operators/raw_checkpoint.py` and rename the class
+   to `RawCheckpointOperator`.
+5. The provider-defer exception should not remain owned by
+   `pipeline/extraction/cds.py`. The pipeline only invokes a submission
+   callback; orchestration owns the decision to defer. Move that control signal
+   to the orchestration submission gate so `RawCheckpointOperator` can be
+   provider-neutral.
+6. `pipeline/extraction/cds.py` has multiple responsibilities and must be split,
+   not merely renamed. The audit separates:
+   - generic CDS transport/session/credential work;
+   - CDS ERA5-Land payload/schema mapping;
+   - ERA5-Land retrieval/context/chunk-cache policy.
+7. `pipeline.model` and `pipeline.request` have the largest import blast
+   radius. Move them only after the narrower orchestration/module renames are
+   stable. Package-level exports may be used during one refactor batch, but
+   avoid long-lived compatibility modules.
+8. `request_factory.py` is part of typed weather-request construction and
+   should move into `pipeline/requests/`; leaving it at repository root would
+   preserve the same structural problem being removed elsewhere.
+
+#### Proposed final `orchestration/` tree
+
+```text
+orchestration/
+├── __init__.py
+├── airflow.cfg
+├── config.py
+├── README.md
+├── dags/
+│   └── cds_era5_land_etl.py
+├── operators/
+│   ├── __init__.py
+│   └── raw_checkpoint.py
+├── tasks/
+│   ├── __init__.py
+│   ├── build_monthly_requests.py
+│   ├── raw_checkpoint.py
+│   ├── transformed_checkpoint.py
+│   └── load.py
+├── repositories/
+│   ├── __init__.py
+│   ├── database.py
+│   ├── submission_pacing.py
+│   ├── load_evidence.py
+│   └── pipeline_progress.py
+├── campaign/
+│   ├── __init__.py
+│   ├── policy.py
+│   ├── repair.py
+│   └── reporting.py
+├── scheduling/
+│   ├── __init__.py
+│   ├── intervals.py
+│   ├── requests.py
+│   ├── run_mode.py
+│   ├── schedule.py
+│   └── submission_gate.py
+├── progress/
+│   ├── __init__.py
+│   ├── definition.py
+│   └── tracking.py
+├── monitoring/
+│   ├── __init__.py
+│   └── resources.py
+└── docs/
+    ├── IMPLEMENTATION_PLAN.md
+    ├── POSTGRES_RECREATION.md
+    └── REFACTOR_PLAN.md
+```
+
+The three operational persistence concerns remain under
+`orchestration/repositories/`: `pipeline_progress`,
+`pipeline_progress_detail`, and `cds_submission_pacing`. The first two remain
+one `pipeline_progress.py` repository because parent/detail rows form one
+durable progress aggregate.
+
+#### Orchestration old -> new mapping
+
+| Current module | Proposed module | Action / responsibility |
+| --- | --- | --- |
+| `orchestration/campaign.py` | `orchestration/campaign/policy.py` | Move campaign quarter model, campaign definitions, initialization/matching, and earliest-incomplete selection. |
+| `orchestration/campaign_repair.py` | `orchestration/campaign/repair.py` | Move manual whole-month campaign reconciliation. |
+| `orchestration/reporting.py` | `orchestration/campaign/reporting.py` | Move campaign progress read/format reporting. |
+| `orchestration/schedule.py` | `orchestration/scheduling/schedule.py` | Move cadence enable/cron resolution. |
+| `orchestration/mode.py` | `orchestration/scheduling/run_mode.py` | Move manual/scheduled DagRun mode validation. |
+| `orchestration/intervals.py` | `orchestration/scheduling/intervals.py` | Move Airflow interval -> inclusive local-date conversion. |
+| `orchestration/requests.py` | `orchestration/scheduling/requests.py` | Move historical range validation and monthly orchestration request-spec planning. |
+| `orchestration/pacing.py` | `orchestration/scheduling/submission_gate.py` | Move provider-submission reservation/defer service; own the provider-neutral `SubmissionDeferred` control signal here. |
+| `orchestration/progress.py` | `orchestration/progress/definition.py` | Move cadence-neutral progress identity/partition definitions. |
+| `orchestration/progress_tracking.py` | `orchestration/progress/tracking.py` | Move durable task-boundary progress recording and artifact identity checks. |
+| `orchestration/monitoring.py` | `orchestration/monitoring/resources.py` | Move disk and peak-memory monitoring. |
+| `orchestration/database.py` | `orchestration/repositories/database.py` | Move orchestration DB engine lifecycle and application-storage bootstrap coordination. |
+| `orchestration/repositories/cds_pacing.py` | `orchestration/repositories/submission_pacing.py` | Rename durable submission-clock repository; persisted CDS table/key may remain CDS-specific. |
+| `orchestration/repositories/load_evidence.py` | unchanged | Name already states its persistence evidence responsibility. |
+| `orchestration/repositories/pipeline_progress.py` | unchanged | Keep parent/detail progress aggregate in one repository. |
+| `orchestration/tasks/cds_extract_operator.py` | `orchestration/operators/raw_checkpoint.py` | Move custom deferrable operator and rename `CdsPacedExtractOperator` -> `RawCheckpointOperator`. |
+| `orchestration/tasks/extract.py` | `orchestration/tasks/raw_checkpoint.py` | Rename task helpers around `ensure_raw_checkpoint`. |
+| `orchestration/tasks/transform.py` | `orchestration/tasks/transformed_checkpoint.py` | Rename task helpers around `ensure_transformed_checkpoint`. |
+| `orchestration/tasks/load.py` | unchanged | Already matches boundary responsibility. |
+| `orchestration/tasks/build_monthly_requests.py` | unchanged | Already matches DAG task responsibility. |
+| `orchestration/tasks/era5_land.py` | remove | Compatibility facade only; migrate callers then delete. |
+| `orchestration/tasks/progress.py` | remove | Compatibility/convenience facade; migrate callers to responsibility modules then delete. |
+
+#### Proposed final `pipeline/` tree
+
+```text
+pipeline/
+├── __init__.py
+├── runtime.py
+├── contracts/
+│   ├── __init__.py
+│   └── era5_land.py
+├── database/
+│   ├── __init__.py
+│   ├── config.py
+│   └── schema.py
+├── extraction/
+│   ├── __init__.py
+│   └── cds_era5_land.py
+├── interfaces/
+│   ├── __init__.py
+│   └── etl.py
+├── loaders/
+│   ├── __init__.py
+│   └── daily_climate_postgres.py
+├── models/
+│   ├── __init__.py
+│   └── weather.py
+├── observability/
+│   ├── __init__.py
+│   └── logging.py
+├── providers/
+│   ├── __init__.py
+│   ├── catalog.py
+│   ├── cds_client.py
+│   └── cds_era5_land.py
+├── repositories/
+│   ├── __init__.py
+│   └── daily_climate_reader.py
+├── requests/
+│   ├── __init__.py
+│   ├── factory.py
+│   └── weather.py
+├── storage/
+│   ├── __init__.py
+│   ├── artifacts.py
+│   └── local_checkpoints.py
+├── transformation/
+│   ├── __init__.py
+│   └── era5_land_daily.py
+└── validation/
+    ├── __init__.py
+    ├── era5_land_raw.py
+    └── era5_land_daily.py
+```
+
+`runtime.py` remains at the pipeline root intentionally: it is the public
+composition layer that wires extraction, checkpoint storage, transformation,
+validation, and loading. The package root should otherwise avoid generic
+implementation modules.
+
+#### Pipeline old -> new mapping
+
+| Current module | Proposed module | Action / responsibility |
+| --- | --- | --- |
+| `pipeline/contracts/era5_land.py` | unchanged | Keep provider-independent ERA5-Land scientific/time/output contract. |
+| `pipeline/model.py` | `pipeline/models/weather.py` | Move weather request, bbox, source/layer enums, dataset/artifact dataclasses. |
+| `pipeline/interfaces.py` | `pipeline/interfaces/etl.py` | Move extractor/storage/transformer/loader interfaces. |
+| `pipeline/request.py` | `pipeline/requests/weather.py` | Move WeatherRequest validation, serialization, partition splitting, signatures, and request keys. |
+| root `request_factory.py` | `pipeline/requests/factory.py` | Move configured Aceh/CDS WeatherRequest factory and API-key requirement. |
+| `pipeline/logging.py` | `pipeline/observability/logging.py` | Move pipeline metric/section/dataframe logging helpers. |
+| `pipeline/providers/cds.py` | split into `pipeline/providers/catalog.py` + `pipeline/providers/cds_era5_land.py` | Keep generic source/dataset profile lookup in catalog; move CDS ERA5-Land variables/profile/schema mapping into dataset-specific provider module. |
+| part of `pipeline/extraction/cds.py` | `pipeline/providers/cds_client.py` | Move CDS credentials, session/POST callback integration, and generic retrieve transport. |
+| part of `pipeline/extraction/cds.py` | `pipeline/providers/cds_era5_land.py` | Move ERA5-Land CDS payload building and provider schema normalization. |
+| remainder of `pipeline/extraction/cds.py` | `pipeline/extraction/cds_era5_land.py` | Keep ERA5-Land local-day context, retrieval period/chunk purpose, chunk cache/resume, and extractor composition. Rename `CdsExtractor` -> `CdsEra5LandExtractor`. |
+| `pipeline/transformation/era5_land.py` | `pipeline/transformation/era5_land_daily.py` | Agreed hourly -> local-daily transformation module. |
+| RAW portion of `pipeline/validation/era5_land.py` | `pipeline/validation/era5_land_raw.py` | Validate raw xarray type, variables, hourly temporal continuity, and source grid. |
+| daily portion of `pipeline/validation/era5_land.py` | `pipeline/validation/era5_land_daily.py` | Validate transformed local-day dataframe time, space, values, and daily-grid contract. |
+| `pipeline/repositories/daily_climate.py` | `pipeline/repositories/daily_climate_reader.py` | Agreed read-only canonical daily-climate modelling query repository. |
+| `pipeline/loaders/postgres.py` | `pipeline/loaders/daily_climate_postgres.py` | Rename because loader writes the canonical daily climate aggregate, not arbitrary PostgreSQL data. |
+| `pipeline/storage/local.py` | `pipeline/storage/local_checkpoints.py` | Rename to state its RAW NetCDF / transformed Parquet checkpoint responsibility. |
+| `pipeline/storage/artifacts.py` | unchanged | Deterministic artifact identity/path helpers are already clear. |
+| `pipeline/database/config.py` | unchanged | Database configuration/engine concern is clear inside the package. |
+| `pipeline/database/schema.py` | unchanged | Canonical daily-climate schema/table bootstrap concern is clear inside the package. |
+| `pipeline/runtime.py` | unchanged | Keep stable public composition API at package root. |
+
+#### `pipeline/extraction/cds.py` responsibility split
+
+The current functions map to the target ownership as follows:
+
+```text
+providers/cds_client.py
+  _resolve_cds_credentials
+  provider HTTP/session POST callback mechanics
+  generic CDS retrieve/download transport
+
+providers/cds_era5_land.py
+  CDS_API_VARIABLE_NAMES / reverse mappings / ERA5-Land profile
+  _build_cds_request_payload
+  _normalize_cds_dataset
+
+extraction/cds_era5_land.py
+  _build_era5_land_retrieval_request
+  _retrieval_chunk_purpose
+  _format_context_period
+  _download_cds_period / chunk-cache orchestration
+  CdsEra5LandExtractor
+
+orchestration/scheduling/submission_gate.py
+  SubmissionDeferred
+  reserve_or_defer
+```
+
+The pipeline submission callback remains a plain callable. It may propagate an
+orchestration-owned `SubmissionDeferred`, but the pipeline does not import or
+interpret that exception.
+
+#### Verified caller/import blast radius
+
+Critical callers found during the audit include:
+
+- `orchestration.repositories.cds_pacing`: `orchestration/database.py`,
+  `orchestration/pacing.py`, and
+  `tests/airflow_orchestration/test_cds_pacing.py`.
+- `orchestration.tasks.cds_extract_operator`: DAG wiring and
+  `test_paced_operator.py`.
+- campaign/schedule/progress root modules: task preparation/load helpers,
+  reporting scripts, campaign/progress tests, and database maintenance scripts.
+- `pipeline.extraction.cds`: orchestration pacing/raw-checkpoint code plus
+  extraction, normalization, pacing, progress-wiring, and scheduled-pilot tests.
+- `pipeline.repositories.daily_climate`:
+  `scripts/read_daily_climate.py` and
+  `tests/unit/test_daily_climate_repository.py`.
+- `pipeline.transformation.era5_land`: transformation package exports and
+  `tests/unit/test_transform.py`.
+- `pipeline.validation.era5_land`: validation package exports and validation
+  tests through `pipeline.validation`.
+- `pipeline.model`: request factory, provider/request/runtime/storage/
+  extraction/loader/repository/transformation/validation modules and many unit
+  and integration tests; treat this as a high-blast-radius move.
+- `pipeline.request`: orchestration request/progress/task code, storage/runtime/
+  extraction/loader modules, and request/campaign tests; also high blast radius.
+- `pipeline.runtime`: CLI runner, Airflow task wrappers, coding docs, and
+  runtime tests. It remains unchanged to preserve the public runtime boundary.
+
+#### Recommended implementation order
+
+Do not execute the entire tree move in one commit. Use dependency-ordered
+structural phases:
+
+1. **S1 — orchestration leaf moves:** create subpackages; move monitoring,
+   scheduling primitives, campaign/reporting modules, and repositories; update
+   imports/tests with no behavior changes.
+2. **S2 — orchestration operator/task alignment:** move
+   `RawCheckpointOperator`, raw/transformed task helpers, relocate
+   `SubmissionDeferred`, then remove the two compatibility facades.
+3. **S3 — pipeline low-blast-radius renames:** daily-climate reader,
+   transformation, validation split, loader/storage filenames; preserve package
+   exports where useful within the same batch.
+4. **S4 — provider/extraction split:** split CDS transport, CDS ERA5-Land provider
+   metadata/payload logic, and ERA5-Land chunk extraction; rename extractor.
+5. **S5 — high-blast-radius pipeline core moves:** move weather models,
+   ETL interfaces, request utilities/factory, and observability logging after all
+   narrower modules are stable.
+6. After every structural phase run focused tests for affected imports. After S5,
+   run the full `tests/unit tests/airflow_orchestration` regression and isolated
+   PostgreSQL integration suite before any live scheduled pilot.
+
+All structural phases must preserve request keys, checkpoint paths, database
+table/schema names, scientific calculations, Airflow task IDs, mapped
+`YYYY-MM` labels, and durable progress identity.
