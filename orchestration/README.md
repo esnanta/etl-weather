@@ -232,7 +232,7 @@ manual-only during Stage 8 verification.
 
 ### Scheduled and Manual Mode Contract
 
-`orchestration/mode.py` defines the contract used by the existing DAG.
+`orchestration/scheduling/run_mode.py` defines the contract used by the existing DAG.
 Airflow's DagRun `run_type` determines the mode; operators do not pass a
 `mode` parameter. A scheduled DagRun must have empty `dag_run.conf`. It will
 select the earliest eligible incomplete configured campaign quarter from
@@ -273,7 +273,7 @@ jarak minimum antar request aktual ke CDS
 ```
 
 Scheduler cadence controls how often Airflow attempts to select/start work.
-`orchestration/schedule.py` reads `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and
+`orchestration/scheduling/schedule.py` reads `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and
 `ERA5_CAMPAIGN_SCHEDULE_CADENCE` from the DAG parser's environment.
 The explicit enable value is `true`; the default is `false` and resolves to
 `schedule=None`. The default cadence after enabling is `2h`:

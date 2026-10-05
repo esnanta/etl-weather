@@ -54,7 +54,11 @@ Keep in `pipeline/`:
 - `loaders/` for database persistence/idempotency;
 - `database/` for database configuration and schema bootstrap;
 - `repositories/` for controlled read-only data access;
-- `request.py` for request validation, normalization, splitting, and identity;
+- `requests/weather.py` for request validation, normalization, splitting, and identity;
+- `requests/factory.py` for configured typed request construction;
+- `models/weather.py` for weather-domain models and artifact metadata;
+- `interfaces/etl.py` for ETL boundary interfaces;
+- `observability/logging.py` for pipeline logging helpers;
 - `runtime.py` for ETL orchestration/composition only.
 
 Keep in `orchestration/`:
@@ -224,7 +228,7 @@ The development database supports only the current schema. Prefer recreating dev
 Implementation:
 
 ```text
-pipeline/repositories/daily_climate.py
+pipeline/repositories/daily_climate_reader.py
 ```
 
 Tests:

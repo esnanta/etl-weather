@@ -88,7 +88,7 @@ must fall back to the transactional metadata and observation UPSERT path.
 Implementation:
 
 ```text
-pipeline/repositories/daily_climate.py
+pipeline/repositories/daily_climate_reader.py
 tests/unit/test_daily_climate_repository.py
 ```
 
@@ -237,10 +237,10 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] historical ETL DAG parsing and policy
 ```
 
-Latest verified baseline (2026-10-04):
+Latest verified structural-refactor baseline (2026-10-05):
 
 ```text
-271 unit/orchestration tests passed
+283 unit/orchestration tests passed
 6 PostgreSQL integration tests passed against an isolated test database
 ```
 
