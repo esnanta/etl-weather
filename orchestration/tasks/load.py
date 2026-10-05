@@ -16,7 +16,7 @@ from orchestration.progress.tracking import (
     require_request_key,
 )
 from orchestration.repositories.load_evidence import persisted_row_count
-from orchestration.tasks.transform import _request_spec_from_result
+from orchestration.tasks.transformed_checkpoint import _request_spec_from_result
 
 # Preserve the historical ERA5-Land task logger identity after module movement.
 logger = logging.getLogger("orchestration.tasks.era5_land")

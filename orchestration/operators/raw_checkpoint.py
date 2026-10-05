@@ -14,8 +14,8 @@ from airflow.sdk import BaseOperator, Context
 
 from orchestration.repositories.database import runtime_database_engine
 from orchestration.repositories.pipeline_progress import are_extract_attempts_terminal
-from orchestration.tasks.extract import ensure_raw_checkpoint_with_progress
-from pipeline.extraction.cds import CdsSubmissionDeferred
+from orchestration.tasks.raw_checkpoint import ensure_raw_checkpoint_with_progress
+from orchestration.scheduling.submission_gate import SubmissionDeferred
 
 
 # Failed first-pass resolvers poll the durable barrier without occupying a worker.
@@ -28,7 +28,7 @@ def first_pass_barrier_complete(progress_id: int) -> bool:
         return are_extract_attempts_terminal(engine, progress_id)
 
 
-class CdsPacedExtractOperator(BaseOperator):
+class RawCheckpointOperator(BaseOperator):
     """Ensure a RAW checkpoint while deferring provider-pacing waits."""
 
     def __init__(
@@ -47,7 +47,7 @@ class CdsPacedExtractOperator(BaseOperator):
         start_date = request_spec.get("start_date")
         if not isinstance(start_date, str) or len(start_date) < 7:
             raise ValueError(
-                "Mapped CDS extraction requires request_spec.start_date "
+                "Mapped RAW checkpoint requires request_spec.start_date "
                 "in YYYY-MM-DD format."
             )
         self.month_label = start_date[:7]
@@ -90,7 +90,7 @@ class CdsPacedExtractOperator(BaseOperator):
             return ensure_raw_checkpoint_with_progress(
                 self.request_spec, self.progress_id, self.run_mode, paced=True
             )
-        except CdsSubmissionDeferred as deferred:
+        except SubmissionDeferred as deferred:
             self.defer(
                 trigger=DateTimeTrigger(
                     moment=deferred.next_allowed_at.astimezone(timezone.utc)

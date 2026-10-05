@@ -708,7 +708,7 @@ their actual responsibility rather than only a broad provider/dataset label.
       `orchestration/repositories/submission_pacing.py`. The module owns the durable provider-submission clock. Its table, functions, and identifiers are provider-neutral because orchestration currently uses one global submission clock.
 - [x] Move the custom deferrable operator out of `tasks/` to
       `orchestration/operators/raw_checkpoint.py` and rename
-      `CdsPacedExtractOperator` to `RawCheckpointOperator`. The implementation
+      `RawCheckpointOperator` to `RawCheckpointOperator`. The implementation
       still requires an audit to isolate any provider-specific exception or
       pacing dependency cleanly.
 - [ ] Audit root modules `campaign.py`, `campaign_repair.py`, `database.py`,
@@ -949,7 +949,7 @@ durable progress aggregate.
 | `orchestration/repositories/submission_pacing.py` | `orchestration/repositories/submission_pacing.py` | Rename durable submission-clock repository; persisted table and API names are provider-neutral; no pacing key is retained. |
 | `orchestration/repositories/load_evidence.py` | unchanged | Name already states its persistence evidence responsibility. |
 | `orchestration/repositories/pipeline_progress.py` | unchanged | Keep parent/detail progress aggregate in one repository. |
-| `orchestration/tasks/cds_extract_operator.py` | `orchestration/operators/raw_checkpoint.py` | Move custom deferrable operator and rename `CdsPacedExtractOperator` -> `RawCheckpointOperator`. |
+| `orchestration/tasks/cds_extract_operator.py` | `orchestration/operators/raw_checkpoint.py` | Move custom deferrable operator and rename `RawCheckpointOperator` -> `RawCheckpointOperator`. |
 | `orchestration/tasks/extract.py` | `orchestration/tasks/raw_checkpoint.py` | Rename task helpers around `ensure_raw_checkpoint`. |
 | `orchestration/tasks/transform.py` | `orchestration/tasks/transformed_checkpoint.py` | Rename task helpers around `ensure_transformed_checkpoint`. |
 | `orchestration/tasks/load.py` | unchanged | Already matches boundary responsibility. |
@@ -1125,3 +1125,9 @@ structural phases:
 All structural phases must preserve request keys, checkpoint paths, database
 table/schema names, scientific calculations, Airflow task IDs, mapped
 `YYYY-MM` labels, and durable progress identity.
+
+
+### Structural refactor phase evidence
+
+- S1 orchestration leaf moves: implemented on `dev`; user verification reported 106 focused orchestration tests passed in 4.15s and 4 PostgreSQL integration tests passed in 0.82s on 2026-10-05.
+- S2 operator/task alignment: implemented structurally; focused regression is required before S3 begins.

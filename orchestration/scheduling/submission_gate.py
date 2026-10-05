@@ -7,13 +7,21 @@ provider retrieve; a denied reservation signals the Airflow operator to defer.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from orchestration.repositories.database import initialize_pacing_storage, runtime_database_engine
 from orchestration.repositories.submission_pacing import reserve_submission
-from pipeline.extraction.cds import CdsSubmissionDeferred
 from pipeline.model import WeatherRequest
 
 logger = logging.getLogger(__name__)
+
+
+class SubmissionDeferred(Exception):
+    """Signal that a provider submission should resume after the durable gate."""
+
+    def __init__(self, next_allowed_at: datetime):
+        self.next_allowed_at = next_allowed_at
+        super().__init__(f"Submission deferred until {next_allowed_at.isoformat()}")
 
 
 def reserve_or_defer(request: WeatherRequest) -> None:
@@ -26,7 +34,7 @@ def reserve_or_defer(request: WeatherRequest) -> None:
             "CDS submission deferred\nchunk=%s..%s\nnext_allowed_at=%s",
             request.start_date, request.end_date, decision.next_allowed_at,
         )
-        raise CdsSubmissionDeferred(decision.next_allowed_at)
+        raise SubmissionDeferred(decision.next_allowed_at)
     logger.info(
         "CDS submission reserved\nchunk=%s..%s\nsubmitted_at=%s\nnext_allowed_at=%s",
         request.start_date, request.end_date, decision.checked_at,

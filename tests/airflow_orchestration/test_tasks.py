@@ -8,9 +8,9 @@ import pytest
 from orchestration.monitoring import resources as monitoring
 from orchestration.scheduling.intervals import inclusive_local_dates
 from orchestration.scheduling.requests import build_historical_request_specs
-from orchestration.tasks.extract import ensure_raw_checkpoint_partition
+from orchestration.tasks.raw_checkpoint import ensure_raw_checkpoint_partition
 from orchestration.tasks.load import load_partition
-from orchestration.tasks.transform import ensure_transformed_checkpoint_partition
+from orchestration.tasks.transformed_checkpoint import ensure_transformed_checkpoint_partition
 
 
 def test_build_historical_request_specs_requires_explicit_dates() -> None:

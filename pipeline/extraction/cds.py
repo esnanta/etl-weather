@@ -60,12 +60,6 @@ class _PacedSubmissionSession(requests.Session):
         return super().request(method, url, *args, **kwargs)
 
 
-class CdsSubmissionDeferred(Exception):
-    """Signal that a provider call should resume after a durable pacing gate."""
-
-    def __init__(self, next_allowed_at: datetime):
-        self.next_allowed_at = next_allowed_at
-        super().__init__(f"CDS submission deferred until {next_allowed_at.isoformat()}")
 
 def _normalize_cds_dataset(dataset: xr.Dataset) -> xr.Dataset:
     """Normalize schema mechanics while preserving provider variable names."""

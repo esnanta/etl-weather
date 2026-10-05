@@ -16,9 +16,9 @@ from airflow.sdk.definitions.param import Param, ParamsDict
 from config import validate_and_log_app_environment
 from orchestration.scheduling.schedule import campaign_schedule
 from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
-from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
+from orchestration.operators.raw_checkpoint import RawCheckpointOperator
 from orchestration.tasks.load import load_with_progress
-from orchestration.tasks.transform import ensure_transformed_checkpoint_with_progress
+from orchestration.tasks.transformed_checkpoint import ensure_transformed_checkpoint_with_progress
 
 DAG_ID = "cds_era5_land_etl"
 
@@ -123,7 +123,7 @@ with DAG(
         return load_with_progress(transformed_checkpoint_result)
 
     monthly_jobs = build_monthly_requests()
-    attempt_raw_checkpoint_results = CdsPacedExtractOperator.partial(
+    attempt_raw_checkpoint_results = RawCheckpointOperator.partial(
         task_id="attempt_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",
@@ -135,7 +135,7 @@ with DAG(
     resolve_raw_checkpoint_inputs = attempt_raw_checkpoint_results.output.map(
         prepare_resolve_raw_checkpoint_kwargs
     )
-    resolve_raw_checkpoint_results = CdsPacedExtractOperator.partial(
+    resolve_raw_checkpoint_results = RawCheckpointOperator.partial(
         task_id="resolve_raw_checkpoint",
         map_index_template="{{ task.month_label }}",
         pool="cds_api",

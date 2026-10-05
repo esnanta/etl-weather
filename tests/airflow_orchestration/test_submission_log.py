@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from orchestration.scheduling import submission_gate as pacing
-from pipeline.extraction.cds import CdsSubmissionDeferred
+from orchestration.scheduling.submission_gate import SubmissionDeferred
 
 
 @pytest.mark.parametrize("granted", [True, False])
@@ -31,7 +31,7 @@ def test_submission_log_fields_use_separate_lines(monkeypatch, caplog, granted):
         if granted:
             pacing.reserve_or_defer(request)
         else:
-            with pytest.raises(CdsSubmissionDeferred):
+            with pytest.raises(SubmissionDeferred):
                 pacing.reserve_or_defer(request)
     message = caplog.records[-1].getMessage()
     assert message.splitlines() == (

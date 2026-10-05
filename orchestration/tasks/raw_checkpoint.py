@@ -52,7 +52,7 @@ def ensure_raw_checkpoint_with_progress(
     paced: bool = False,
 ) -> dict[str, object]:
     """Ensure a RAW checkpoint while preserving pacing deferral and failure semantics."""
-    from pipeline.extraction.cds import CdsSubmissionDeferred
+    from orchestration.scheduling.submission_gate import SubmissionDeferred
     from pipeline.request import build_request_key, weather_request_from_spec
 
     request_key = build_request_key(weather_request_from_spec(request_spec))
@@ -80,7 +80,7 @@ def ensure_raw_checkpoint_with_progress(
             raw_sha256=checksum,
             raw_file_size_bytes=size,
         )
-    except CdsSubmissionDeferred:
+    except SubmissionDeferred:
         logger.info(
             "RAW checkpoint waiting for the next CDS submission slot; request_key=%s",
             request_key,

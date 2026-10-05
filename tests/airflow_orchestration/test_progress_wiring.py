@@ -16,9 +16,9 @@ from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
 from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks import build_monthly_requests as job_tasks
-from orchestration.tasks import extract as extract_tasks
+from orchestration.tasks import raw_checkpoint as extract_tasks
 from orchestration.tasks import load as load_tasks
-from pipeline.extraction.cds import CdsSubmissionDeferred
+from orchestration.scheduling.submission_gate import SubmissionDeferred
 from datetime import datetime, timedelta, timezone
 
 
@@ -368,10 +368,10 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
     monkeypatch.setattr(
         extract_tasks, "ensure_raw_checkpoint_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
-            CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
+            SubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
     )
-    with pytest.raises(CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         extract_tasks.ensure_raw_checkpoint_with_progress(_campaign_spec(), 42, "manual", paced=True)
     assert updates == [{
         "extract_status": "running", "transform_status": "pending",
