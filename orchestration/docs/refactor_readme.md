@@ -690,3 +690,176 @@ This refactor is complete when:
 
 README refactor Phases 1 through 5 are complete on branch `dev`.
 
+
+
+# Phase 6 — Refactor `/tests/README.md`
+
+This phase extends the documentation-only refactor to the testing guide.
+
+## 6.1 Scope
+
+- [x] Documentation-only change.
+- [x] Do not modify tests, pipeline code, orchestration code, configuration implementation, database schema, or scripts.
+- [x] Keep `tests/README.md` focused on how testing is organized, what each test layer protects, and how to run the current suites.
+- [x] Use `tests/AGENTS.md` for technical testing rules that developers/agents must follow when changing or adding tests.
+- [x] Avoid repeating project overview from `/README.md` or Airflow operational guidance from `/orchestration/README.md`.
+- [x] Do not maintain a catalog of every test filename; document test locations and responsibilities instead.
+
+## 6.2 Audit Current Content
+
+- [x] Review `tests/README.md` against the current `dev` test directories.
+- [x] Compare testing documentation with `/README.md` and `/orchestration/README.md` for overlap.
+- [x] Identify stale test filenames and historical baselines.
+- [x] Identify sections that are too implementation-oriented for a testing README.
+- [x] Identify language that can be simplified without weakening test contracts.
+
+### Audit findings
+
+- The current document still reflects an older pipeline-only testing state and underrepresents the present orchestration and database-progress coverage.
+- The `Unit Test Responsibilities` filename list is incomplete compared with the current `tests/unit/` directory.
+- A filename-by-filename catalog is not a sustainable documentation pattern as the suite grows. The README should refer to `tests/unit/`, `tests/airflow_orchestration/`, and `tests/integration/` and explain the responsibility of each location.
+- Current unit coverage also includes pacing, logging, database recreation, and reset/runtime maintenance behavior.
+- Current integration coverage includes:
+  - `test_postgresql_idempotency.py`;
+  - `test_pipeline_progress_reconciliation.py`;
+  - `test_submission_pacing.py`;
+  - `test_orchestration_database_bootstrap.py`.
+- Current Airflow coverage is much broader than the short list in the README and includes campaign configuration/selection, schedule, progress/reconciliation wiring, reporting, RAW checkpoint deferral/retry, submission pacing/logging, and DAG/task policy.
+- Historical baseline text such as `100 unit tests passed`, `119 unit/orchestration tests passed`, and `2 PostgreSQL integration tests passed` is stale and should be removed rather than maintained as permanent documentation.
+- The current project baseline previously verified for this refactor context is `208` unit + Airflow orchestration tests and `5` PostgreSQL integration tests; however, the README should prefer reproducible commands over hard-coded pass counts that become stale.
+- `Running Tests` should use quiet mode consistently.
+- Running the entire `tests/integration` directory is less explicit than listing the intended isolated PostgreSQL integration files.
+- The `Known NetCDF Runtime Warning` section should be removed entirely by user decision.
+- Several sections repeat implementation detail already better owned by root/design documentation or by `tests/AGENTS.md`, especially:
+  - full transformed schema and unit contract;
+  - detailed PostgreSQL column/provenance mapping;
+  - low-level UPSERT comparison logic;
+  - detailed modelling-data-access definition.
+- These details may remain in `tests/AGENTS.md` when they are developer-facing testing rules, but `tests/README.md` should only summarize the observable behavior the tests protect.
+- `tests/AGENTS.md` already contains technical rules for locked scientific contracts, PostgreSQL identity/idempotency, repository behavior, checkpoint/retry hardening, progress persistence, provenance, and Airflow test boundaries. Do not duplicate these rules into the README.
+- `tests/AGENTS.md` currently contains a long `Module Guidance` filename catalog. During this documentation refactor, simplify that section toward directory/responsibility guidance and retain individual filenames only when a specific canonical owner is materially useful.
+- The NetCDF runtime warning policy already exists in `tests/AGENTS.md`. The user-requested removal applies to the README; the technical warning policy may remain in AGENTS unless a later decision removes it there as well.
+- `Retry, Resume, and Provenance Verification` overlaps with root persistence semantics and can be folded into a simpler test-responsibility section.
+- `Checkpoint and Idempotency Regression Rules` is useful but should be rewritten in plain language with a short example.
+- `Test Style` and `Definition of Done` remain appropriate, but can be shortened.
+- The document should clearly distinguish:
+  - unit tests: fast/offline behavior;
+  - Airflow orchestration tests: scheduling and orchestration policy without CDS work;
+  - PostgreSQL integration tests: real isolated database behavior.
+
+## 6.3 Proposed Structure
+
+Refactor `tests/README.md` toward this structure:
+
+- [x] `# Testing`
+- [x] `## Testing Strategy` — concise purpose and three test layers.
+- [x] `## What the Tests Protect` — business/scientific correctness in plain language.
+- [x] `## Unit Tests` — responsibilities and `tests/unit/` location; do not enumerate every test file.
+- [x] `## Airflow Orchestration Tests` — responsibilities and `tests/airflow_orchestration/` location; do not enumerate every test file.
+- [x] `## PostgreSQL Integration Tests` — isolated database requirement and `tests/integration/` location; only name specific files inside runnable command examples when necessary.
+- [x] `## Idempotency and Recovery Examples` — short examples instead of low-level UPSERT internals.
+- [x] `## Running Tests` — canonical quiet commands.
+- [x] `## Test Style` — concise development rules.
+- [x] `## Definition of Done` — concise acceptance criteria.
+
+## 6.4 Content Changes
+
+- [x] Remove `Known NetCDF Runtime Warning` completely.
+- [x] Remove historical test-count baselines.
+- [x] Remove or greatly shorten the opening ETL path because the root README already explains the pipeline.
+- [x] Reduce `Locked Scientific Contract` to the scientific behaviors tests must protect rather than duplicating the full project data contract; keep developer-level contract detail in `tests/AGENTS.md`.
+- [x] Reduce `PostgreSQL Contract Under Test` to observable test expectations; keep low-level identity/UPSERT rules in `tests/AGENTS.md`.
+- [x] Avoid detailed provenance-column lists in the README; keep technical provenance rules in `tests/AGENTS.md` where needed.
+- [x] Avoid explaining modelling architecture; state only that repository tests protect read-only access and preservation of climate semantics.
+- [x] Keep the rule that routine unit tests must not require live PostgreSQL or CDS.
+- [x] Keep the rule that external systems should be isolated/mocked in unit tests.
+- [x] Keep explicit negative-case testing for validation and persistence behavior.
+- [x] Keep temporary-artifact isolation and the rule not to write tests into the real project `data/` directory.
+- [x] Keep scientific correctness as part of software correctness, but explain it in plain language.
+
+## 6.5 Canonical Test Commands
+
+Use quiet commands aligned with the current repository:
+
+- [x] Unit + Airflow orchestration regression:
+
+  ```bash
+  source activate-airflow.sh
+
+  ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+  python -m pytest tests/unit tests/airflow_orchestration -q
+  ```
+
+- [x] Isolated PostgreSQL integration:
+
+  ```bash
+  source activate-airflow.sh
+
+  python -m pytest \
+    tests/integration/test_postgresql_idempotency.py \
+    tests/integration/test_pipeline_progress_reconciliation.py \
+    tests/integration/test_submission_pacing.py \
+    tests/integration/test_orchestration_database_bootstrap.py \
+    -q
+  ```
+
+- [x] Explain that integration tests use `TEST_POSTGRES_*` and must point to an isolated test database.
+- [x] Do not embed a permanent numeric pass-count baseline in the README.
+
+## 6.6 Cross-Document Boundaries
+
+- [x] Root README remains responsible for installation, environment setup, ETL overview, and basic test entry points.
+- [x] Orchestration README remains responsible for Airflow operation and may show its canonical orchestration test commands.
+- [x] Tests README becomes the authoritative human-facing explanation of testing strategy, test-layer responsibilities, and canonical commands.
+- [x] Tests AGENTS becomes the authoritative developer/agent-facing location for detailed testing rules and invariants.
+- [x] Avoid duplicating local-day formulas, project architecture, Airflow JWT setup, campaign operating procedures, or full database schema documentation.
+- [x] Avoid filename-by-filename inventories; prefer test directories and responsibility descriptions.
+- [x] Link back to root/orchestration documentation where appropriate instead of repeating those explanations.
+
+## 6.6A Tests AGENTS Review
+
+- [x] Review current `tests/AGENTS.md` before moving technical content out of the README.
+- [x] Confirm that most detailed testing contracts already exist there.
+- [x] Keep technical rules that are still relevant and not duplicated elsewhere.
+- [x] Simplify `Module Guidance` so it does not attempt to list every test module.
+- [x] Prefer directory-level ownership:
+  - `tests/unit/` for fast/offline pipeline and maintenance behavior;
+  - `tests/airflow_orchestration/` for Airflow policy and orchestration behavior;
+  - `tests/integration/` for isolated real-PostgreSQL behavior.
+- [x] Retain individual filenames only for exceptional canonical ownership where naming the exact module materially improves maintenance.
+- [x] Review stale terminology such as `backfill` and replace it with current ETL/campaign terminology where appropriate.
+- [x] Review historical numeric coverage baselines in AGENTS and remove them if they are being used as permanent documentation rather than transient evidence.
+- [x] Keep the NetCDF warning policy in AGENTS for now because it is a technical developer rule; remove only the README warning section as explicitly requested.
+
+## 6.7 Final Validation
+
+- [x] Verify every referenced test file exists on branch `dev`.
+- [x] Verify all commands use current filenames and quiet mode.
+- [x] Verify no stale numeric baseline remains.
+- [x] Verify `Known NetCDF Runtime Warning` is absent.
+- [x] Verify terminology matches current pipeline/orchestration documentation.
+- [x] Verify only documentation files are changed.
+
+## Phase 6 Result
+
+- `tests/README.md` is now the human-facing testing guide.
+- `tests/AGENTS.md` is now the developer/agent-facing location for detailed testing invariants.
+- The README no longer duplicates the full ETL path, scientific schema, PostgreSQL column mapping, provenance field catalog, or modelling architecture.
+- Test responsibilities are documented by location:
+  - `tests/unit/`;
+  - `tests/airflow_orchestration/`;
+  - `tests/integration/`.
+- The README does not maintain a filename-by-filename test inventory.
+- Specific integration filenames appear only in the canonical runnable PostgreSQL command where exact selection matters.
+- `Known NetCDF Runtime Warning` was removed from `tests/README.md`.
+- The NetCDF warning policy remains in `tests/AGENTS.md` as a technical developer rule.
+- Historical numeric pass-count baselines were removed from both testing documents.
+- Stale `backfill` and historical-DAG terminology was removed from the testing guidance.
+- Canonical test commands now use quiet mode.
+- Integration documentation requires the isolated `TEST_POSTGRES_*` database.
+- `tests/AGENTS.md` no longer contains a long `Module Guidance` catalog; ownership is described by test layer and responsibility.
+- Final diff for this phase contains only `tests/README.md` and `tests/AGENTS.md`; no test implementation or runtime code was changed.
+
+## Testing Documentation Status
+
+Phase 6 is complete on branch `dev`.
