@@ -9,9 +9,8 @@ from dotenv import load_dotenv
 from config import (
     ACEH_BBOX_COORDINATES,
     CDS_DATASET,
-    CDS_END_DATE,
-    CDS_START_DATE,
     CDS_VARIABLES,
+    resolve_cds_period,
 )
 from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
@@ -22,12 +21,16 @@ def build_aceh_bbox() -> BoundingBox:
 
 
 def build_cds_request(
-    start_date: str = CDS_START_DATE,
-    end_date: str = CDS_END_DATE,
+    start_date: str | None = None,
+    end_date: str | None = None,
     *,
     require_api_key: bool = True,
 ) -> WeatherRequest:
-    """Build the active CDS request for an explicit inclusive period."""
+    """Build the active CDS request for an explicit or configured period."""
+    if start_date is None or end_date is None:
+        configured_start, configured_end = resolve_cds_period()
+        start_date = start_date or configured_start
+        end_date = end_date or configured_end
     if require_api_key:
         _require_cds_api_key()
     return WeatherRequest(

@@ -128,8 +128,8 @@ local configuration lives in the untracked root `.env`:
 
 ```env
 CAMPAIGN_KEY=era5_land_2016_2025
-CAMPAIGN_START_YEAR=2016
-CAMPAIGN_END_YEAR=2017
+CAMPAIGN_START_DATE=2016
+CAMPAIGN_END_DATE=2017
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
@@ -142,7 +142,7 @@ When scheduled rollout is deliberately enabled, change only that value to
 
 The campaign range itself is not supplied through a scheduled DagRun.
 `orchestration/config.py` requires `CAMPAIGN_KEY`,
-`CAMPAIGN_START_YEAR`, and `CAMPAIGN_END_YEAR` from the exported
+`CAMPAIGN_START_DATE`, and `CAMPAIGN_END_DATE` from the exported
 environment loaded from `.env`. The current controlled rollout example is
 2016 through 2017. Each scheduled DagRun selects the earliest eligible
 incomplete configured quarter from PostgreSQL durable progress and maps that
@@ -217,7 +217,7 @@ cds_era5_land_etl
 The currently implemented baseline is manually triggered with explicit
 inclusive `start_date` and `end_date` parameters. Stage 8 extends this same
 DAG with a bounded scheduled quarterly campaign whose first and last years are
-configured by `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`, while
+configured by `CAMPAIGN_START_DATE` and `CAMPAIGN_END_DATE`, while
 preserving explicit manual recovery through the same DAG.
 
 The total number of campaign quarters and monthly partitions is derived from

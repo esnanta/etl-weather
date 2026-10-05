@@ -9,7 +9,10 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from orchestration.campaign.policy import CampaignQuarter, iter_campaign_quarters
-from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
+from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 from orchestration.campaign.reporting import MonthReport, QuarterReport, format_campaign_report, read_campaign_report
 
 
@@ -40,7 +43,7 @@ def test_report_queries_exact_quarter_definitions_without_writes() -> None:
             return Connection()
 
     reports = read_campaign_report(Engine())
-    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+    quarter_count = len(iter_campaign_quarters())
     assert len(reports) == quarter_count
     assert all(report.status == "not_initialized" for report in reports)
     assert len({item["configuration_identity"] for item in queries}) == quarter_count
@@ -98,7 +101,7 @@ def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
         for quarter in iter_campaign_quarters()
     )
 
-    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+    quarter_count = len(iter_campaign_quarters())
     complete_count = len(complete_quarters)
     output = format_campaign_report(reports)
     assert (

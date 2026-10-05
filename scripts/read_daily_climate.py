@@ -18,8 +18,7 @@ from pipeline.repositories.daily_climate_reader import (
 from pipeline.models.weather import DataSource
 from config import (
     CDS_DATASET,
-    CDS_END_DATE,
-    CDS_START_DATE,
+    resolve_cds_period,
     validate_and_log_app_environment,
 )
 from pipeline.requests.factory import build_aceh_bbox
@@ -76,11 +75,12 @@ def main() -> None:
         validate_and_log_app_environment(logger)
     except ValueError:
         raise SystemExit(2) from None
+    start_date, end_date = resolve_cds_period()
     selection = DailyClimateSelection(
         source=DataSource.CDS,
         dataset_name=CDS_DATASET,
-        start_date=date.fromisoformat(CDS_START_DATE),
-        end_date=date.fromisoformat(CDS_END_DATE),
+        start_date=date.fromisoformat(start_date),
+        end_date=date.fromisoformat(end_date),
         bbox=build_aceh_bbox(),
     )
     dataframe = load_daily_climate_for_modelling(selection)

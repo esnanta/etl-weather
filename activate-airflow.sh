@@ -61,7 +61,7 @@ case "${APP_ENV,,}" in
         ;;
 esac
 
-for _campaign_var in CAMPAIGN_KEY CAMPAIGN_START_YEAR CAMPAIGN_END_YEAR; do
+for _campaign_var in CAMPAIGN_KEY CAMPAIGN_START_DATE CAMPAIGN_END_DATE; do
     _campaign_value="${!_campaign_var-}"
     if [[ -z "${_campaign_value//[[:space:]]/}" ]]; then
         echo "ERROR: ${_campaign_var} is required in $PROJECT_ROOT/.env." >&2
@@ -71,28 +71,43 @@ for _campaign_var in CAMPAIGN_KEY CAMPAIGN_START_YEAR CAMPAIGN_END_YEAR; do
 done
 unset _campaign_var _campaign_value
 
-if ! [[ "$CAMPAIGN_START_YEAR" =~ ^[0-9]{4}$ ]]; then
-    echo "ERROR: CAMPAIGN_START_YEAR must be a four-digit integer year." >&2
+_validate_iso_date() {
+    local _name="$1"
+    local _value="$2"
+    if ! [[ "$_value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] \
+        || [[ "$(date -d "$_value" +%F 2>/dev/null)" != "$_value" ]]; then
+        echo "ERROR: ${_name} must be a valid canonical YYYY-MM-DD date." >&2
+        return 1
+    fi
+}
+
+_validate_iso_date CAMPAIGN_START_DATE "$CAMPAIGN_START_DATE" || return 1 2>/dev/null || exit 1
+_validate_iso_date CAMPAIGN_END_DATE "$CAMPAIGN_END_DATE" || return 1 2>/dev/null || exit 1
+
+if ! [[ "$CAMPAIGN_START_DATE" =~ -(01-01|04-01|07-01|10-01)$ ]]; then
+    echo "ERROR: CAMPAIGN_START_DATE must be the first day of a calendar quarter." >&2
     return 1 2>/dev/null || exit 1
 fi
 
-if ! [[ "$CAMPAIGN_END_YEAR" =~ ^[0-9]{4}$ ]]; then
-    echo "ERROR: CAMPAIGN_END_YEAR must be a four-digit integer year." >&2
+if ! [[ "$CAMPAIGN_END_DATE" =~ -(03-31|06-30|09-30|12-31)$ ]]; then
+    echo "ERROR: CAMPAIGN_END_DATE must be the last day of a calendar quarter." >&2
     return 1 2>/dev/null || exit 1
 fi
 
-if (( 10#$CAMPAIGN_START_YEAR > 10#$CAMPAIGN_END_YEAR )); then
-    echo "ERROR: CAMPAIGN_START_YEAR must be <= CAMPAIGN_END_YEAR." >&2
+if [[ "$CAMPAIGN_START_DATE" > "$CAMPAIGN_END_DATE" ]]; then
+    echo "ERROR: CAMPAIGN_START_DATE must be <= CAMPAIGN_END_DATE." >&2
     return 1 2>/dev/null || exit 1
 fi
+
+unset -f _validate_iso_date
 
 echo "Application environment | APP_ENV=$APP_ENV"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_ENABLED=${ERA5_CAMPAIGN_SCHEDULE_ENABLED:-}"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_CADENCE=${ERA5_CAMPAIGN_SCHEDULE_CADENCE:-}"
 echo "Application environment | SUBMISSION_INTERVAL_SECONDS=${SUBMISSION_INTERVAL_SECONDS:-}"
 echo "Application environment | CAMPAIGN_KEY=${CAMPAIGN_KEY:-}"
-echo "Application environment | CAMPAIGN_START_YEAR=${CAMPAIGN_START_YEAR:-}"
-echo "Application environment | CAMPAIGN_END_YEAR=${CAMPAIGN_END_YEAR:-}"
+echo "Application environment | CAMPAIGN_START_DATE=${CAMPAIGN_START_DATE:-}"
+echo "Application environment | CAMPAIGN_END_DATE=${CAMPAIGN_END_DATE:-}"
 
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/myvenv/bin/activate"

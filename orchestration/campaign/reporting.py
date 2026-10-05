@@ -1,8 +1,4 @@
-"""Read configured campaign progress identities for operator reporting.
-
-Manual ranges and changed configurations can coexist in PostgreSQL, so a
-yearly summary must match the current campaign quarter definitions explicitly.
-"""
+"""Read configured campaign progress identities for operator reporting."""
 
 from __future__ import annotations
 
@@ -19,8 +15,8 @@ from orchestration.campaign.policy import (
     iter_campaign_quarters,
 )
 from orchestration.config import (
-    CAMPAIGN_END_YEAR,
-    CAMPAIGN_START_YEAR,
+    CAMPAIGN_END_DATE,
+    CAMPAIGN_START_DATE,
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
@@ -131,7 +127,6 @@ def _load_quarter_report(
 
 
 def read_campaign_report(engine: Engine) -> tuple[QuarterReport, ...]:
-    """Return current persisted rows without initializing or changing them."""
     reports = []
     for quarter in iter_campaign_quarters():
         specs = build_quarter_request_specs(quarter, current_local_date=datetime.max.date())
@@ -141,21 +136,21 @@ def read_campaign_report(engine: Engine) -> tuple[QuarterReport, ...]:
 
 
 def format_campaign_report(reports: tuple[QuarterReport, ...]) -> str:
-    """Render one bounded yearly summary with failed quarters and last load."""
     quarters = iter_campaign_quarters()
     if tuple(item.quarter for item in reports) != quarters:
         raise ValueError("Campaign report must contain all configured ordered quarters.")
     completed = sum(item.status == "complete" for item in reports)
     failed = sum(item.status == "failed" for item in reports)
     lines = [
-        f"Campaign {CAMPAIGN_START_YEAR}-{CAMPAIGN_END_YEAR}: "
+        f"Campaign {CAMPAIGN_START_DATE.isoformat()} -> "
+        f"{CAMPAIGN_END_DATE.isoformat()}: "
         f"{completed}/{len(quarters)} quarters complete; "
         f"{len(quarters) - completed} remaining; {failed} failed."
     ]
-    for year in range(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR + 1):
+    for year in sorted({quarter.year for quarter in quarters}):
         yearly = [item for item in reports if item.quarter.year == year]
         count = sum(item.status == "complete" for item in yearly)
-        lines.append(f"{year}: {count}/4 quarters complete")
+        lines.append(f"{year}: {count}/{len(yearly)} quarters complete")
     for item in reports:
         if item.status != "complete" and item.completed_months:
             lines.append(

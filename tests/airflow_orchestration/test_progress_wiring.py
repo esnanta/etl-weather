@@ -12,7 +12,10 @@ import pytest
 
 from orchestration.campaign import repair as campaign_repair
 from orchestration.campaign.policy import CampaignBlocked, CampaignQuarter
-from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
+from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks import build_monthly_requests as job_tasks

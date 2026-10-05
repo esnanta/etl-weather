@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from orchestration.campaign.policy import (
-    CAMPAIGN_END_YEAR,
-    CAMPAIGN_START_YEAR,
+    CAMPAIGN_END_DATE,
+    CAMPAIGN_START_DATE,
     CampaignQuarter,
     CampaignBlocked,
     CampaignSelection,
@@ -17,7 +17,9 @@ from orchestration.campaign.policy import (
     select_earliest_incomplete_quarter,
 )
 
-CAMPAIGN_QUARTER_COUNT = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
+CAMPAIGN_QUARTER_COUNT = len(iter_campaign_quarters())
 
 
 def _month_end(year: int, month: int) -> str:

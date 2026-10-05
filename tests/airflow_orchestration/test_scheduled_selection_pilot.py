@@ -11,7 +11,10 @@ from datetime import date
 from types import SimpleNamespace
 
 from orchestration.campaign import policy as campaign
-from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
+from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 from orchestration.repositories import pipeline_progress as repository
 from orchestration.tasks import build_monthly_requests as job_tasks
 
@@ -33,7 +36,7 @@ def test_scheduled_selection_recovery_and_terminal_noop(
     monkeypatch.setattr(
         campaign, "initialize_campaign_progress",
         lambda unused_engine, **kwargs: tuple(
-            range(1, (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4 + 1)
+            range(1, len(campaign.iter_campaign_quarters()) + 1)
         ),
     )
     monkeypatch.setattr(
@@ -104,7 +107,7 @@ def test_scheduled_selection_recovery_and_terminal_noop(
     ]
     assert {item["progress_id"] for item in third} == {3}
 
-    quarter_count = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+    quarter_count = len(campaign.iter_campaign_quarters())
     statuses.update({number: "complete" for number in range(1, quarter_count + 1)})
     assert job_tasks.prepare_monthly_jobs("scheduled", {}, "scheduled__terminal") == []
     assert reconciled[-quarter_count:] == list(range(1, quarter_count + 1))

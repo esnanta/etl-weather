@@ -256,7 +256,7 @@ Run the active CDS ERA5-Land pipeline with:
 python scripts/run_pipeline_cds.py
 ```
 
-The dataset, period, variables, and bounding box for this entrypoint are defined explicitly in `scripts/config.py`. Long periods are split into monthly requests by the pipeline runtime.
+The dataset, variables, and bounding box are defined by project configuration. The default standalone period comes from `CDS_START_DATE` and `CDS_END_DATE` in `.env`; long periods are split into monthly requests by the pipeline runtime.
 
 ## Running with Apache Airflow
 

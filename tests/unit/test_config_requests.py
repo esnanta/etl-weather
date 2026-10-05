@@ -5,6 +5,8 @@ import pytest
 from config import (
     database_recreation_allowed,
     resolve_app_environment,
+    resolve_campaign_period,
+    resolve_cds_period,
     validate_and_log_app_environment,
 )
 from pipeline.models.weather import DataSource
@@ -12,7 +14,8 @@ from pipeline.requests.factory import build_cds_request
 
 
 def test_build_cds_request_requires_api_key(monkeypatch) -> None:
-    # Isolate the missing-key scenario from a developer's real .env file.
+    monkeypatch.setenv("CDS_START_DATE", "2022-01-01")
+    monkeypatch.setenv("CDS_END_DATE", "2022-01-03")
     monkeypatch.setattr("pipeline.requests.factory.load_dotenv", lambda: False)
     monkeypatch.delenv("CDSAPI_KEY", raising=False)
 
@@ -22,6 +25,8 @@ def test_build_cds_request_requires_api_key(monkeypatch) -> None:
 
 def test_build_cds_request_uses_era5_land_contract(monkeypatch) -> None:
     monkeypatch.setenv("CDSAPI_KEY", "1:mock-key")
+    monkeypatch.setenv("CDS_START_DATE", "2022-01-01")
+    monkeypatch.setenv("CDS_END_DATE", "2022-01-03")
 
     request = build_cds_request()
 
@@ -103,3 +108,27 @@ def test_application_environment_logs_warning_before_abort(caplog) -> None:
         with pytest.raises(ValueError, match="Set APP_ENV=dev or APP_ENV=prod"):
             validate_and_log_app_environment(logger, {})
     assert "Application startup aborted" in caplog.text
+
+
+def test_configured_date_ranges_use_canonical_environment_values() -> None:
+    assert resolve_cds_period({
+        "CDS_START_DATE": "2022-01-01",
+        "CDS_END_DATE": "2022-01-03",
+    }) == ("2022-01-01", "2022-01-03")
+    assert resolve_campaign_period({
+        "CAMPAIGN_START_DATE": "2016-01-01",
+        "CAMPAIGN_END_DATE": "2017-12-31",
+    }) == ("2016-01-01", "2017-12-31")
+
+
+def test_configured_date_range_rejects_invalid_or_inverted_values() -> None:
+    with pytest.raises(ValueError, match="valid YYYY-MM-DD"):
+        resolve_cds_period({
+            "CDS_START_DATE": "2022-02-30",
+            "CDS_END_DATE": "2022-03-01",
+        })
+    with pytest.raises(ValueError, match="less than or equal"):
+        resolve_campaign_period({
+            "CAMPAIGN_START_DATE": "2017-01-01",
+            "CAMPAIGN_END_DATE": "2016-12-31",
+        })
