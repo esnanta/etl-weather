@@ -37,7 +37,7 @@ ERA5-Land adalah dataset reanalysis yang menggambarkan perkembangan kondisi perm
 
 Data ini tetap merupakan keluaran model pada suatu sel grid. Sebuah nilai tidak boleh dianggap sama dengan pengamatan alat pada satu titik. Dokumentasi CDS juga mengingatkan bahwa pengamatan lapangan dapat mewakili ruang dan waktu yang lebih lokal daripada rata-rata suatu sel model.
 
-**Evaluasi melalui test.** Test permintaan memastikan bahwa program hanya menerima dataset ERA5-Land, menggunakan nama variabel yang disepakati, meminta 24 waktu UTC setiap hari, dan menolak interval unduhan langsung yang melintasi bulan kalender (`tests/unit/test_config_requests.py`, `tests/unit/test_extract.py`, dan `tests/unit/pipeline/test_request.py`).
+**Evaluasi melalui test.** Test permintaan memastikan bahwa program hanya menerima dataset ERA5-Land, menggunakan nama variabel yang disepakati, meminta 24 waktu UTC setiap hari, dan menolak interval unduhan langsung yang melintasi bulan kalender (`tests/unit/pipeline/test_config_requests.py`, `tests/unit/pipeline/test_extract.py`, dan `tests/unit/pipeline/test_request.py`).
 
 Sumber utama bagian ini:
 
@@ -335,7 +335,7 @@ periode data yang diambil : 31 Desember 2021–3 Januari 2022
 
 ERA5-Land dimulai pada 1 Januari 1950. Hari lokal 1 Januari 1950 di UTC+7 memerlukan konteks mulai 31 Desember 1949 pukul 17:00 UTC, yang tidak tersedia. Pipeline menolak transformasi hari tersebut secara eksplisit agar tidak menerbitkan hari yang tidak lengkap.
 
-**Evaluasi melalui test.** Test memastikan tanggal pengambilan dimundurkan satu hari, tidak pernah meminta tanggal sebelum awal ERA5-Land, memfilter hasil kembali ke periode target, dan menolak hari lokal 1 Januari 1950 dengan pesan yang menjelaskan konteks yang hilang (`tests/unit/test_extract.py` dan `tests/unit/pipeline/test_transform.py`). Dokumentasi resmi juga mencatat bahwa parameter forecast tidak tersedia untuk valid time 1 Januari 1950 pukul 00:00 UTC.
+**Evaluasi melalui test.** Test memastikan tanggal pengambilan dimundurkan satu hari, tidak pernah meminta tanggal sebelum awal ERA5-Land, memfilter hasil kembali ke periode target, dan menolak hari lokal 1 Januari 1950 dengan pesan yang menjelaskan konteks yang hilang (`tests/unit/pipeline/test_extract.py` dan `tests/unit/pipeline/test_transform.py`). Dokumentasi resmi juga mencatat bahwa parameter forecast tidak tersedia untuk valid time 1 Januari 1950 pukul 00:00 UTC.
 
 ---
 
