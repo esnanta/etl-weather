@@ -1164,29 +1164,25 @@ schedule setting was changed.
 
 #### Cleanup candidates
 
-1. **Unused compatibility wrapper: `scripts/config.py`.**
-   The file describes itself as compatibility imports, but repository code
-   search found no active Python caller importing `scripts.config`. Current
-   entrypoints import root `config.py` and `pipeline.requests.factory`
-   directly. Before deletion, run a final exact caller search and the full
-   offline regression. Documentation references should be updated in the same
-   change.
-2. **Provider catalog back-edge.**
-   `pipeline.providers.catalog` imports ERA5-Land profiles from
-   `cds_era5_land`, while `build_cds_request_payload()` performs a
-   function-local import back to the catalog. This avoids an import-time cycle
-   today, but it is an avoidable two-way dependency. Any cleanup should preserve
-   request normalization/error behavior and receive focused provider/request
-   tests; it is not urgent enough to change during this audit.
-3. **Dependency-manifest drift.**
-   `requirements.txt` still pins `dask`, `zarr`, `gcsfs`, and Google
-   Cloud storage packages, while active source search found no Dask, Zarr,
-   GCSFS, or Google Cloud Storage imports. This conflicts with the documented
-   ARCO-removal policy. However, the manifest is a full pinned environment,
-   so absence of direct imports alone is insufficient evidence that every pin
-   may be deleted. Dependency cleanup must first establish direct-vs-transitive
-   requirements in an isolated environment, then run `pip check`, the full
-   283-test offline suite, and the six PostgreSQL integration tests.
+1. **Unused compatibility wrapper: `scripts/config.py` — resolved.**
+   Final repository search found no active Python caller. The wrapper was
+   removed after entrypoints had already moved to root `config.py` and
+   `pipeline.requests.factory`. Current-state documentation was updated in
+   the same cleanup batch.
+2. **Provider catalog back-edge — resolved.**
+   ERA5-Land profile validation now has one provider-local owner in
+   `pipeline.providers.cds_era5_land`. Generic `catalog.py` delegates to
+   that helper, while payload construction uses the same local helper directly.
+   The dependency is now one-way: `catalog -> cds_era5_land`.
+3. **Dependency-manifest drift — first pass resolved.**
+   Active source search found no Dask, Zarr, GCSFS, or Google Cloud Storage
+   imports, and `tests/AGENTS.md` explicitly classifies those capabilities as
+   removed ARCO-only dependencies. The direct ARCO-facing pins `dask`,
+   `zarr`, `gcsfs`, `google-cloud-storage`, and
+   `google-cloud-storage-control` were removed from `requirements.txt`.
+   Transitive-looking pins such as `google-auth`, `fsspec`, `aiohttp`,
+   and `numcodecs` remain intentionally untouched until reverse dependency
+   checks prove they are orphaned.
 4. **Tracked IDE metadata.**
    `.idea/` remains tracked. This is repository hygiene rather than a runtime
    or S1-S5 correctness issue. Remove it only as a separate housekeeping change
@@ -1206,13 +1202,12 @@ schedule setting was changed.
 
 #### Recommended cleanup order
 
-1. Remove `scripts/config.py` only after one final exact caller audit.
-2. Simplify the provider catalog back-edge with focused request/extraction tests.
-3. Audit and prune legacy dependency pins separately; do not combine dependency
-   changes with code-structure cleanup.
-4. Optionally handle `.idea/` as repository housekeeping.
-5. Re-run the complete offline and isolated PostgreSQL gates after code or
-   dependency cleanup before considering any live pilot.
+1. Verify the dependency-pruning batch in an environment where removed packages
+   are actually absent, then run `pip check`, the full offline suite, and the
+   isolated PostgreSQL integration gate.
+2. Audit remaining transitive-looking pins only after reverse-dependency evidence.
+3. Optionally handle `.idea/` as repository housekeeping.
+4. Do not consider any live pilot until dependency cleanup is verified.
 
 ### 10.11 Environment-backed pipeline and campaign dates — 2026-10-05
 
@@ -1261,3 +1256,146 @@ This is intentionally different from `CDS_START_DATE` / `CDS_END_DATE`,
 which remain full dates because standalone and manual pilots may cover short or
 arbitrary valid ranges. Short pilots must use manual DagRuns rather than changing
 scheduled campaign years.
+
+
+### 10.14 Cleanup batch: orphan wrapper and provider dependency — 2026-10-05
+
+After the year-only campaign configuration was verified by the user with
+**58 focused tests passed in 0.74s** and **286 unit/orchestration tests passed
+in 7.62s**, cleanup resumed.
+
+Final exact caller search confirmed that `scripts/config.py` had no active
+Python consumers. The compatibility wrapper was removed, and the current
+ERA5-Land design-decision documentation was updated to describe the actual
+environment-backed standalone period and project-owned dataset/variable/bbox
+configuration.
+
+The provider catalog back-edge was also removed. ERA5-Land dataset-profile
+validation is now owned by `pipeline.providers.cds_era5_land`; the generic
+catalog delegates to that provider-local helper, and payload construction calls
+the same helper directly. This preserves provider/dataset validation and payload
+semantics while making the dependency direction one-way.
+
+Dependency-manifest pruning remains a separate next step.
+
+
+### 10.15 Dependency cleanup: direct ARCO pins — 2026-10-05
+
+The previous cleanup batch was verified by the user with **53 focused tests
+passed in 0.87s** and **287 unit/orchestration tests passed in 7.17s**.
+
+Dependency audit then confirmed that active Python source has no imports of
+Dask, Zarr, GCSFS, Google Cloud Storage, Jupyter, or Notebook. The project test
+policy explicitly says not to restore ARCO-only Zarr, Google Cloud Storage,
+Dask, or async HTTP source dependencies. PyPI metadata for the pinned xarray
+release also lists Dask under its optional `parallel` extra and Zarr under its
+optional `io` extra rather than as core requirements.
+
+Accordingly, only the five direct ARCO-facing manifest pins were removed:
+`dask`, `zarr`, `gcsfs`, `google-cloud-storage`, and
+`google-cloud-storage-control`. No transitive-looking dependency was removed
+in this pass. In particular, `aiohttp`, `fsspec`, Google authentication/API
+libraries, `numcodecs`, and other shared pins remain until reverse dependency
+evidence shows they are orphaned.
+
+Verification must use an environment where the five removed packages are
+actually absent; merely running tests in the existing virtualenv would not
+prove manifest independence because those packages may still be installed.
+
+
+### 10.16 Dependency cleanup verification — 2026-10-05
+
+The five removed ARCO-facing packages were uninstalled from the active
+environment: `dask`, `zarr`, `gcsfs`, `google-cloud-storage`, and
+`google-cloud-storage-control`. A second uninstall confirmed they were absent.
+
+Verification evidence:
+
+- `python -m pip check` -> **No broken requirements found**.
+- Unit + Airflow orchestration regression -> **287 passed in 6.97s**.
+- Isolated PostgreSQL integration gate -> **6 passed in 1.21s**.
+- Both pytest runs emitted the already-documented NumPy/netCDF4 binary-size
+  RuntimeWarning; no test failed because of it.
+
+This proves the active project environment does not require the five removed
+ARCO-facing packages. Reverse-dependency audit may continue for remaining
+transitive-looking pins, but no additional package should be removed without
+dependency evidence.
+
+
+### 10.17 Dependency cleanup: orphan reverse-dependency chains — 2026-10-05
+
+After the five direct ARCO-facing packages were removed and verified, a
+reverse-dependency audit was run against the active environment. It showed:
+
+- `numcodecs` and `donfig` had no remaining consumers.
+- `aiohttp` had no remaining consumer.
+- `google-cloud-core`, `google-auth-oauthlib`,
+  `google-resumable-media`, `grpc-google-iam-v1`, and `grpcio-status`
+  were orphan roots.
+- Their dependency-only descendants `google-api-core`, `google-auth`,
+  `google-crc32c`, `requests-oauthlib`, `oauthlib`, `proto-plus`,
+  `pyasn1-modules`, and `pyasn1` therefore formed orphan chains as well.
+- Active source search found no direct Python imports of these candidates.
+
+The manifest removed only that orphan closure. Shared dependencies with active
+consumers remain intentionally pinned, including `fsspec`,
+`googleapis-common-protos`, `grpcio`, and `protobuf`.
+
+This second dependency-pruning batch must be verified by uninstalling the
+removed packages from the active environment, running `pip check`, then the
+full unit/orchestration and isolated PostgreSQL integration gates.
+
+
+### 10.18 Orphan dependency cleanup verification — 2026-10-05
+
+The second dependency-pruning batch was verified after uninstalling the complete
+orphan closure from the active environment.
+
+Verification evidence:
+
+- `python -m pip check` -> **No broken requirements found**.
+- Unit + Airflow orchestration regression -> **287 passed in 7.35s**.
+- Isolated PostgreSQL integration gate -> **6 passed in 1.16s**.
+- Both pytest runs emitted only the already-documented NumPy/netCDF4 binary-size
+  RuntimeWarning; no cleanup regression was observed.
+
+The removed orphan closure therefore is not required by the active ETL,
+orchestration, or PostgreSQL integration paths. Dependency cleanup should now
+shift from pruning to final manifest/hygiene audit; avoid further aggressive
+removal without direct reverse-dependency evidence.
+
+
+### 10.19 Final post-refactor cleanup audit — 2026-10-05
+
+Post-refactor cleanup is complete for active code and verified dependency debt.
+
+Completed cleanup:
+
+- Removed the unused `scripts/config.py` compatibility wrapper after final
+  exact caller audit.
+- Removed the provider catalog back-edge while preserving provider/dataset
+  validation and CDS payload behavior.
+- Removed the direct ARCO-facing dependency pins and verified the environment
+  after uninstall.
+- Removed the second orphan reverse-dependency closure and verified it after
+  uninstall.
+- Latest gates remain **287 unit/orchestration tests passed** and **6 isolated
+  PostgreSQL integration tests passed**, with `pip check` reporting no broken
+  requirements.
+- The only observed pytest warning is the previously documented NumPy/netCDF4
+  binary-size RuntimeWarning.
+
+Final hygiene findings:
+
+- `.idea/` remains tracked. Because the project is actively used from
+  PHPStorm, this is treated as optional repository policy rather than cleanup
+  debt and is not removed automatically.
+- No `.ipynb` files are present. Jupyter-related pins are not removed merely
+  on that basis because `requirements.txt` is still a full environment freeze,
+  not a minimal direct-runtime dependency manifest.
+- Remaining shared/transitive pins are intentionally retained unless future
+  reverse-dependency evidence shows they are orphaned.
+
+No live CDS request or scheduled campaign was enabled during cleanup.
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` remains the required cleanup/test state.

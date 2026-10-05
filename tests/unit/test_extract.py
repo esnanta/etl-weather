@@ -103,6 +103,21 @@ def test_cds_payload_uses_hourly_era5_land_request_contract() -> None:
     }
 
 
+def test_cds_payload_rejects_unsupported_dataset() -> None:
+    request = _request()
+    request = WeatherRequest(
+        source=request.source,
+        dataset="unsupported-dataset",
+        start_date=request.start_date,
+        end_date=request.end_date,
+        variables=request.variables,
+        bbox=request.bbox,
+    )
+
+    with pytest.raises(ValueError, match="Unsupported dataset"):
+        build_cds_request_payload(request)
+
+
 def test_cds_payload_rejects_interval_across_calendar_months() -> None:
     request = _request(start_date="2022-01-31", end_date="2022-02-01")
 

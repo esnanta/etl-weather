@@ -237,10 +237,10 @@ Do not duplicate scientific or daily-climate repository tests inside DAG tests.
 [x] historical ETL DAG parsing and policy
 ```
 
-Latest verified structural-refactor baseline (2026-10-05):
+Latest verified structural-refactor/cleanup baseline (2026-10-05):
 
 ```text
-283 unit/orchestration tests passed
+287 unit/orchestration tests passed
 6 PostgreSQL integration tests passed against an isolated test database
 ```
 
