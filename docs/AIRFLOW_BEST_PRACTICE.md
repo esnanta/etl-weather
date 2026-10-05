@@ -29,8 +29,25 @@ storage, or loading.
 
 ## 2. Task Boundaries
 
-The default DAG graph follows the retry and checkpoint boundaries already
-owned by the pipeline:
+The Airflow DAG keeps retry control separate from pipeline checkpoint
+postconditions:
+
+```text
+build_monthly_requests
+        ↓
+attempt_raw_checkpoint [YYYY-MM]
+        ↓
+resolve_raw_checkpoint [YYYY-MM]
+        ↓
+ensure_transformed_checkpoint [YYYY-MM]
+        ↓
+load [YYYY-MM]
+```
+
+Successful RAW attempts pass through the resolver immediately. Only failed
+first attempts wait for the durable first-pass extraction barrier before retry.
+The pipeline runtime beneath those orchestration tasks still owns the three
+postcondition boundaries:
 
 ```text
 ensure_raw_checkpoint
@@ -251,7 +268,7 @@ Core pipeline tests remain Airflow-independent and follow `tests/AGENTS.md`.
 
 Before enabling a DAG, confirm all of the following:
 
-- [ ] The graph uses `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`.
+- [ ] The Airflow graph uses `attempt_raw_checkpoint → resolve_raw_checkpoint → ensure_transformed_checkpoint → load`, while pipeline runtime retains `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`.
 - [ ] Validation has not been split out of pipeline runtime boundaries.
 - [ ] `Asia/Jakarta` and interval conversion are explicit and tested.
 - [ ] The six-day availability lag is configurable and logged.
