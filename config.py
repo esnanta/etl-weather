@@ -1,7 +1,8 @@
 """Shared lightweight configuration for the ERA5-Land application.
 
-This module intentionally contains only simple values so pipeline, scripts, and
-orchestration can depend on it without importing Airflow or heavy data libraries.
+This module intentionally contains only simple values and pure configuration
+resolvers so pipeline, scripts, and orchestration can depend on it without
+importing Airflow or heavy data libraries.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -38,25 +40,72 @@ ACEH_BBOX_COORDINATES = {
 # Active Copernicus Climate Data Store dataset identifier.
 CDS_DATASET = "reanalysis-era5-land"
 
-# Standalone script default start date; this is not the campaign start year.
-CDS_START_DATE = "2022-01-01"
+# Environment key for the standalone pipeline default start date.
+CDS_START_DATE_ENV = "CDS_START_DATE"
 
-# Standalone script default end date; this is not the campaign end year.
-CDS_END_DATE = "2022-01-03"
+# Environment key for the standalone pipeline default end date.
+CDS_END_DATE_ENV = "CDS_END_DATE"
 
 # Active ERA5-Land variables requested from CDS, in stable request order.
 CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
+
+
+def _environment(env: Mapping[str, str] | None) -> Mapping[str, str]:
+    """Return the supplied environment or load the project's local .env."""
+    if env is None:
+        load_dotenv()
+        return os.environ
+    return env
+
+
+def _required_iso_date(
+    name: str,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Return one required canonical YYYY-MM-DD environment value."""
+    env_vars = _environment(env)
+    raw_value = env_vars.get(name)
+    if raw_value is None or not raw_value.strip():
+        raise ValueError(f"{name} is required in the project .env.")
+    value = raw_value.strip()
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(
+            f"{name} must be a valid YYYY-MM-DD date; received {value!r}."
+        ) from error
+    if parsed.isoformat() != value:
+        raise ValueError(
+            f"{name} must use canonical YYYY-MM-DD format; received {value!r}."
+        )
+    return value
+
+
+def resolve_date_range(
+    start_name: str,
+    end_name: str,
+    env: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    """Resolve one required inclusive date range from environment values."""
+    start_date = _required_iso_date(start_name, env)
+    end_date = _required_iso_date(end_name, env)
+    if start_date > end_date:
+        raise ValueError(f"{start_name} must be less than or equal to {end_name}.")
+    return start_date, end_date
+
+
+def resolve_cds_period(
+    env: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    """Resolve the standalone pipeline's configured default CDS period."""
+    return resolve_date_range(CDS_START_DATE_ENV, CDS_END_DATE_ENV, env)
 
 
 def resolve_app_environment(
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Return the required validated application environment."""
-    if env is None:
-        load_dotenv()
-        env_vars = os.environ
-    else:
-        env_vars = env
+    env_vars = _environment(env)
     raw_value = env_vars.get(APP_ENV_KEY)
     if raw_value is None or not raw_value.strip():
         raise ValueError(
@@ -77,7 +126,6 @@ def database_recreation_allowed(
 ) -> bool:
     """Return whether destructive database recreation may be exposed."""
     return resolve_app_environment(env) == APP_ENV_DEV
-
 
 
 def validate_and_log_app_environment(

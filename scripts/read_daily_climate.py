@@ -11,18 +11,17 @@ import pandas as pd
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from pipeline.repositories.daily_climate import (
+from pipeline.repositories.daily_climate_reader import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,
 )
-from pipeline.model import DataSource
+from pipeline.models.weather import DataSource
 from config import (
     CDS_DATASET,
-    CDS_END_DATE,
-    CDS_START_DATE,
+    resolve_cds_period,
     validate_and_log_app_environment,
 )
-from request_factory import build_aceh_bbox
+from pipeline.requests.factory import build_aceh_bbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,11 +75,12 @@ def main() -> None:
         validate_and_log_app_environment(logger)
     except ValueError:
         raise SystemExit(2) from None
+    start_date, end_date = resolve_cds_period()
     selection = DailyClimateSelection(
         source=DataSource.CDS,
         dataset_name=CDS_DATASET,
-        start_date=date.fromisoformat(CDS_START_DATE),
-        end_date=date.fromisoformat(CDS_END_DATE),
+        start_date=date.fromisoformat(start_date),
+        end_date=date.fromisoformat(end_date),
         bbox=build_aceh_bbox(),
     )
     dataframe = load_daily_climate_for_modelling(selection)

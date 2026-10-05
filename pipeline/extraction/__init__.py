@@ -1,3 +1,5 @@
-from pipeline.extraction.cds import CdsExtractor
+"""ERA5-Land extraction implementation exports."""
 
-__all__ = ["CdsExtractor"]
+from pipeline.extraction.cds_era5_land import CdsEra5LandExtractor
+
+__all__ = ["CdsEra5LandExtractor"]

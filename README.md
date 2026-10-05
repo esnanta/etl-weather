@@ -64,8 +64,14 @@ This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for
 etl-weather/
 ├── docs/
 ├── orchestration/
+│   ├── campaign/
 │   ├── dags/
 │   ├── docs/
+│   ├── monitoring/
+│   ├── operators/
+│   ├── progress/
+│   ├── repositories/
+│   ├── scheduling/
 │   ├── tasks/
 │   ├── airflow.cfg
 │   └── README.md
@@ -73,15 +79,16 @@ etl-weather/
 │   ├── contracts/
 │   ├── database/
 │   ├── extraction/
+│   ├── interfaces/
 │   ├── loaders/
+│   ├── models/
+│   ├── observability/
 │   ├── providers/
 │   ├── repositories/
+│   ├── requests/
 │   ├── storage/
 │   ├── transformation/
 │   ├── validation/
-│   ├── interfaces.py
-│   ├── model.py
-│   ├── request.py
 │   └── runtime.py
 ├── scripts/
 ├── tests/
@@ -92,93 +99,88 @@ etl-weather/
 └── README.md
 ```
 
-The `pipeline/` package is organized by responsibility: provider/request contracts, extraction, validation, scientific transformation, artifact storage, PostgreSQL persistence, and read-only repository access. `runtime.py` is the composition/orchestration layer and remains independent from Airflow.
+The `pipeline/` package is organized by responsibility. `runtime.py` remains
+the public composition layer, while models, interfaces, request construction,
+provider transport, extraction policy, validation, transformation, storage,
+persistence, repository reads, and observability live in named subpackages.
+Airflow-specific policy remains under `orchestration/`.
 
 ## Pipeline Architecture
 
 ```text
-                              +-------------------------+
-                              | scripts/run_pipeline_*  |
-                              | / Airflow task wrappers |
-                              +------------+------------+
-                                           |
-                                           v
-                              +-------------------------+
-                              |      runtime.py         |
-                              | orchestration/composition|
-                              |                         |
-                              | ensure_raw_checkpoint()     |
-                              | ensure_transformed_checkpoint()   |
-                              | load()                  |
-                              +----+---------+--------+-+
-                                   |         |        |
-                  -----------------+         |        +-----------------
-                  |                          |                          |
-                  v                          v                          v
-        +-------------------+      +-------------------+      +-------------------+
-        | WeatherExtractor  |      | DataTransformer   |      |    DataLoader     |
-        |    interface      |      |    interface      |      |    interface      |
-        +---------+---------+      +---------+---------+      +---------+---------+
-                  |                          |                          |
-                  v                          v                          v
-        +-------------------+      +-------------------+      +-------------------+
-        | extraction/cds.py |      | transformation/   |      | loaders/postgres.py|
-        |                   |      | era5_land.py      |      |                   |
-        | CDS retrieval     |      | UTC+7 daily ETL   |      | transactional      |
-        | context handling  |      | scientific rules  |      | idempotent UPSERT  |
-        +---------+---------+      +---------+---------+      +---------+---------+
-                  |                          |                          |
-                  |                          |                          v
-                  |                          |                +----------------------+
-                  |                          |                | PostgreSQL           |
-                  |                          |                | climate_data.*       |
-                  |                          |                +----------+-----------+
-                  |                          |                           |
-                  |                          |                           v
-                  |                          |                +----------------------+
-                  |                          |                | repositories/        |
-                  |                          |                | daily_climate.py     |
-                  |                          |                | read-only modelling  |
-                  |                          |                +----------------------+
-                  |                          |
-                  +------------+-------------+
-                               |
-                               v
-                    +-------------------------+
-                    |       DataStorage       |
-                    |        interface        |
-                    +------------+------------+
-                                 |
-                                 v
-                    +-------------------------+
-                    |      storage/local.py   |
-                    | deterministic artifact  |
-                    | checkpoint / resume     |
-                    +-----------+-------------+
-                                |
-                   +------------+-------------+
-                   |                          |
-                   v                          v
-          +------------------+       +---------------------+
-          | RAW NetCDF       |       | Transformed Parquet |
-          | immutable source |       | daily checkpoint    |
-          | of truth         |       | + provenance        |
-          +------------------+       +---------------------+
+                         +------------------------------+
+                         | scripts / Airflow adapters   |
+                         +--------------+---------------+
+                                        |
+                                        v
+                         +------------------------------+
+                         | pipeline/runtime.py          |
+                         | checkpoint composition       |
+                         |                              |
+                         | ensure_raw_checkpoint()      |
+                         | ensure_transformed_checkpoint() |
+                         | load()                       |
+                         +-----+-----------+------------+
+                               |           |
+                 +-------------+           +------------------+
+                 |                                            |
+                 v                                            v
+      +-------------------------+                 +-------------------------+
+      | interfaces/etl.py       |                 | interfaces/etl.py       |
+      | WeatherExtractor        |                 | DataTransformer/Loader  |
+      +------------+------------+                 +------------+------------+
+                   |                                           |
+                   v                                           v
+      +-------------------------+                 +-------------------------+
+      | extraction/             |                 | transformation/         |
+      | cds_era5_land.py        |                 | era5_land_daily.py      |
+      |                         |                 |                         |
+      | context/chunk/cache     |                 | UTC+7 daily science     |
+      +------------+------------+                 +------------+------------+
+                   |                                           |
+                   v                                           v
+      +-------------------------+                 +-------------------------+
+      | providers/              |                 | validation/             |
+      | catalog.py              |                 | era5_land_daily.py      |
+      | cds_client.py           |                 +-------------------------+
+      | cds_era5_land.py        |
+      +------------+------------+
+                   |
+                   v
+          Copernicus CDS ERA5-Land
 
-Shared contracts and support modules
-------------------------------------
-contracts/era5_land.py  -> scientific constants and ERA5-Land contracts
-providers/cds.py        -> CDS provider metadata and API variable mapping
-request.py              -> validation, normalization, partitioning, request identity
-validation/era5_land.py -> RAW and transformed contract validation
-database/               -> PostgreSQL configuration and canonical schema bootstrap
-model.py                -> pipeline data models and artifact metadata
-interfaces.py           -> infrastructure boundaries used by runtime.py
+      +-------------------------+                 +-------------------------+
+      | storage/                |                 | loaders/                |
+      | artifacts.py            |                 | daily_climate_postgres.py|
+      | local_checkpoints.py    |                 | transactional UPSERT    |
+      +------------+------------+                 +------------+------------+
+                   |                                           |
+          +--------+--------+                                  v
+          |                 |                        +----------------------+
+          v                 v                        | PostgreSQL           |
+     RAW NetCDF      Transformed Parquet             | climate_data.*       |
+                                                     +----------+-----------+
+                                                                |
+                                                                v
+                                                     +----------------------+
+                                                     | repositories/        |
+                                                     | daily_climate_reader.py |
+                                                     | read-only modelling  |
+                                                     +----------------------+
+
+Shared responsibility modules
+-----------------------------
+contracts/era5_land.py       -> scientific/time/output contracts
+models/weather.py            -> requests, datasets, artifacts, enums
+requests/weather.py          -> validation, normalization, partitioning, identity
+requests/factory.py          -> configured CDS/Aceh request construction
+observability/logging.py     -> pipeline metrics and readable process logs
+database/                    -> PostgreSQL configuration and schema bootstrap
 
 Key boundary:
-Airflow orchestrates these same checkpoint-backed runtime stage boundaries, but
-scientific transformation, storage, validation, and persistence remain inside
-pipeline/.
+Airflow orchestrates the checkpoint-backed runtime boundaries, while provider
+transport, scientific transformation, validation, artifact storage, and
+PostgreSQL persistence remain inside `pipeline/`.
 ```
 
 ## Environment Setup
@@ -254,7 +256,7 @@ Run the active CDS ERA5-Land pipeline with:
 python scripts/run_pipeline_cds.py
 ```
 
-The dataset, period, variables, and bounding box for this entrypoint are defined explicitly in `scripts/config.py`. Long periods are split into monthly requests by the pipeline runtime.
+The dataset, variables, and bounding box are defined by project configuration. The default standalone period comes from `CDS_START_DATE` and `CDS_END_DATE` in `.env`; long periods are split into monthly requests by the pipeline runtime.
 
 ## Running with Apache Airflow
 

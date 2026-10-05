@@ -12,17 +12,17 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from pipeline.extraction import CdsExtractor
-from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
+from pipeline.extraction import CdsEra5LandExtractor
+from pipeline.interfaces.etl import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.loaders import PostgresDataLoader
-from pipeline.logging import (
+from pipeline.observability.logging import (
     log_metric,
     log_pipeline_header,
     log_pipeline_summary,
     log_section_completed,
     log_section_start,
 )
-from pipeline.model import (
+from pipeline.models.weather import (
     DataSource,
     DatasetArtifact,
     LoadedWeatherDataset,
@@ -33,7 +33,7 @@ from pipeline.model import (
 from pipeline.storage import LocalDataStorage
 from pipeline.storage.artifacts import DATA_DIRECTORY
 from pipeline.transformation import DefaultDataTransformer
-from pipeline.request import (
+from pipeline.requests.weather import (
     build_request,
     build_request_key,
     split_request_by_month,
@@ -207,7 +207,7 @@ def build_default_pipeline(
     """Build the default pipeline for a preselected source dataset."""
     if request.source is not DataSource.CDS:
         raise ValueError("Unsupported source for runtime pipeline.")
-    extractor = CdsExtractor(
+    extractor = CdsEra5LandExtractor(
         before_submission=before_submission,
         chunk_cache_directory=chunk_cache_directory,
     )

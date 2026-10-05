@@ -7,7 +7,7 @@ import pyarrow.parquet as pq
 import pytest
 import xarray as xr
 
-from pipeline.model import (
+from pipeline.models.weather import (
     BoundingBox,
     DataSource,
     RawWeatherDataset,
@@ -445,7 +445,7 @@ def test_failed_atomic_parquet_write_leaves_no_final_or_temporary_artifact(
         raise OSError("simulated Parquet write failure")
 
     monkeypatch.setattr(
-        "pipeline.storage.local.pq.write_table",
+        "pipeline.storage.local_checkpoints.pq.write_table",
         fail_after_partial_write,
     )
 

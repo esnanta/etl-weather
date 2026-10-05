@@ -5,8 +5,8 @@ import logging
 import pandas as pd
 import pytest
 
-from pipeline.model import BoundingBox, DataSource, LoadedWeatherDataset, WeatherRequest
-from pipeline.transformation.era5_land import transform_data
+from pipeline.models.weather import BoundingBox, DataSource, LoadedWeatherDataset, WeatherRequest
+from pipeline.transformation.era5_land_daily import transform_data
 
 
 def _create_era5_land_request() -> WeatherRequest:

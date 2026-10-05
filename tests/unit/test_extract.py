@@ -9,11 +9,11 @@ import numpy as np
 import pytest
 import xarray as xr
 
-import pipeline.extraction.cds as cds_extraction
-from pipeline.extraction.cds import CdsExtractor
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+import pipeline.extraction.cds_era5_land as cds_extraction
+from pipeline.extraction.cds_era5_land import CdsEra5LandExtractor
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
-build_cds_request_payload = getattr(cds_extraction, "_build_cds_request_payload")
+from pipeline.providers.cds_era5_land import build_cds_request_payload
 build_era5_land_retrieval_request = getattr(
     cds_extraction,
     "_build_era5_land_retrieval_request",
@@ -170,12 +170,12 @@ def test_cds_extractor_integrates_context_normalization_and_selection(
         "cdsapi",
         SimpleNamespace(Client=FakeCdsClient),
     )
-    monkeypatch.setattr("pipeline.extraction.cds.load_dotenv", lambda: False)
+    monkeypatch.setattr("pipeline.providers.cds_client.load_dotenv", lambda: False)
     monkeypatch.setenv("CDSAPI_URL", "https://example.invalid/api")
     monkeypatch.setenv("CDSAPI_KEY", "1:offline-test-key")
 
     with caplog.at_level(logging.INFO):
-        extracted = CdsExtractor().extract(request)
+        extracted = CdsEra5LandExtractor().extract(request)
 
     assert len(retrieve_calls) == 1
     dataset_name, payload, temporary_path = retrieve_calls[0]

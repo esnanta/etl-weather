@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from orchestration.progress import build_pipeline_progress_definition
-from orchestration.requests import build_historical_request_specs
+from orchestration.progress.definition import build_pipeline_progress_definition
+from orchestration.scheduling.requests import build_historical_request_specs
 
 
 def _specs(start_date: str, end_date: str) -> list[dict[str, object]]:

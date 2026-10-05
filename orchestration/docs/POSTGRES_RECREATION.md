@@ -152,7 +152,7 @@ After a successful guarded recreation, use the normal bootstrap coordinator:
 
 ```bash
 python - <<'PY'
-from orchestration.database import initialize_application_storage
+from orchestration.repositories.database import initialize_application_storage
 from pipeline.database import DatabaseConfig
 from sqlalchemy import create_engine
 
@@ -172,7 +172,7 @@ climate_data.daily_climate
 climate_data.daily_climate_detail
 climate_data.pipeline_progress
 climate_data.pipeline_progress_detail
-climate_data.cds_submission_pacing
+climate_data.submission_pacing
 ```
 
 The bootstrap coordinator creates application schema/tables only. It is not

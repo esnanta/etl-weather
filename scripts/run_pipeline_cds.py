@@ -7,7 +7,7 @@ sys.path.insert(0, str(project_root))
 
 from config import validate_and_log_app_environment
 from pipeline.runtime import run_monthly_batch
-from request_factory import build_cds_request
+from pipeline.requests.factory import build_cds_request
 
 logging.basicConfig(
     level=logging.INFO,

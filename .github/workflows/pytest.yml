@@ -13,7 +13,9 @@ jobs:
       APP_ENV: dev
       CAMPAIGN_KEY: era5_land_2016_2025
       CAMPAIGN_START_YEAR: "2016"
-      CAMPAIGN_END_YEAR: "2017"
+      CAMPAIGN_END_YEAR: "2016"
+      CDS_START_DATE: "2022-01-01"
+      CDS_END_DATE: "2022-01-03"
 
     steps:
     - name: Check out repository code

@@ -22,8 +22,8 @@ sys.path.insert(0, str(project_root))
 from psycopg import connect, sql
 
 from config import APP_ENV_DEV, resolve_app_environment
-from orchestration.database import initialize_application_storage
-from orchestration.schedule import campaign_schedule
+from orchestration.repositories.database import initialize_application_storage
+from orchestration.scheduling.schedule import campaign_schedule
 from pipeline.database import DatabaseConfig
 
 logging.basicConfig(

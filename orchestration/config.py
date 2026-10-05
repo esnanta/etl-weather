@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from zoneinfo import ZoneInfo
 
 from config import APPLICATION_SCHEMA, APPLICATION_TIMEZONE_NAME
@@ -19,33 +20,38 @@ def _required_environment(name: str) -> str:
 
 
 def _campaign_year(name: str) -> int:
-    """Parse one required campaign year from the environment."""
+    """Return one required four-digit campaign year from the environment."""
     value = _required_environment(name)
-    try:
-        return int(value)
-    except ValueError as error:
-        raise RuntimeError(f"{name} must be an integer year; received {value!r}.") from error
+    if len(value) != 4 or not value.isdigit():
+        raise RuntimeError(f"{name} must be a four-digit year such as 2016.")
+    return int(value)
 
 
-# Stable campaign identity used by progress selection and reporting.
-CAMPAIGN_KEY = _required_environment("CAMPAIGN_KEY")
-
-# First calendar year included in the bounded historical campaign.
-CAMPAIGN_START_YEAR = _campaign_year("CAMPAIGN_START_YEAR")
-
-# Last calendar year included in the bounded historical campaign.
-CAMPAIGN_END_YEAR = _campaign_year("CAMPAIGN_END_YEAR")
-
-
-def _validate_campaign_bounds(start_year: int, end_year: int) -> None:
-    """Reject an inverted bounded historical campaign range."""
+def _validate_campaign_years(start_year: int, end_year: int) -> None:
+    """Validate a scheduled campaign spanning one or more complete years."""
     if start_year > end_year:
         raise RuntimeError(
             "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
         )
 
 
-_validate_campaign_bounds(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR)
+# Stable campaign identity used by progress selection and reporting.
+CAMPAIGN_KEY = _required_environment("CAMPAIGN_KEY")
+
+# First calendar year included in the scheduled historical campaign.
+# A scheduled campaign always starts on January 1 of this year.
+CAMPAIGN_START_YEAR = _campaign_year("CAMPAIGN_START_YEAR")
+
+# Last calendar year included in the scheduled historical campaign.
+# A scheduled campaign always ends on December 31 of this year.
+CAMPAIGN_END_YEAR = _campaign_year("CAMPAIGN_END_YEAR")
+
+_validate_campaign_years(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR)
+
+# Derived inclusive date bounds used internally by campaign policy/reporting.
+# These are not separate environment settings.
+CAMPAIGN_START_DATE = date(CAMPAIGN_START_YEAR, 1, 1)
+CAMPAIGN_END_DATE = date(CAMPAIGN_END_YEAR, 12, 31)
 
 # Local timezone used for campaign eligibility and interval interpretation.
 CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)
@@ -62,7 +68,7 @@ CADENCE_ENV = "ERA5_CAMPAIGN_SCHEDULE_CADENCE"
 # Default scheduler cadence when scheduling is enabled.
 DEFAULT_CADENCE = "2h"
 
-# Supported scheduler cadences and their Jakarta-local cron expressions.
+# Supported scheduler cadences and Jakarta-local cron expressions.
 CADENCE_CRON = {
     "30m": "*/30 * * * *",
     "1h": "0 * * * *",
@@ -75,7 +81,7 @@ AVAILABILITY_LAG_DAYS = 6
 # Warning threshold for local artifact and temporary filesystems, in GiB.
 DISK_WARNING_GIB = 5
 
-# Number of bytes in one GiB for disk-space logging calculations.
+# Number of bytes in one GiB for disk-space calculations.
 GIB = 1024**3
 
 # Hour spacing between mapped scheduled monthly lower bounds.
@@ -90,17 +96,14 @@ PIPELINE_PROGRESS_TABLE = "pipeline_progress"
 # Monthly partition progress table name.
 PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
 
-# Shared application schema used by the CDS pacing table.
+# Shared application schema used by the submission pacing table.
 PACING_SCHEMA = APPLICATION_SCHEMA
 
-# CDS pacing table name.
-PACING_TABLE = "cds_submission_pacing"
+# Submission pacing table name.
+PACING_TABLE = "submission_pacing"
 
-# Stable row key for the ERA5-Land CDS submission clock.
-PACING_KEY = "cds_era5_land"
+# Environment variable controlling minimum seconds between submissions.
+INTERVAL_ENV = "SUBMISSION_INTERVAL_SECONDS"
 
-# Environment variable controlling minimum seconds between CDS submissions.
-INTERVAL_ENV = "CDS_MIN_SUBMISSION_INTERVAL_SECONDS"
-
-# Default minimum interval between CDS submissions, in seconds.
+# Default minimum interval between provider submissions, in seconds.
 DEFAULT_INTERVAL_SECONDS = 1800

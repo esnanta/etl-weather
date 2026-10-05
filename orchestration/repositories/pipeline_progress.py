@@ -13,7 +13,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.progress import PipelineProgressDefinition
+from orchestration.progress.definition import PipelineProgressDefinition
 from pipeline.database import DAILY_CLIMATE_DETAIL_TABLE, DAILY_CLIMATE_TABLE, SCHEMA_NAME
 _ALLOWED_EXECUTION_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_BOUNDARY_STATUSES = ("pending", "running", "failed", "complete")

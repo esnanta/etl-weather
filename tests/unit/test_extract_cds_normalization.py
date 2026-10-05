@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-import pipeline.extraction.cds as cds_extraction
+import pipeline.providers.cds_era5_land as cds_provider
 
-normalize_cds_dataset = getattr(cds_extraction, "_normalize_cds_dataset")
+normalize_cds_dataset = cds_provider.normalize_cds_dataset
 
 
 def test_normalize_cds_dataset_renames_time_coordinate() -> None:

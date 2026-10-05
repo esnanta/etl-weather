@@ -1,4 +1,4 @@
-from pipeline.transformation.era5_land import (
+from pipeline.transformation.era5_land_daily import (
     DefaultDataTransformer,
     transform_data,
 )

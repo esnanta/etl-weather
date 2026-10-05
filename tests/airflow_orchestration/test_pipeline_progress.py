@@ -8,7 +8,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.progress import (
+from orchestration.progress.definition import (
     PipelineProgressDefinition,
     ProgressPartition,
 )

@@ -7,13 +7,13 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from orchestration.campaign import CampaignBlocked, select_earliest_incomplete_quarter
+from orchestration.campaign.policy import CampaignBlocked, select_earliest_incomplete_quarter
 from orchestration.config import MONTHLY_SLOT_SPACING_HOURS
-from orchestration.database import initialize_progress_storage, runtime_database_engine
-from orchestration.mode import resolve_run_mode
-from orchestration.progress import build_pipeline_progress_definition
+from orchestration.repositories.database import initialize_progress_storage, runtime_database_engine
+from orchestration.scheduling.run_mode import resolve_run_mode
+from orchestration.progress.definition import build_pipeline_progress_definition
 from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
-from orchestration.requests import build_historical_request_specs
+from orchestration.scheduling.requests import build_historical_request_specs
 
 # Preserve the historical progress-task logger identity after module movement.
 logger = logging.getLogger("orchestration.tasks.progress")

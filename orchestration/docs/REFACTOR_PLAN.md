@@ -1,8 +1,8 @@
 # Orchestration Refactor Plan and Checklist
 
-Last updated: 2026-10-04 (Asia/Jakarta)  
+Last updated: 2026-10-05 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: P1 through P7 complete. P7 closed as an offline-only verification gate with 271 unit/orchestration tests and 6 isolated PostgreSQL integration tests passing. Live CDS requests and schedule enablement remain explicitly deferred.  
+Status: P1 through P7 and structural phases S1 through S5 are complete. The latest post-S5 verification has 283 unit/orchestration tests and 6 isolated PostgreSQL integration tests passing. Live CDS requests and schedule enablement remain explicitly deferred.  
 Planning baseline: `65e70c31ece2bf90ba159e36021e25a7d184f457`  
 P1 audited baseline: `2f8a93e509ac85ea8ac4ac4a7efffae18e32fc69`
 
@@ -115,7 +115,7 @@ Target application tables:
 | `climate_data.daily_climate_detail` | Daily observations |
 | `climate_data.pipeline_progress` | Operational batch progress |
 | `climate_data.pipeline_progress_detail` | Partition progress and evidence |
-| `climate_data.cds_submission_pacing` | Shared submission clock |
+| `climate_data.submission_pacing` | Shared submission clock |
 
 One schema means one application schema; PostgreSQL system schemas are unaffected.
 Database name and credentials continue to come from the existing environment.
@@ -326,7 +326,7 @@ decision and are not required to close P7.
       `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
 - [x] Run all isolated PostgreSQL integration tests, including idempotency,
       reconciliation, pacing serialization, and repeated five-table bootstrap.
-- [x] Verify DAG parsing, six-task graph, retries/timeouts, pool assignment,
+- [x] Verify DAG parsing, five-task graph, retries/timeouts, pool assignment,
       concurrency limits, and schedule=None under the disabled schedule.
 - [x] Verify first-pass barrier, bounded retry/pass-through, pacing deferral,
       +0/+1/+2-hour scheduled slot metadata, failed-quarter blocking, and terminal
@@ -387,18 +387,19 @@ For every subsequent fix:
 | 2026-10-04 | P6 reset-all implementation | Added `scripts/reset_all.py` as an inspect-only-by-default orchestrator over the already verified maintenance functions. It validates mandatory `APP_ENV`, hard-denies prod before database configuration access, displays all reset targets, reuses the PostgreSQL static/runtime preflight, and shows one final yes/no confirmation only with `--execute`. Execution order is PostgreSQL recreation first, then data, Airflow logs, and Airflow runtime cleanup; a database recreation failure therefore prevents local artifact/runtime deletion. Added focused composition/guard tests, including direct-file execution under prod and verification that no deletion logic is duplicated. | Run `tests/unit/test_reset_all.py` together with the component tests, then run `python scripts/reset_all.py` in inspect-only mode. Do not use `--execute` until reviewed. |
 | 2026-10-04 | P6 reset-all verification | User ran the guarded maintenance/component/reset-all unit suite with quiet activation: **49 passed in 1.98s**. Inspect-only `reset_all.py` then verified `APP_ENV=dev`, PostgreSQL target `localhost:5432/weather` (user `postgres`, schema `climate_data`), data/log/runtime paths, preserved `orchestration/airflow.cfg`, zero blocking Airflow task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. Inspect-only completed with no reset actions executed. | All preflight guards are clear. Actual P6 reset may proceed only via `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python scripts/reset_all.py --execute` and explicit interactive confirmation. |
 | 2026-10-04 | P6 destructive reset execution | User executed `reset_all.py --execute` under `APP_ENV=dev` with campaign scheduling explicitly disabled. Preflight again reported zero blocking task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. After one explicit `y` confirmation, PostgreSQL database `weather` was recreated, `climate_data` bootstrap logged ready status for canonical weather tables, then local cleanup removed **2** top-level data entries, **2** Airflow log entries, and **4** generated Airflow runtime files. Tracked `orchestration/airflow.cfg` was explicitly preserved. | Run post-reset verification before marking P6 complete: verify all five `climate_data` tables and empty fresh progress/pacing state; verify Airflow SQLite/runtime state is absent until reinitialized; verify retained config/credentials/JWT/source files remain present. |
-| 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `cds_submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
+| 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
 | 2026-10-04 | P6 Airflow metadata reinitialization | User ran `airflow db migrate`; Airflow created a fresh SQLite metadata database at `orchestration/airflow.db` and reported migration success. `airflow db check` returned connection successful. Pool `cds_api` was recreated with **1 slot** and the expected description. The new SQLite file is present (~724K). Airflow emitted a Starlette/httpx deprecation warning during migration, but migration completed successfully. The final DAG-list grep returned no matching output, so DAG parse/registration is not yet verified. | Diagnose DAG discovery/import state with `airflow dags list-import-errors` and an unfiltered DAG list before closing P6. |
 | 2026-10-04 | P6 standalone runtime decision | User confirmed that local Airflow should be run with `airflow standalone` rather than separate scheduler/API-server/DAG-processor/triggerer terminals. Immediately after fresh metadata initialization, both `airflow dags list-import-errors` and `airflow dags list` returned `No data found`, consistent with a fresh metadata DB before a DAG processor has parsed the DAG. Updated the orchestration README so standalone is the canonical local runtime and documented this fresh-metadata behavior. | Start standalone with scheduling disabled, allow DAG parsing, then verify `cds_era5_land_etl` appears and no import errors are recorded. |
 | 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
 | 2026-10-04 | P7 offline scope | User explicitly prohibited live CDS execution and schedule enablement during P7, prioritizing refactor verification and correct tests. Audited current orchestration/integration coverage: DAG graph/policy, first-pass barrier, simulated pacing deferral/retry, offline scheduled selection with an assertion that unexpected CDS access fails, progress/load evidence, campaign repair, isolated PostgreSQL idempotency/reconciliation/pacing/bootstrap, and reset guards. Redefined P7 as an offline-only gate; live manual and scheduled pilots are deferred outside P7. | Run fresh full unit/orchestration regression and all four isolated PostgreSQL integration modules; review any warnings/skips before further changes. |
-| 2026-10-04 | P7 offline regression closure | User ran the full offline unit/orchestration suite with scheduling disabled: **271 passed in 7.72s**. User then ran all four isolated PostgreSQL integration modules: **6 passed in 1.27s**. No failures or skips were reported. Source/test audit confirmed scheduled-selection tests explicitly fail on unexpected CDS access; CDS client/transport behavior in unit tests is mocked/faked; integration tests use only isolated `TEST_POSTGRES_*` resources. The passing suite covers DAG parsing/policy, six-task graph, retry/timeout/pool/concurrency, first-pass barrier, bounded retry/pass-through, pacing deferral, +0/+1/+2-hour slot metadata, failed-quarter blocking, terminal no-op, manual preparation/repair, load evidence, idempotency/rollback, bootstrap, pacing serialization, and reset guards. | P7 offline gate complete. Keep live CDS disabled and campaign scheduling off; live manual/scheduled pilots remain deferred to a separately approved rollout phase. |
+| 2026-10-04 | P7 offline regression closure | User ran the full offline unit/orchestration suite with scheduling disabled: **271 passed in 7.72s**. User then ran all four isolated PostgreSQL integration modules: **6 passed in 1.27s**. No failures or skips were reported. Source/test audit confirmed scheduled-selection tests explicitly fail on unexpected CDS access; CDS client/transport behavior in unit tests is mocked/faked; integration tests use only isolated `TEST_POSTGRES_*` resources. The passing suite covers DAG parsing/policy, five-task graph, retry/timeout/pool/concurrency, first-pass barrier, bounded retry/pass-through, pacing deferral, +0/+1/+2-hour slot metadata, failed-quarter blocking, terminal no-op, manual preparation/repair, load evidence, idempotency/rollback, bootstrap, pacing serialization, and reset guards. | P7 offline gate complete. Keep live CDS disabled and campaign scheduling off; live manual/scheduled pilots remain deferred to a separately approved rollout phase. |
 | 2026-10-04 | Post-P7 mapped-instance observability | User approved keeping DAG ID `cds_era5_land_etl` and displaying mapped monthly instances as `YYYY-MM`. The initial observability change renamed the Airflow retry/pass-through task from the old `extract_or_resume` task ID to `resolve_raw_checkpoint` and added named mapping labels. This entry is superseded by the subsequent checkpoint naming alignment, which also renames the pipeline API and remaining Airflow task identities to postcondition-oriented checkpoint names. | Run focused DAG/operator tests, then the full offline unit/orchestration regression before resetting/restarting the development Airflow runtime. |
 | 2026-10-04 | Checkpoint naming alignment | User approved postcondition-oriented pipeline API names `ensure_raw_checkpoint()` and `ensure_transformed_checkpoint()`, plus Airflow task identities `attempt_raw_checkpoint [YYYY-MM]`, `prepare_retry_pass`, `resolve_raw_checkpoint [YYYY-MM]`, `ensure_transformed_checkpoint [YYYY-MM]`, and `load [YYYY-MM]`. Runtime boundary metadata and orchestration helper names were aligned so code, tests, logs, and Airflow UI use the same checkpoint terminology. Historical references to old task IDs remain marked as historical where needed. | Run focused checkpoint/DAG tests and full offline regression before resetting/restarting Airflow. |
 | 2026-10-04 | Campaign environment source of truth | Moved `CAMPAIGN_KEY`, `CAMPAIGN_START_YEAR`, and `CAMPAIGN_END_YEAR` from hard-coded orchestration constants to required environment-backed configuration. Added startup/config validation, CI values, campaign-key context in durable campaign `configuration_identity`, and matching selection/reporting/manual-repair identity construction. Updated current-state environment documentation and config-driven tests. | Run focused campaign/config/reporting tests and the full offline + PostgreSQL regression before restarting Airflow. |
 | 2026-10-05 | Failure-only RAW retry barrier | The first clean scheduled pilot completed successfully and exposed unnecessary idle time: successful monthly RAW maps were held behind the global retry-preparation barrier. Rewired the DAG so each successful `attempt_raw_checkpoint` maps directly to `resolve_raw_checkpoint` pass-through, then transform/load. Failed first results alone defer on durable per-progress extraction state until all expected first attempts are terminal, then retry. Removed the Airflow `prepare_retry_pass` task and aligned DAG-local result/input variable names with final task identities. | Run focused DAG/operator/progress tests, full offline regression, and PostgreSQL integration regression before the next live pilot. |
+| 2026-10-05 | S1-S5 structural refactor closure | User verified the final S5 state with **170 focused tests in 5.27s**, **283 unit/orchestration tests in 8.88s**, and **6 isolated PostgreSQL integration tests in 1.36s**. S1-S5 module moves are complete; legacy root/core modules were removed rather than retained as facades. Documentation reconciliation corrected current paths and the five-task DAG description. | Structural refactor complete. Keep scheduling disabled; live CDS/manual/scheduled pilots require separate approval. |
 
-Current next action: refactor follow-up only. P1 through P7 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not submit live CDS work until a separately approved rollout phase. Preserve `pipeline/` as the ETL/scientific implementation owner.
+Current next action: structural refactor S1 through S5 is complete and offline-verified. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`; perform documentation/dependency cleanup only unless a separately approved rollout phase authorizes live CDS work. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
 
 ## 10. P1 audit evidence — 2026-10-03
@@ -452,7 +453,7 @@ source activate-airflow.sh
 python -m pytest \
   tests/integration/test_postgresql_idempotency.py \
   tests/integration/test_pipeline_progress_reconciliation.py \
-  tests/integration/test_cds_submission_pacing.py \
+  tests/integration/test_submission_pacing.py \
   -q
 ```
 
@@ -515,7 +516,7 @@ never import their callers. Recheck actual imports after each implementation bat
 | --- | --- |
 | `pipeline/database/config.py` | `SCHEMA_NAME = "climate_data"`; canonical weather table names |
 | `repositories/pipeline_progress.py` | `PIPELINE_PROGRESS_SCHEMA = "climate"`; two progress table names; hard-coded `climate_data.daily_climate*` joins |
-| `repositories/cds_pacing.py` | `PACING_SCHEMA = "climate"`; pacing key/table, interval env name, 1,800-second default |
+| `repositories/submission_pacing.py` | `PACING_SCHEMA = "climate"`; pacing key/table, interval env name, 1,800-second default |
 | `tasks/progress.py` | Hard-coded `climate_data.daily_climate*` load-evidence query; one-hour slot calculation |
 | `orchestration/reporting.py` | Literal `climate.pipeline_progress*` queries; repeated 2016–2025 bounds and 40/4/3 display counts |
 | `scripts/inspect_campaign_capacity.py` | Five fully qualified table names spanning both schemas |
@@ -555,8 +556,8 @@ Reannounce any additional path before editing it.
 | `tests/unit/test_config_requests.py` | Update factory imports/monkeypatch targets and protect credential behavior |
 | `tests/airflow_orchestration/test_tasks.py`, `test_progress.py`, `test_campaign.py` | Update moved helper/constant references |
 | `tests/airflow_orchestration/test_progress_wiring.py`, `test_scheduled_selection_pilot.py` | Update recording/setup/selection monkeypatch targets after splitting progress wrappers |
-| `tests/airflow_orchestration/test_cds_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
-| `tests/integration/test_pipeline_progress_reconciliation.py`, `test_cds_submission_pacing.py` | Update schema/configuration references and test isolation targets |
+| `tests/airflow_orchestration/test_submission_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
+| `tests/integration/test_pipeline_progress_reconciliation.py`, `test_submission_pacing.py` | Update schema/configuration references and test isolation targets |
 | `README.md`, `tests/AGENTS.md`, `docs/AIRFLOW_BEST_PRACTICE.md`, `docs/AIRFLOW_CODING_GUIDELINES.md` | Align configuration location, operational schema, current mapped DAG graph, and first-pass documentation |
 
 No changes are currently required to `scripts/report_campaign_progress.py` if
@@ -631,7 +632,7 @@ graph but unnecessarily delays successful monthly partitions.
       exactly one resolved RAW result and one transform/load path. A failed month
       must not enter transform/load until its retry resolver succeeds.
 - [x] **Use CDS pacing wait time for local work.** With the operational
-      `CDS_MIN_SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
+      `SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
       months should be free to transform and load while another monthly CDS
       submission is waiting for its provider slot.
 - [x] **Align DAG-local Python names with Airflow task IDs.** Remove transitional
@@ -648,8 +649,141 @@ graph but unnecessarily delays successful monthly partitions.
 - [x] Add focused DAG/operator/repository tests proving that one successful mapped month can reach
       transform/load while another first-pass month remains running/deferred,
       while a failed month still waits for the first-pass barrier.
-- [ ] Run the focused DAG/operator suite, full unit/orchestration regression, and
+- [x] Run the focused DAG/operator suite, full unit/orchestration regression, and
       PostgreSQL integration regression before the next live scheduled pilot.
+      Verified locally after the failure-only barrier refactor: 40 focused
+      orchestration tests passed, 283 unit/orchestration tests passed, and
+      6 PostgreSQL integration tests passed.
+
+
+### 10.8 Structural package and module naming agenda — 2026-10-05
+
+This is a planning agenda only. Do not move modules or change imports before a
+dedicated dependency/caller audit and a clean regression baseline. The user
+requested that package roots become easier to scan and that module names state
+their actual responsibility rather than only a broad provider/dataset label.
+
+#### Structural principles
+
+- [x] Use a deliberately small `orchestration/` root. The agreed target
+      direction is:
+
+      ```text
+      orchestration/
+      ├── __init__.py
+      ├── airflow.cfg
+      ├── config.py
+      ├── README.md
+      ├── dags/
+      ├── operators/
+      ├── tasks/
+      ├── repositories/
+      ├── campaign/
+      ├── scheduling/
+      ├── monitoring/
+      └── docs/
+      ```
+
+      Minor adjustments remain allowed if the caller/dependency audit shows a
+      clearer responsibility boundary.
+- [ ] Group orchestration modules by responsibility rather than accumulating
+      peer files at the package root. Candidate groups to evaluate include
+      campaign policy/state, scheduling/request planning, monitoring/runtime
+      support, repositories, operators, tasks, DAGs, and documentation.
+- [ ] Do not create folders solely to reduce the root file count. Every new
+      subpackage must have a coherent ownership boundary and must reduce import
+      ambiguity rather than add indirection.
+- [ ] Prefer names that describe behavior/postcondition. Avoid names that expose
+      an incidental provider when the module implements a generic orchestration
+      concern, and avoid generic names when the implementation is actually
+      ERA5-Land-specific.
+- [ ] Remove compatibility facades when all callers have migrated instead of
+      preserving empty or misleading aliases indefinitely.
+
+#### Orchestration naming findings
+
+- [x] Treat `orchestration/tasks/era5_land.py` as a temporary compatibility
+      facade to remove after caller migration; do not rename it into another
+      long-lived facade.
+- [x] Rename `orchestration/repositories/submission_pacing.py` to
+      `orchestration/repositories/submission_pacing.py`. The module owns the durable provider-submission clock. Its table, functions, and identifiers are provider-neutral because orchestration currently uses one global submission clock.
+- [x] Move the custom deferrable operator out of `tasks/` to
+      `orchestration/operators/raw_checkpoint.py` and rename
+      `RawCheckpointOperator` to `RawCheckpointOperator`. The implementation
+      still requires an audit to isolate any provider-specific exception or
+      pacing dependency cleanly.
+- [ ] Audit root modules `campaign.py`, `campaign_repair.py`, `database.py`,
+      `intervals.py`, `mode.py`, `monitoring.py`, `pacing.py`,
+      `progress.py`, `progress_tracking.py`, `reporting.py`,
+      `requests.py`, and `schedule.py` and propose coherent subpackages
+      before moving any of them.
+
+#### Pipeline package and naming findings
+
+- [ ] Audit the root `pipeline/` modules (`interfaces.py`, `model.py`,
+      `request.py`, `runtime.py`, and `logging.py`). Keep a root module only
+      when it is genuinely package-wide; otherwise group it by responsibility.
+- [ ] Audit `pipeline/extraction/cds.py` before renaming or splitting it. It
+      currently combines credentials, CDS payload construction, ERA5-Land
+      local-day context, monthly chunking, chunk-cache resume, download, and
+      extractor behavior. Explicitly separate what belongs to provider transport
+      from ERA5-Land retrieval policy and resumable chunk extraction before
+      choosing the final module boundaries.
+- [x] Keep `pipeline/contracts/era5_land.py` provider-independent. Its UTC+7
+      daily semantics, accumulated/mean-variable classes, and output units are
+      scientific ERA5-Land contracts. Separately, audit the current
+      `pipeline/providers/cds.py` during extraction/provider restructuring;
+      provider naming must follow its final responsibility rather than filename
+      symmetry with the contract module.
+- [x] Rename `pipeline/transformation/era5_land.py` to
+      `pipeline/transformation/era5_land_daily.py`; the module represents
+      ERA5-Land hourly-to-local-daily transformation.
+- [x] Split `pipeline/validation/era5_land.py` by contract boundary into
+      `pipeline/validation/era5_land_raw.py` and
+      `pipeline/validation/era5_land_daily.py`.
+- [x] Keep repository ownership responsibility-based rather than enforcing one
+      file per physical table. `daily_climate` and `daily_climate_detail`
+      form one canonical climate aggregate/read model.
+- [x] Rename `pipeline/repositories/daily_climate.py` to
+      `pipeline/repositories/daily_climate_reader.py` for its current read-only
+      modelling-query responsibility.
+- [x] Keep operational persistence for `pipeline_progress`,
+      `pipeline_progress_detail`, and `submission_pacing` under
+      `orchestration/repositories/`; do not mirror those tables into
+      `pipeline/repositories/` merely for table symmetry.
+
+#### Agreed naming decisions
+
+The following names are now the preferred targets unless the dependency audit
+uncovers a concrete conflict:
+
+```text
+orchestration/repositories/submission_pacing.py
+orchestration/operators/raw_checkpoint.py
+RawCheckpointOperator
+
+pipeline/contracts/era5_land.py
+pipeline/repositories/daily_climate_reader.py
+pipeline/transformation/era5_land_daily.py
+pipeline/validation/era5_land_raw.py
+pipeline/validation/era5_land_daily.py
+```
+
+`pipeline/extraction/cds.py` remains intentionally unresolved until the
+provider-transport versus ERA5-Land-retrieval-policy audit is complete.
+
+#### Required implementation gate
+
+- [ ] Produce a caller/import inventory before any move or rename.
+- [ ] Define the proposed target tree and old -> new module mapping before edits.
+- [ ] Preserve public runtime behavior, request/checkpoint identity, database
+      schema/table ownership, and scientific calculations.
+- [ ] Update imports, exports, tests, documentation, and any monkeypatch targets
+      in the same refactor batch; do not leave long-lived compatibility aliases
+      unless an external caller requires them.
+- [ ] Run focused tests after each package group, then the full
+      unit/orchestration suite and all isolated PostgreSQL integration tests
+      before the next live pilot.
 
 ### 10.6 Findings to preserve or review separately
 
@@ -691,3 +825,439 @@ graph but unnecessarily delays successful monthly partitions.
 8. **Live state remains unknown.** This audit reads source and CI, not the user's
    current Airflow processes or PostgreSQL contents. P6 checks remain necessary
    before the already-planned development reset.
+
+
+### 10.9 Dependency/import audit and proposed target tree — 2026-10-05
+
+This section records the dependency audit performed against branch `dev` at
+commit `672dafd3684dd4929d46fc47f00c889028552449`. It is a structural plan only;
+no source module is moved by this section.
+
+The latest verified regression baseline before structural moves is:
+
+```text
+focused orchestration     : 40 passed
+unit + orchestration      : 283 passed
+PostgreSQL integration    : 6 passed
+```
+
+#### Audit conclusions
+
+1. The current `orchestration/` root mixes campaign policy, scheduling,
+   progress definitions/tracking, database bootstrap, monitoring, reporting, and
+   provider submission gating. These responsibilities should become subpackages.
+2. Add a dedicated `orchestration/progress/` package to the previously agreed
+   tree. Progress identity and progress tracking are used by both scheduled and
+   manual flows, so placing them inside `campaign/` would create the wrong
+   ownership boundary.
+3. `orchestration/tasks/era5_land.py` and
+   `orchestration/tasks/progress.py` are compatibility/facade modules rather
+   than distinct runtime responsibilities. Remove them after all callers are
+   migrated; do not preserve them as permanent aliases.
+4. `orchestration/tasks/cds_extract_operator.py` is an Airflow operator, not a
+   task helper. Move it to `operators/raw_checkpoint.py` and rename the class
+   to `RawCheckpointOperator`.
+5. The provider-defer exception should not remain owned by
+   `pipeline/extraction/cds.py`. The pipeline only invokes a submission
+   callback; orchestration owns the decision to defer. Move that control signal
+   to the orchestration submission gate so `RawCheckpointOperator` can be
+   provider-neutral.
+6. `pipeline/extraction/cds.py` has multiple responsibilities and must be split,
+   not merely renamed. The audit separates:
+   - generic CDS transport/session/credential work;
+   - CDS ERA5-Land payload/schema mapping;
+   - ERA5-Land retrieval/context/chunk-cache policy.
+7. `pipeline.model` and `pipeline.request` have the largest import blast
+   radius. Move them only after the narrower orchestration/module renames are
+   stable. Package-level exports may be used during one refactor batch, but
+   avoid long-lived compatibility modules.
+8. `request_factory.py` is part of typed weather-request construction and
+   should move into `pipeline/requests/`; leaving it at repository root would
+   preserve the same structural problem being removed elsewhere.
+
+#### Proposed final `orchestration/` tree
+
+```text
+orchestration/
+├── __init__.py
+├── airflow.cfg
+├── config.py
+├── README.md
+├── dags/
+│   └── cds_era5_land_etl.py
+├── operators/
+│   ├── __init__.py
+│   └── raw_checkpoint.py
+├── tasks/
+│   ├── __init__.py
+│   ├── build_monthly_requests.py
+│   ├── raw_checkpoint.py
+│   ├── transformed_checkpoint.py
+│   └── load.py
+├── repositories/
+│   ├── __init__.py
+│   ├── database.py
+│   ├── submission_pacing.py
+│   ├── load_evidence.py
+│   └── pipeline_progress.py
+├── campaign/
+│   ├── __init__.py
+│   ├── policy.py
+│   ├── repair.py
+│   └── reporting.py
+├── scheduling/
+│   ├── __init__.py
+│   ├── intervals.py
+│   ├── requests.py
+│   ├── run_mode.py
+│   ├── schedule.py
+│   └── submission_gate.py
+├── progress/
+│   ├── __init__.py
+│   ├── definition.py
+│   └── tracking.py
+├── monitoring/
+│   ├── __init__.py
+│   └── resources.py
+└── docs/
+    ├── IMPLEMENTATION_PLAN.md
+    ├── POSTGRES_RECREATION.md
+    └── REFACTOR_PLAN.md
+```
+
+The three operational persistence concerns remain under
+`orchestration/repositories/`: `pipeline_progress`,
+`pipeline_progress_detail`, and `submission_pacing`. The first two remain
+one `pipeline_progress.py` repository because parent/detail rows form one
+durable progress aggregate.
+
+#### Orchestration old -> new mapping
+
+| Current module | Proposed module | Action / responsibility |
+| --- | --- | --- |
+| `orchestration/campaign.py` | `orchestration/campaign/policy.py` | Move campaign quarter model, campaign definitions, initialization/matching, and earliest-incomplete selection. |
+| `orchestration/campaign_repair.py` | `orchestration/campaign/repair.py` | Move manual whole-month campaign reconciliation. |
+| `orchestration/reporting.py` | `orchestration/campaign/reporting.py` | Move campaign progress read/format reporting. |
+| `orchestration/schedule.py` | `orchestration/scheduling/schedule.py` | Move cadence enable/cron resolution. |
+| `orchestration/mode.py` | `orchestration/scheduling/run_mode.py` | Move manual/scheduled DagRun mode validation. |
+| `orchestration/intervals.py` | `orchestration/scheduling/intervals.py` | Move Airflow interval -> inclusive local-date conversion. |
+| `orchestration/requests.py` | `orchestration/scheduling/requests.py` | Move historical range validation and monthly orchestration request-spec planning. |
+| `orchestration/pacing.py` | `orchestration/scheduling/submission_gate.py` | Move provider-submission reservation/defer service; own the provider-neutral `SubmissionDeferred` control signal here. |
+| `orchestration/progress.py` | `orchestration/progress/definition.py` | Move cadence-neutral progress identity/partition definitions. |
+| `orchestration/progress_tracking.py` | `orchestration/progress/tracking.py` | Move durable task-boundary progress recording and artifact identity checks. |
+| `orchestration/monitoring.py` | `orchestration/monitoring/resources.py` | Move disk and peak-memory monitoring. |
+| `orchestration/database.py` | `orchestration/repositories/database.py` | Move orchestration DB engine lifecycle and application-storage bootstrap coordination. |
+| `orchestration/repositories/submission_pacing.py` | `orchestration/repositories/submission_pacing.py` | Rename durable submission-clock repository; persisted table and API names are provider-neutral; no pacing key is retained. |
+| `orchestration/repositories/load_evidence.py` | unchanged | Name already states its persistence evidence responsibility. |
+| `orchestration/repositories/pipeline_progress.py` | unchanged | Keep parent/detail progress aggregate in one repository. |
+| `orchestration/tasks/cds_extract_operator.py` | `orchestration/operators/raw_checkpoint.py` | Move custom deferrable operator and rename `RawCheckpointOperator` -> `RawCheckpointOperator`. |
+| `orchestration/tasks/extract.py` | `orchestration/tasks/raw_checkpoint.py` | Rename task helpers around `ensure_raw_checkpoint`. |
+| `orchestration/tasks/transform.py` | `orchestration/tasks/transformed_checkpoint.py` | Rename task helpers around `ensure_transformed_checkpoint`. |
+| `orchestration/tasks/load.py` | unchanged | Already matches boundary responsibility. |
+| `orchestration/tasks/build_monthly_requests.py` | unchanged | Already matches DAG task responsibility. |
+| `orchestration/tasks/era5_land.py` | remove | Compatibility facade only; migrate callers then delete. |
+| `orchestration/tasks/progress.py` | remove | Compatibility/convenience facade; migrate callers to responsibility modules then delete. |
+
+#### Proposed final `pipeline/` tree
+
+```text
+pipeline/
+├── __init__.py
+├── runtime.py
+├── contracts/
+│   ├── __init__.py
+│   └── era5_land.py
+├── database/
+│   ├── __init__.py
+│   ├── config.py
+│   └── schema.py
+├── extraction/
+│   ├── __init__.py
+│   └── cds_era5_land.py
+├── interfaces/
+│   ├── __init__.py
+│   └── etl.py
+├── loaders/
+│   ├── __init__.py
+│   └── daily_climate_postgres.py
+├── models/
+│   ├── __init__.py
+│   └── weather.py
+├── observability/
+│   ├── __init__.py
+│   └── logging.py
+├── providers/
+│   ├── __init__.py
+│   ├── catalog.py
+│   ├── cds_client.py
+│   └── cds_era5_land.py
+├── repositories/
+│   ├── __init__.py
+│   └── daily_climate_reader.py
+├── requests/
+│   ├── __init__.py
+│   ├── factory.py
+│   └── weather.py
+├── storage/
+│   ├── __init__.py
+│   ├── artifacts.py
+│   └── local_checkpoints.py
+├── transformation/
+│   ├── __init__.py
+│   └── era5_land_daily.py
+└── validation/
+    ├── __init__.py
+    ├── era5_land_raw.py
+    └── era5_land_daily.py
+```
+
+`runtime.py` remains at the pipeline root intentionally: it is the public
+composition layer that wires extraction, checkpoint storage, transformation,
+validation, and loading. The package root should otherwise avoid generic
+implementation modules.
+
+#### Pipeline old -> new mapping
+
+| Current module | Proposed module | Action / responsibility |
+| --- | --- | --- |
+| `pipeline/contracts/era5_land.py` | unchanged | Keep provider-independent ERA5-Land scientific/time/output contract. |
+| `pipeline/model.py` | `pipeline/models/weather.py` | Move weather request, bbox, source/layer enums, dataset/artifact dataclasses. |
+| `pipeline/interfaces.py` | `pipeline/interfaces/etl.py` | Move extractor/storage/transformer/loader interfaces. |
+| `pipeline/request.py` | `pipeline/requests/weather.py` | Move WeatherRequest validation, serialization, partition splitting, signatures, and request keys. |
+| root `request_factory.py` | `pipeline/requests/factory.py` | Move configured Aceh/CDS WeatherRequest factory and API-key requirement. |
+| `pipeline/logging.py` | `pipeline/observability/logging.py` | Move pipeline metric/section/dataframe logging helpers. |
+| `pipeline/providers/cds.py` | split into `pipeline/providers/catalog.py` + `pipeline/providers/cds_era5_land.py` | Keep generic source/dataset profile lookup in catalog; move CDS ERA5-Land variables/profile/schema mapping into dataset-specific provider module. |
+| part of `pipeline/extraction/cds.py` | `pipeline/providers/cds_client.py` | Move CDS credentials, session/POST callback integration, and generic retrieve transport. |
+| part of `pipeline/extraction/cds.py` | `pipeline/providers/cds_era5_land.py` | Move ERA5-Land CDS payload building and provider schema normalization. |
+| remainder of `pipeline/extraction/cds.py` | `pipeline/extraction/cds_era5_land.py` | Keep ERA5-Land local-day context, retrieval period/chunk purpose, chunk cache/resume, and extractor composition. Rename `CdsExtractor` -> `CdsEra5LandExtractor`. |
+| `pipeline/transformation/era5_land.py` | `pipeline/transformation/era5_land_daily.py` | Agreed hourly -> local-daily transformation module. |
+| RAW portion of `pipeline/validation/era5_land.py` | `pipeline/validation/era5_land_raw.py` | Validate raw xarray type, variables, hourly temporal continuity, and source grid. |
+| daily portion of `pipeline/validation/era5_land.py` | `pipeline/validation/era5_land_daily.py` | Validate transformed local-day dataframe time, space, values, and daily-grid contract. |
+| `pipeline/repositories/daily_climate.py` | `pipeline/repositories/daily_climate_reader.py` | Agreed read-only canonical daily-climate modelling query repository. |
+| `pipeline/loaders/postgres.py` | `pipeline/loaders/daily_climate_postgres.py` | Rename because loader writes the canonical daily climate aggregate, not arbitrary PostgreSQL data. |
+| `pipeline/storage/local.py` | `pipeline/storage/local_checkpoints.py` | Rename to state its RAW NetCDF / transformed Parquet checkpoint responsibility. |
+| `pipeline/storage/artifacts.py` | unchanged | Deterministic artifact identity/path helpers are already clear. |
+| `pipeline/database/config.py` | unchanged | Database configuration/engine concern is clear inside the package. |
+| `pipeline/database/schema.py` | unchanged | Canonical daily-climate schema/table bootstrap concern is clear inside the package. |
+| `pipeline/runtime.py` | unchanged | Keep stable public composition API at package root. |
+
+#### `pipeline/extraction/cds.py` responsibility split
+
+The current functions map to the target ownership as follows:
+
+```text
+providers/cds_client.py
+  _resolve_cds_credentials
+  provider HTTP/session POST callback mechanics
+  generic CDS retrieve/download transport
+
+providers/cds_era5_land.py
+  CDS_API_VARIABLE_NAMES / reverse mappings / ERA5-Land profile
+  _build_cds_request_payload
+  _normalize_cds_dataset
+
+extraction/cds_era5_land.py
+  _build_era5_land_retrieval_request
+  _retrieval_chunk_purpose
+  _format_context_period
+  _download_cds_period / chunk-cache orchestration
+  CdsEra5LandExtractor
+
+orchestration/scheduling/submission_gate.py
+  SubmissionDeferred
+  reserve_or_defer
+```
+
+The pipeline submission callback remains a plain callable. It may propagate an
+orchestration-owned `SubmissionDeferred`, but the pipeline does not import or
+interpret that exception.
+
+#### Verified caller/import blast radius
+
+Critical callers found during the audit include:
+
+- `orchestration.repositories.submission_pacing`: `orchestration/database.py`,
+  `orchestration/pacing.py`, and
+  `tests/airflow_orchestration/test_submission_pacing.py`.
+- `orchestration.tasks.cds_extract_operator`: DAG wiring and
+  `test_paced_operator.py`.
+- campaign/schedule/progress root modules: task preparation/load helpers,
+  reporting scripts, campaign/progress tests, and database maintenance scripts.
+- `pipeline.extraction.cds`: orchestration pacing/raw-checkpoint code plus
+  extraction, normalization, pacing, progress-wiring, and scheduled-pilot tests.
+- `pipeline.repositories.daily_climate`:
+  `scripts/read_daily_climate.py` and
+  `tests/unit/test_daily_climate_repository.py`.
+- `pipeline.transformation.era5_land`: transformation package exports and
+  `tests/unit/test_transform.py`.
+- `pipeline.validation.era5_land`: validation package exports and validation
+  tests through `pipeline.validation`.
+- `pipeline.model`: request factory, provider/request/runtime/storage/
+  extraction/loader/repository/transformation/validation modules and many unit
+  and integration tests; treat this as a high-blast-radius move.
+- `pipeline.request`: orchestration request/progress/task code, storage/runtime/
+  extraction/loader modules, and request/campaign tests; also high blast radius.
+- `pipeline.runtime`: CLI runner, Airflow task wrappers, coding docs, and
+  runtime tests. It remains unchanged to preserve the public runtime boundary.
+
+#### Recommended implementation order
+
+Do not execute the entire tree move in one commit. Use dependency-ordered
+structural phases:
+
+1. **S1 — orchestration leaf moves:** create subpackages; move monitoring,
+   scheduling primitives, campaign/reporting modules, and repositories; update
+   imports/tests with no behavior changes.
+2. **S2 — orchestration operator/task alignment:** move
+   `RawCheckpointOperator`, raw/transformed task helpers, relocate
+   `SubmissionDeferred`, then remove the two compatibility facades.
+3. **S3 — pipeline low-blast-radius renames:** daily-climate reader,
+   transformation, validation split, loader/storage filenames; preserve package
+   exports where useful within the same batch.
+4. **S4 — provider/extraction split:** split CDS transport, CDS ERA5-Land provider
+   metadata/payload logic, and ERA5-Land chunk extraction; rename extractor.
+5. **S5 — high-blast-radius pipeline core moves:** move weather models,
+   ETL interfaces, request utilities/factory, and observability logging after all
+   narrower modules are stable.
+6. After every structural phase run focused tests for affected imports. After S5,
+   run the full `tests/unit tests/airflow_orchestration` regression and isolated
+   PostgreSQL integration suite before any live scheduled pilot.
+
+All structural phases must preserve request keys, checkpoint paths, database
+table/schema names, scientific calculations, Airflow task IDs, mapped
+`YYYY-MM` labels, and durable progress identity.
+
+
+### Structural refactor phase evidence
+
+- S1 orchestration leaf moves: implemented on `dev`; user verification reported 106 focused orchestration tests passed in 4.15s and 4 PostgreSQL integration tests passed in 0.82s on 2026-10-05.
+- S2 operator/task alignment: verified by the user on 2026-10-05 with 51 focused tests passed in 4.48s and 283 unit/orchestration regression tests passed in 6.73s.
+
+- S3 pipeline low-blast-radius renames: verified by the user on 2026-10-05 with 71 focused tests passed in 2.28s and 283 unit/orchestration regression tests passed in 7.24s.
+
+- S4 provider/extraction split: verified by the user on 2026-10-05 with 61 focused tests passed in 1.02s and 283 unit/orchestration regression tests passed in 7.34s.
+
+- S5 high-blast-radius pipeline core moves: verified by the user on 2026-10-05 with 170 focused tests passed in 5.27s, 283 unit/orchestration regression tests passed in 8.88s, and 6 isolated PostgreSQL integration tests passed in 1.36s.
+
+
+### 10.10 Post-refactor cleanup audit — 2026-10-05
+
+This audit was performed after S1-S5 verification at `dev`
+`53d1fa95274ac8e86f4f983b8998b67610f81ed9`. It is an audit only:
+no Python/runtime behavior, dependency pins, database state, Airflow state, or
+schedule setting was changed.
+
+#### Clean findings
+
+- The final source tree matches the agreed S1-S5 responsibility layout. Legacy
+  root modules such as `pipeline/model.py`, `pipeline/request.py`,
+  `pipeline/interfaces.py`, `pipeline/logging.py`, root
+  `request_factory.py`, and the pre-split CDS modules are absent from the
+  current tree rather than retained as compatibility facades.
+- Current-state root/orchestration documentation was reconciled to the new
+  module paths and the current five-task Airflow graph.
+- No active `pipeline/` source import of Airflow or `orchestration` was found
+  in the cleanup audit. The core ETL boundary therefore remains Airflow-neutral.
+- Public package exports used by `pipeline/runtime.py` for storage,
+  transformation, validation, and loading remain coherent. No cleanup is
+  required merely to reduce `__all__` lists.
+
+#### Cleanup candidates
+
+1. **Unused compatibility wrapper: `scripts/config.py`.**
+   The file describes itself as compatibility imports, but repository code
+   search found no active Python caller importing `scripts.config`. Current
+   entrypoints import root `config.py` and `pipeline.requests.factory`
+   directly. Before deletion, run a final exact caller search and the full
+   offline regression. Documentation references should be updated in the same
+   change.
+2. **Provider catalog back-edge.**
+   `pipeline.providers.catalog` imports ERA5-Land profiles from
+   `cds_era5_land`, while `build_cds_request_payload()` performs a
+   function-local import back to the catalog. This avoids an import-time cycle
+   today, but it is an avoidable two-way dependency. Any cleanup should preserve
+   request normalization/error behavior and receive focused provider/request
+   tests; it is not urgent enough to change during this audit.
+3. **Dependency-manifest drift.**
+   `requirements.txt` still pins `dask`, `zarr`, `gcsfs`, and Google
+   Cloud storage packages, while active source search found no Dask, Zarr,
+   GCSFS, or Google Cloud Storage imports. This conflicts with the documented
+   ARCO-removal policy. However, the manifest is a full pinned environment,
+   so absence of direct imports alone is insufficient evidence that every pin
+   may be deleted. Dependency cleanup must first establish direct-vs-transitive
+   requirements in an isolated environment, then run `pip check`, the full
+   283-test offline suite, and the six PostgreSQL integration tests.
+4. **Tracked IDE metadata.**
+   `.idea/` remains tracked. This is repository hygiene rather than a runtime
+   or S1-S5 correctness issue. Remove it only as a separate housekeeping change
+   if the project no longer intends to version shared IDE settings.
+
+#### Items intentionally not treated as cleanup defects
+
+- Historical old paths/counts inside the audit/mapping/work-log portions of this
+  document and `IMPLEMENTATION_PLAN.md` are retained as historical evidence
+  when clearly framed as past state.
+- Package-level exports in `pipeline.storage`, `pipeline.validation`,
+  `pipeline.transformation`, and `pipeline.loaders` are currently used as
+  stable composition APIs and should not be flattened merely for stylistic
+  consistency.
+- Live CDS/manual/scheduled pilots are rollout verification, not cleanup work.
+  Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` during cleanup.
+
+#### Recommended cleanup order
+
+1. Remove `scripts/config.py` only after one final exact caller audit.
+2. Simplify the provider catalog back-edge with focused request/extraction tests.
+3. Audit and prune legacy dependency pins separately; do not combine dependency
+   changes with code-structure cleanup.
+4. Optionally handle `.idea/` as repository housekeeping.
+5. Re-run the complete offline and isolated PostgreSQL gates after code or
+   dependency cleanup before considering any live pilot.
+
+### 10.11 Environment-backed pipeline and campaign dates — 2026-10-05
+
+The date configuration was normalized before cleanup work continued. Standalone
+pipeline defaults and scheduled campaign bounds now both come from `.env`, but
+remain separate settings because they have different operational risk and
+semantics:
+
+- `CDS_START_DATE` / `CDS_END_DATE` are the default inclusive period for
+  standalone pipeline/read scripts and may be a small arbitrary valid date range.
+- `CAMPAIGN_START_DATE` / `CAMPAIGN_END_DATE` are the bounded scheduled
+  campaign range. They use canonical `YYYY-MM-DD` values and must align to
+  complete calendar-quarter boundaries because the current scheduler maps each
+  selected campaign unit to exactly three whole months.
+
+The former `CAMPAIGN_START_YEAR` / `CAMPAIGN_END_YEAR` environment variables
+are removed from current configuration. This avoids deriving a full-year campaign
+from an arbitrary date and avoids making the standalone pipeline default silently
+expand to a multi-year campaign. Scheduled campaigns now require one or more complete calendar years: the start\nmust be January 1 and the end December 31. Shorter periods are manual pilots and\ndo not redefine campaign bounds. This keeps Q1 -> Q2 -> Q3 scheduler behavior\nmeaningful without changing durable progress schema or request identity.
+
+
+### 10.12 Full-year scheduled campaign contract — 2026-10-05
+
+Scheduled campaign bounds are intentionally stricter than standalone/manual
+request ranges. A scheduled campaign must span one or more complete calendar
+years: `CAMPAIGN_START_DATE=YYYY-01-01` and
+`CAMPAIGN_END_DATE=YYYY-12-31`. The minimum scheduled campaign is therefore
+one full year. Shorter validation or CDS pilots use manual DagRuns with explicit
+request dates and do not alter campaign bounds.
+
+This decision preserves meaningful Q1 -> Q2 -> Q3 progression in the scheduler,
+keeps yearly reporting intuitive, and avoids coupling short-lived pilot dates to
+durable campaign identity. `CAMPAIGN_KEY` may remain the long-term logical key
+while temporary test bounds are adjusted before real campaign execution.
+
+
+### 10.13 Year-only scheduled campaign configuration — 2026-10-05
+
+After deciding that scheduled campaigns always span one or more complete calendar
+years, the environment contract was simplified back to year-only campaign bounds.
+`CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR` are authoritative four-digit
+environment values. Orchestration derives January 1 of the start year and
+December 31 of the end year internally for quarter selection and reporting.
+
+This is intentionally different from `CDS_START_DATE` / `CDS_END_DATE`,
+which remain full dates because standalone and manual pilots may cover short or
+arbitrary valid ranges. Short pilots must use manual DagRuns rather than changing
+scheduled campaign years.

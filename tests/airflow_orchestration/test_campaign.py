@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from orchestration.campaign import (
-    CAMPAIGN_END_YEAR,
-    CAMPAIGN_START_YEAR,
+from orchestration.campaign.policy import (
+    CAMPAIGN_END_DATE,
+    CAMPAIGN_START_DATE,
     CampaignQuarter,
     CampaignBlocked,
     CampaignSelection,
@@ -17,7 +17,9 @@ from orchestration.campaign import (
     select_earliest_incomplete_quarter,
 )
 
-CAMPAIGN_QUARTER_COUNT = (CAMPAIGN_END_YEAR - CAMPAIGN_START_YEAR + 1) * 4
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
+CAMPAIGN_QUARTER_COUNT = len(iter_campaign_quarters())
 
 
 def _month_end(year: int, month: int) -> str:
@@ -62,7 +64,7 @@ def test_campaign_quarter_calendar_boundaries(
 
 
 def test_campaign_quarter_rejects_out_of_scope_values() -> None:
-    with pytest.raises(ValueError, match="Campaign year"):
+    with pytest.raises(ValueError, match="Campaign quarter"):
         CampaignQuarter(CAMPAIGN_START_YEAR - 1, 4)
     with pytest.raises(ValueError, match="quarter"):
         CampaignQuarter(CAMPAIGN_START_YEAR, 5)
@@ -119,7 +121,7 @@ def progress_selection(monkeypatch):
     reconciled = []
     statuses = {}
     monkeypatch.setattr(
-        "orchestration.campaign.initialize_campaign_progress",
+        "orchestration.campaign.policy.initialize_campaign_progress",
         lambda engine, **kwargs: tuple(range(1, CAMPAIGN_QUARTER_COUNT + 1)),
     )
     monkeypatch.setattr(
@@ -243,8 +245,8 @@ def test_claimed_quarter_blocks_competing_selector(
 
 
 def test_manual_whole_month_matches_exact_campaign_partition() -> None:
-    from orchestration.requests import build_historical_request_specs
-    from pipeline.request import build_request_key, weather_request_from_spec
+    from orchestration.scheduling.requests import build_historical_request_specs
+    from pipeline.requests.weather import build_request_key, weather_request_from_spec
 
     spec = build_historical_request_specs(
         f"{CAMPAIGN_START_YEAR}-02-01",
@@ -263,7 +265,7 @@ def test_manual_whole_month_matches_exact_campaign_partition() -> None:
 
 
 def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> None:
-    from orchestration.requests import build_historical_request_specs
+    from orchestration.scheduling.requests import build_historical_request_specs
 
     partial = build_historical_request_specs(
         f"{CAMPAIGN_START_YEAR}-02-10",

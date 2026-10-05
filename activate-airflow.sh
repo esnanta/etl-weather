@@ -72,12 +72,12 @@ done
 unset _campaign_var _campaign_value
 
 if ! [[ "$CAMPAIGN_START_YEAR" =~ ^[0-9]{4}$ ]]; then
-    echo "ERROR: CAMPAIGN_START_YEAR must be a four-digit integer year." >&2
+    echo "ERROR: CAMPAIGN_START_YEAR must be a four-digit year such as 2016." >&2
     return 1 2>/dev/null || exit 1
 fi
 
 if ! [[ "$CAMPAIGN_END_YEAR" =~ ^[0-9]{4}$ ]]; then
-    echo "ERROR: CAMPAIGN_END_YEAR must be a four-digit integer year." >&2
+    echo "ERROR: CAMPAIGN_END_YEAR must be a four-digit year such as 2025." >&2
     return 1 2>/dev/null || exit 1
 fi
 
@@ -89,7 +89,7 @@ fi
 echo "Application environment | APP_ENV=$APP_ENV"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_ENABLED=${ERA5_CAMPAIGN_SCHEDULE_ENABLED:-}"
 echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_CADENCE=${ERA5_CAMPAIGN_SCHEDULE_CADENCE:-}"
-echo "Application environment | CDS_MIN_SUBMISSION_INTERVAL_SECONDS=${CDS_MIN_SUBMISSION_INTERVAL_SECONDS:-}"
+echo "Application environment | SUBMISSION_INTERVAL_SECONDS=${SUBMISSION_INTERVAL_SECONDS:-}"
 echo "Application environment | CAMPAIGN_KEY=${CAMPAIGN_KEY:-}"
 echo "Application environment | CAMPAIGN_START_YEAR=${CAMPAIGN_START_YEAR:-}"
 echo "Application environment | CAMPAIGN_END_YEAR=${CAMPAIGN_END_YEAR:-}"

@@ -13,8 +13,10 @@ import sys
 import pytest
 import xarray as xr
 
-from pipeline.extraction import cds
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+from pipeline.extraction import cds_era5_land as cds
+from pipeline.providers import cds_client
+from orchestration.scheduling.submission_gate import SubmissionDeferred
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
 
 def _request(start: str, end: str) -> WeatherRequest:
@@ -40,7 +42,7 @@ def test_second_chunk_defers_and_resumes_without_retrieving_first(
 
     def guard(chunk: WeatherRequest) -> None:
         if chunk.start_date == "2024-01-01" and blocked:
-            raise cds.CdsSubmissionDeferred(
+            raise SubmissionDeferred(
                 datetime(2024, 1, 2, tzinfo=timezone.utc)
             )
 
@@ -55,7 +57,7 @@ def test_second_chunk_defers_and_resumes_without_retrieving_first(
 
     monkeypatch.setattr(cds, "_download_cds", download)
     cache = tmp_path / "retrieval"
-    with pytest.raises(cds.CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         cds._download_cds_period(
             retrieval, target_request=target,
             before_submission=guard, chunk_cache_directory=cache,
@@ -83,7 +85,7 @@ def test_corrupt_chunk_identity_fails_closed(
     request = _request("2024-02-01", "2024-02-02")
     cache = tmp_path / "retrieval"
     cache.mkdir()
-    from pipeline.request import build_request_key
+    from pipeline.requests.weather import build_request_key
 
     xr.Dataset(
         {"tp": ("valid_time", [1.0])},
@@ -117,14 +119,14 @@ def test_guard_precedes_actual_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(requests.Session, "request", transport)
     monkeypatch.setitem(sys.modules, "cdsapi", SimpleNamespace(Client=FakeClient))
-    monkeypatch.setattr(cds, "_resolve_cds_credentials", lambda: ("url", "key"))
+    monkeypatch.setattr(cds_client, "_resolve_cds_credentials", lambda: ("url", "key"))
 
     def denied(_request):
-        raise cds.CdsSubmissionDeferred(
+        raise SubmissionDeferred(
             datetime(2026, 9, 26, tzinfo=timezone.utc)
         )
 
-    with pytest.raises(cds.CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         cds._download_cds(
             _request("2024-02-01", "2024-02-01"),
             purpose="target period", before_submission=denied,
@@ -150,15 +152,15 @@ def test_internal_post_retry_requires_new_slot(
         assert chunk is request
         events.append("reserve")
         if events.count("reserve") == 2:
-            raise cds.CdsSubmissionDeferred(
+            raise SubmissionDeferred(
                 datetime(2026, 9, 26, tzinfo=timezone.utc)
             )
 
-    session = cds._PacedSubmissionSession(request, reserve)
+    session = cds_client._PacedSubmissionSession(request, reserve)
     session.get("https://cds.example/status")
     session.get("https://cdn.example/download.nc")
     session.post("https://cds.example/resources/reanalysis-era5-land")
-    with pytest.raises(cds.CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         session.post("https://cds.example/resources/reanalysis-era5-land")
 
     assert events == ["GET", "GET", "reserve", "POST", "reserve"]
@@ -178,7 +180,7 @@ def test_real_cdsapi_retry_is_deferred_before_second_post(
         assert chunk is request
         events.append("reserve")
         if events.count("reserve") == 2:
-            raise cds.CdsSubmissionDeferred(
+            raise SubmissionDeferred(
                 datetime(2026, 9, 26, tzinfo=timezone.utc)
             )
 
@@ -194,11 +196,11 @@ def test_real_cdsapi_retry_is_deferred_before_second_post(
     monkeypatch.setattr(requests.Session, "request", transport)
     client = cdsapi.Client(
         url="https://cds.example/api", key="123:fake",
-        session=cds._PacedSubmissionSession(request, reserve),
+        session=cds_client._PacedSubmissionSession(request, reserve),
         quiet=True, retry_max=3, sleep_max=0, forget=True,
     )
 
-    with pytest.raises(cds.CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         client.retrieve("reanalysis-era5-land", {"variable": ["tp"]})
 
     assert events == ["GET", "reserve", "POST", "reserve"]

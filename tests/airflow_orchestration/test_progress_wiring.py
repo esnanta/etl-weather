@@ -10,15 +10,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from orchestration import campaign_repair
-from orchestration.campaign import CampaignBlocked, CampaignQuarter
-from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
+from orchestration.campaign import repair as campaign_repair
+from orchestration.campaign.policy import CampaignBlocked, CampaignQuarter
+from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+
+CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
+CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 from orchestration.repositories.load_evidence import persisted_row_count
-from orchestration.requests import build_historical_request_specs
+from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks import build_monthly_requests as job_tasks
-from orchestration.tasks import extract as extract_tasks
+from orchestration.tasks import raw_checkpoint as extract_tasks
 from orchestration.tasks import load as load_tasks
-from pipeline.extraction.cds import CdsSubmissionDeferred
+from orchestration.scheduling.submission_gate import SubmissionDeferred
 from datetime import datetime, timedelta, timezone
 
 
@@ -273,7 +276,7 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
 
 
 def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
-    from orchestration.campaign import matching_campaign_progress_definition
+    from orchestration.campaign.policy import matching_campaign_progress_definition
 
     definition = matching_campaign_progress_definition(_campaign_spec())
     assert definition is not None
@@ -368,10 +371,10 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
     monkeypatch.setattr(
         extract_tasks, "ensure_raw_checkpoint_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
-            CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
+            SubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
     )
-    with pytest.raises(CdsSubmissionDeferred):
+    with pytest.raises(SubmissionDeferred):
         extract_tasks.ensure_raw_checkpoint_with_progress(_campaign_spec(), 42, "manual", paced=True)
     assert updates == [{
         "extract_status": "running", "transform_status": "pending",
