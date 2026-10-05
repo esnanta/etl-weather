@@ -46,12 +46,6 @@ CDS_START_DATE_ENV = "CDS_START_DATE"
 # Environment key for the standalone pipeline default end date.
 CDS_END_DATE_ENV = "CDS_END_DATE"
 
-# Environment key for the bounded campaign start date.
-CAMPAIGN_START_DATE_ENV = "CAMPAIGN_START_DATE"
-
-# Environment key for the bounded campaign end date.
-CAMPAIGN_END_DATE_ENV = "CAMPAIGN_END_DATE"
-
 # Active ERA5-Land variables requested from CDS, in stable request order.
 CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
 
@@ -105,17 +99,6 @@ def resolve_cds_period(
 ) -> tuple[str, str]:
     """Resolve the standalone pipeline's configured default CDS period."""
     return resolve_date_range(CDS_START_DATE_ENV, CDS_END_DATE_ENV, env)
-
-
-def resolve_campaign_period(
-    env: Mapping[str, str] | None = None,
-) -> tuple[str, str]:
-    """Resolve the scheduled campaign's configured inclusive date bounds."""
-    return resolve_date_range(
-        CAMPAIGN_START_DATE_ENV,
-        CAMPAIGN_END_DATE_ENV,
-        env,
-    )
 
 
 def resolve_app_environment(

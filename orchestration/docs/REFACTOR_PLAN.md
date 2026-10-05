@@ -1247,3 +1247,17 @@ This decision preserves meaningful Q1 -> Q2 -> Q3 progression in the scheduler,
 keeps yearly reporting intuitive, and avoids coupling short-lived pilot dates to
 durable campaign identity. `CAMPAIGN_KEY` may remain the long-term logical key
 while temporary test bounds are adjusted before real campaign execution.
+
+
+### 10.13 Year-only scheduled campaign configuration — 2026-10-05
+
+After deciding that scheduled campaigns always span one or more complete calendar
+years, the environment contract was simplified back to year-only campaign bounds.
+`CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR` are authoritative four-digit
+environment values. Orchestration derives January 1 of the start year and
+December 31 of the end year internally for quarter selection and reporting.
+
+This is intentionally different from `CDS_START_DATE` / `CDS_END_DATE`,
+which remain full dates because standalone and manual pilots may cover short or
+arbitrary valid ranges. Short pilots must use manual DagRuns rather than changing
+scheduled campaign years.

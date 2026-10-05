@@ -6,11 +6,7 @@ import os
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from config import (
-    APPLICATION_SCHEMA,
-    APPLICATION_TIMEZONE_NAME,
-    resolve_campaign_period,
-)
+from config import APPLICATION_SCHEMA, APPLICATION_TIMEZONE_NAME
 
 
 def _required_environment(name: str) -> str:
@@ -23,43 +19,39 @@ def _required_environment(name: str) -> str:
     return value.strip()
 
 
-def _validate_campaign_bounds(start_date: date, end_date: date) -> None:
-    """Validate a scheduled campaign spanning one or more full calendar years."""
-    if start_date > end_date:
-        raise RuntimeError(
-            "CAMPAIGN_START_DATE must be less than or equal to CAMPAIGN_END_DATE."
-        )
-    if (start_date.month, start_date.day) != (1, 1):
-        raise RuntimeError(
-            "CAMPAIGN_START_DATE must be January 1 for a scheduled campaign."
-        )
-    if (end_date.month, end_date.day) != (12, 31):
-        raise RuntimeError(
-            "CAMPAIGN_END_DATE must be December 31 for a scheduled campaign."
-        )
-    if end_date.year < start_date.year:
-        raise RuntimeError(
-            "Scheduled campaign bounds must include at least one calendar year."
-        )
+def _campaign_year(name: str) -> int:
+    """Return one required four-digit campaign year from the environment."""
+    value = _required_environment(name)
+    if len(value) != 4 or not value.isdigit():
+        raise RuntimeError(f"{name} must be a four-digit year such as 2016.")
+    return int(value)
 
 
-def _campaign_period() -> tuple[date, date]:
-    """Resolve campaign date bounds from the already-exported environment."""
-    try:
-        start_value, end_value = resolve_campaign_period(os.environ)
-    except ValueError as error:
-        raise RuntimeError(str(error)) from error
-    start_date = date.fromisoformat(start_value)
-    end_date = date.fromisoformat(end_value)
-    _validate_campaign_bounds(start_date, end_date)
-    return start_date, end_date
+def _validate_campaign_years(start_year: int, end_year: int) -> None:
+    """Validate a scheduled campaign spanning one or more complete years."""
+    if start_year > end_year:
+        raise RuntimeError(
+            "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
+        )
 
 
 # Stable campaign identity used by progress selection and reporting.
 CAMPAIGN_KEY = _required_environment("CAMPAIGN_KEY")
 
-# Inclusive quarter-aligned campaign bounds resolved from the environment.
-CAMPAIGN_START_DATE, CAMPAIGN_END_DATE = _campaign_period()
+# First calendar year included in the scheduled historical campaign.
+# A scheduled campaign always starts on January 1 of this year.
+CAMPAIGN_START_YEAR = _campaign_year("CAMPAIGN_START_YEAR")
+
+# Last calendar year included in the scheduled historical campaign.
+# A scheduled campaign always ends on December 31 of this year.
+CAMPAIGN_END_YEAR = _campaign_year("CAMPAIGN_END_YEAR")
+
+_validate_campaign_years(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR)
+
+# Derived inclusive date bounds used internally by campaign policy/reporting.
+# These are not separate environment settings.
+CAMPAIGN_START_DATE = date(CAMPAIGN_START_YEAR, 1, 1)
+CAMPAIGN_END_DATE = date(CAMPAIGN_END_YEAR, 12, 31)
 
 # Local timezone used for campaign eligibility and interval interpretation.
 CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)

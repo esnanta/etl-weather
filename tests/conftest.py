@@ -11,8 +11,8 @@ import os
 
 # Tests exercise multiple campaign quarters independently of the local trial range.
 os.environ["CAMPAIGN_KEY"] = "era5_land_test"
-os.environ["CAMPAIGN_START_DATE"] = "2016-01-01"
-os.environ["CAMPAIGN_END_DATE"] = "2016-12-31"
+os.environ["CAMPAIGN_START_YEAR"] = "2016"
+os.environ["CAMPAIGN_END_YEAR"] = "2016"
 
 # Standalone request tests require deterministic environment-backed defaults.
 os.environ["CDS_START_DATE"] = "2022-01-01"
