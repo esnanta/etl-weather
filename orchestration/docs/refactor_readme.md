@@ -603,24 +603,41 @@ For each:
 
 # Phase 4 — Cross-Document Consistency
 
-- [ ] Root README contains the generic prerequisites.
-- [ ] Orchestration README does not repeat generic installation steps.
-- [ ] Root README does not explain Airflow JWT internals.
-- [ ] Orchestration README explains JWT generation and lifecycle.
-- [ ] Root README contains global environment examples.
-- [ ] Orchestration README explains Airflow-specific use of scheduling variables.
-- [ ] Root README explains ETL behavior in business-oriented language.
-- [ ] Orchestration README explains operational behavior with examples.
-- [ ] Scientific behavior is not redefined differently between documents.
-- [ ] Both documents use the same current variable names.
-- [ ] Both documents use the same current DAG/task terminology.
-- [ ] Both documents use the current bounding box where a concrete bbox is shown.
-- [ ] No ARCO workflow remains documented.
-- [ ] No obsolete DAG names remain.
-- [ ] No obsolete `backfill` wording remains where the current system is campaign/ETL oriented.
-- [ ] Links between root, orchestration, tests, and design-decision documentation remain valid.
+- [x] Root README contains the generic prerequisites.
+- [x] Orchestration README does not repeat generic installation steps.
+- [x] Root README does not explain Airflow JWT internals.
+- [x] Orchestration README explains JWT generation and lifecycle.
+- [x] Root README contains global environment examples.
+- [x] Orchestration README explains Airflow-specific use of scheduling variables.
+- [x] Root README explains ETL behavior in business-oriented language.
+- [x] Orchestration README explains operational behavior with examples.
+- [x] Scientific behavior is not redefined differently between documents.
+- [x] Both documents use the same current variable names.
+- [x] Both documents use the same current DAG/task terminology.
+- [x] Both documents use the current bounding box where a concrete bbox is shown.
+- [x] No ARCO workflow remains documented.
+- [x] No obsolete DAG names remain.
+- [x] No obsolete `backfill` wording remains where the current system is campaign/ETL oriented.
+- [x] Links between root, orchestration, tests, and design-decision documentation remain valid.
 
 ---
+
+
+## Phase 4 Result
+
+- `/README.md` owns generic prerequisites, dependency installation, global environment examples, business-oriented ETL behavior, data layout, persistence, and modelling access.
+- `/orchestration/README.md` owns Airflow JWT setup, runtime activation, DAG operation, scheduled/manual mode, cadence, CDS submission pacing, durable campaign progress, retry/recovery, observability, and DAG deployment safety.
+- Generic installation steps are no longer duplicated in the orchestration README.
+- Airflow JWT internals are absent from the root README and documented only in the Airflow operations guide.
+- Root environment examples match the current `env-example` names for application, standalone dates, PostgreSQL, test PostgreSQL, campaign identity, schedule enable/cadence, and submission pacing.
+- Scientific ownership is described consistently in both documents: Airflow coordinates execution while `pipeline/` retains transformation, validation, artifact, and canonical persistence behavior.
+- Current DAG ID verified against implementation: `cds_era5_land_etl`.
+- Current task IDs verified against implementation: `build_monthly_requests`, `attempt_raw_checkpoint`, `resolve_raw_checkpoint`, `ensure_transformed_checkpoint`, and `load`.
+- Current Aceh bounding box verified against `config.py`: north `6.1`, south `1.9`, east `98.3`, west `94.9`.
+- No ARCO terminology, obsolete DAG name, obsolete task name, deprecated `backfill` wording, or old bbox reference was found in either README.
+- Existing relative links from the root README to `orchestration/README.md` and `tests/README.md`, and from the orchestration README back to `README.md` and `tests/README.md`, resolve to files present on branch `dev`.
+- Neither README currently contains a direct design-decision-document link; no broken design-decision link was introduced by this refactor.
+- No README edit was required during Phase 4 because the cross-document consistency checks passed as written.
 
 # Phase 5 — Final Documentation Validation
 
