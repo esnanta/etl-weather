@@ -609,7 +609,7 @@ Dokumen ini tidak menyatakan jaminan melebihi implementasi dan test saat ini:
 3. Pemeriksaan fisik hanya memakai batas yang benar-benar keras. Pipeline belum mempunyai ambang klimatologis khusus Aceh untuk mendeteksi nilai yang tidak lazim tetapi masih mungkin secara fisik.
 4. Akumulasi negatif diberi peringatan dan dipertahankan; pipeline belum menentukan aturan koreksi otomatis.
 5. Provenance belum mencatat versi kode atau commit Git.
-6. Konfigurasi periode, variabel, dan wilayah masih berupa konstanta pada `scripts/config.py`, belum menjadi antarmuka baris perintah umum.
+6. Periode standalone dibaca dari `CDS_START_DATE`/`CDS_END_DATE` di `.env`, sedangkan dataset, variabel, dan bbox tetap merupakan konfigurasi proyek; belum tersedia antarmuka baris perintah umum untuk mengganti seluruh konfigurasi tersebut per eksekusi.
 7. Test membuktikan perilaku program pada kasus yang dirancang, termasuk test PostgreSQL terisolasi. Test bukan validasi independen bahwa seluruh nilai ERA5-Land sesuai dengan pengamatan lapangan.
 8. ERA5-Land adalah data berbasis grid model. Analisis tingkat lokasi tetap perlu mempertimbangkan perbedaan elevasi, tutupan lahan, pesisir, dan representativitas grid terhadap kondisi setempat.
 

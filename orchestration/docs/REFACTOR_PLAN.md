@@ -1164,20 +1164,16 @@ schedule setting was changed.
 
 #### Cleanup candidates
 
-1. **Unused compatibility wrapper: `scripts/config.py`.**
-   The file describes itself as compatibility imports, but repository code
-   search found no active Python caller importing `scripts.config`. Current
-   entrypoints import root `config.py` and `pipeline.requests.factory`
-   directly. Before deletion, run a final exact caller search and the full
-   offline regression. Documentation references should be updated in the same
-   change.
-2. **Provider catalog back-edge.**
-   `pipeline.providers.catalog` imports ERA5-Land profiles from
-   `cds_era5_land`, while `build_cds_request_payload()` performs a
-   function-local import back to the catalog. This avoids an import-time cycle
-   today, but it is an avoidable two-way dependency. Any cleanup should preserve
-   request normalization/error behavior and receive focused provider/request
-   tests; it is not urgent enough to change during this audit.
+1. **Unused compatibility wrapper: `scripts/config.py` — resolved.**
+   Final repository search found no active Python caller. The wrapper was
+   removed after entrypoints had already moved to root `config.py` and
+   `pipeline.requests.factory`. Current-state documentation was updated in
+   the same cleanup batch.
+2. **Provider catalog back-edge — resolved.**
+   ERA5-Land profile validation now has one provider-local owner in
+   `pipeline.providers.cds_era5_land`. Generic `catalog.py` delegates to
+   that helper, while payload construction uses the same local helper directly.
+   The dependency is now one-way: `catalog -> cds_era5_land`.
 3. **Dependency-manifest drift.**
    `requirements.txt` still pins `dask`, `zarr`, `gcsfs`, and Google
    Cloud storage packages, while active source search found no Dask, Zarr,
@@ -1206,12 +1202,10 @@ schedule setting was changed.
 
 #### Recommended cleanup order
 
-1. Remove `scripts/config.py` only after one final exact caller audit.
-2. Simplify the provider catalog back-edge with focused request/extraction tests.
-3. Audit and prune legacy dependency pins separately; do not combine dependency
+1. Audit and prune legacy dependency pins separately; do not combine dependency
    changes with code-structure cleanup.
-4. Optionally handle `.idea/` as repository housekeeping.
-5. Re-run the complete offline and isolated PostgreSQL gates after code or
+2. Optionally handle `.idea/` as repository housekeeping.
+3. Re-run the complete offline and isolated PostgreSQL gates after code or
    dependency cleanup before considering any live pilot.
 
 ### 10.11 Environment-backed pipeline and campaign dates — 2026-10-05
@@ -1261,3 +1255,24 @@ This is intentionally different from `CDS_START_DATE` / `CDS_END_DATE`,
 which remain full dates because standalone and manual pilots may cover short or
 arbitrary valid ranges. Short pilots must use manual DagRuns rather than changing
 scheduled campaign years.
+
+
+### 10.14 Cleanup batch: orphan wrapper and provider dependency — 2026-10-05
+
+After the year-only campaign configuration was verified by the user with
+**58 focused tests passed in 0.74s** and **286 unit/orchestration tests passed
+in 7.62s**, cleanup resumed.
+
+Final exact caller search confirmed that `scripts/config.py` had no active
+Python consumers. The compatibility wrapper was removed, and the current
+ERA5-Land design-decision documentation was updated to describe the actual
+environment-backed standalone period and project-owned dataset/variable/bbox
+configuration.
+
+The provider catalog back-edge was also removed. ERA5-Land dataset-profile
+validation is now owned by `pipeline.providers.cds_era5_land`; the generic
+catalog delegates to that provider-local helper, and payload construction calls
+the same helper directly. This preserves provider/dataset validation and payload
+semantics while making the dependency direction one-way.
+
+Dependency-manifest pruning remains a separate next step.

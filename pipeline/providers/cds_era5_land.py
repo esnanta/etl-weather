@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import xarray as xr
 
-from pipeline.models.weather import WeatherRequest
+from pipeline.models.weather import DataSource, WeatherRequest
 
 
 VARIABLE_DESCRIPTIONS = {
@@ -54,6 +54,22 @@ CDS_DATASET_PROFILES = {
 }
 
 
+def get_cds_era5_land_dataset_profile(
+    source: DataSource,
+    dataset: str,
+) -> dict:
+    """Return one CDS ERA5-Land profile or reject unsupported provider input."""
+    if source is not DataSource.CDS:
+        raise ValueError(f"Unsupported source: {source.value}")
+    dataset_key = dataset.strip().lower()
+    profile = CDS_DATASET_PROFILES.get(dataset_key)
+    if profile is None:
+        raise ValueError(
+            f"Unsupported dataset '{dataset_key}' for source '{source.value}'."
+        )
+    return profile
+
+
 def build_cds_request_payload(request: WeatherRequest) -> dict[str, object]:
     """Build the ERA5-Land hourly CDS payload for one calendar-month chunk."""
     start = datetime.strptime(request.start_date, "%Y-%m-%d").date()
@@ -70,9 +86,7 @@ def build_cds_request_payload(request: WeatherRequest) -> dict[str, object]:
         request_days.append(f"{current_day.day:02d}")
         current_day += timedelta(days=1)
 
-    from pipeline.providers.catalog import get_source_dataset_profile
-
-    profile = get_source_dataset_profile(request.source, request.dataset)
+    profile = get_cds_era5_land_dataset_profile(request.source, request.dataset)
     api_variables = [
         CDS_API_VARIABLE_NAMES.get(variable, variable)
         for variable in request.variables
