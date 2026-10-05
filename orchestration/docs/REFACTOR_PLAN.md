@@ -557,7 +557,7 @@ Reannounce any additional path before editing it.
 | `tests/airflow_orchestration/test_progress_wiring.py`, `test_scheduled_selection_pilot.py` | Update recording/setup/selection monkeypatch targets after splitting progress wrappers |
 | `tests/airflow_orchestration/test_cds_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
 | `tests/integration/test_pipeline_progress_reconciliation.py`, `test_cds_submission_pacing.py` | Update schema/configuration references and test isolation targets |
-| `README.md`, `tests/AGENTS.md`, `docs/AIRFLOW_BEST_PRACTICE.md`, `docs/AIRFLOW_CODING_GUIDELINES.md` | Align configuration location, operational schema, six-task graph, and first-pass documentation |
+| `README.md`, `tests/AGENTS.md`, `docs/AIRFLOW_BEST_PRACTICE.md`, `docs/AIRFLOW_CODING_GUIDELINES.md` | Align configuration location, operational schema, current mapped DAG graph, and first-pass documentation |
 
 No changes are currently required to `scripts/report_campaign_progress.py` if
 its public reporting interface and independent engine lifecycle are retained.
@@ -660,9 +660,10 @@ graph but unnecessarily delays successful monthly partitions.
    during structural movement; a policy fix needs its own decision and tests.
    A worker termination or Airflow failure outside that handler is not proven to
    follow the same barrier path.
-2. **Missing explicit retry-preparation timeout.** `prepare_retry_pass` has no
-   declared `execution_timeout`, although the guideline asks for finite task
-   timeouts. Adding one is a behavior change and is not part of P1.
+2. **Resolved retry-preparation finding.** The former Airflow
+   `prepare_retry_pass` task had no explicit timeout. The 2026-10-05
+   failure-only barrier refactor removed that global task entirely, so this
+   finding no longer applies to the current graph.
 3. **Heavy transitive imports.** Root request configuration must not simply copy
    the existing import of `pipeline.model` into the lightweight settings layer.
    Model imports load Pandas/xarray. The factory boundary addresses this without
@@ -680,8 +681,9 @@ graph but unnecessarily delays successful monthly partitions.
    future `earliest_start_at` operator deferral, absence of external I/O during
    DAG import, every timeout/backoff field, or a real scheduled worker ordering.
    Add focused coverage during the relevant refactor phase, not blanket tests.
-7. **Documentation and dependency drift.** Older Airflow guidance still describes
-   three runtime tasks without the full six-task graph. `requirements.txt`
+7. **Documentation and dependency drift.** Airflow guidance must distinguish
+   the current five-task orchestration graph from the three pipeline runtime
+   postcondition boundaries. `requirements.txt`
    contains Dask/Zarr/Google storage packages despite the documented ARCO removal.
    No active corresponding provider path was found in the runtime import audit.
    Dependency cleanup is separate; do not alter pins or claim these packages are
