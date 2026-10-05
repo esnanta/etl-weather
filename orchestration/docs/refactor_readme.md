@@ -219,69 +219,69 @@ Phase 1 confirms the planned documentation split:
 
 ## 2.1 Project Introduction
 
-- [ ] Keep the opening description global and concise.
-- [ ] Explain that the program transforms Copernicus CDS ERA5-Land hourly data into local daily climate observations.
-- [ ] Mention PostgreSQL and reproducible artifacts without introducing Airflow internals.
-- [ ] Keep Airflow as an optional orchestration layer and link to `orchestration/README.md`.
+- [x] Keep the opening description global and concise.
+- [x] Explain that the program transforms Copernicus CDS ERA5-Land hourly data into local daily climate observations.
+- [x] Mention PostgreSQL and reproducible artifacts without introducing Airflow internals.
+- [x] Keep Airflow as an optional orchestration layer and link to `orchestration/README.md`.
 
 ## 2.2 Prerequisites
 
 Add a root-level `## Prerequisites` section containing:
 
-- [ ] Python 3.12.
-- [ ] PostgreSQL for canonical daily climate observations.
-- [ ] CDS API credentials.
-- [ ] A single host, or a shared `data/` filesystem visible to every task worker.
+- [x] Python 3.12.
+- [x] PostgreSQL for canonical daily climate observations.
+- [x] CDS API credentials.
+- [x] A single host, or a shared `data/` filesystem visible to every task worker.
 
-- [ ] Do not repeat these generic prerequisites in the orchestration README.
+- [ ] Do not repeat these generic prerequisites in the orchestration README. *(Deferred to Phase 3.)*
 
 ## 2.3 How It Works
 
-- [ ] Replace the current technical pipeline diagram with a narrative explanation.
-- [ ] Explain the process from a business/process perspective rather than implementation boundaries.
-- [ ] Avoid unnecessary use of terms such as runtime boundary, provider transport, UPSERT, interfaces, or internal module names.
-- [ ] Explain that the system:
+- [x] Replace the current technical pipeline diagram with a narrative explanation.
+- [x] Explain the process from a business/process perspective rather than implementation boundaries.
+- [x] Avoid unnecessary use of terms such as runtime boundary, provider transport, UPSERT, interfaces, or internal module names.
+- [x] Explain that the system:
   - obtains hourly climate data;
   - validates the source;
   - forms local daily observations;
   - preserves reproducible artifacts;
   - stores canonical observations;
   - makes the stored data available for analysis/modelling.
-- [ ] Keep idempotency understandable in plain language.
+- [x] Keep idempotency understandable in plain language.
 
 ## 2.4 Variables and Daily Outputs
 
-- [ ] Keep the variables/output table if it remains useful.
-- [ ] Verify that variable names, daily operation, and units match current behavior.
-- [ ] Avoid adding scientific detail already documented elsewhere.
+- [x] Keep the variables/output table if it remains useful.
+- [x] Verify that variable names, daily operation, and units match current behavior.
+- [x] Avoid adding scientific detail already documented elsewhere.
 
 ## 2.5 Local-Day Time Semantics
 
-- [ ] Define `D` explicitly.
-- [ ] Define `A(t)` explicitly as the accumulated ERA5-Land value at UTC time `t`.
-- [ ] Explain why a UTC+7 local day crosses two UTC dates.
-- [ ] Add one concrete local-day date example.
-- [ ] Show the corresponding UTC start and UTC end boundaries.
-- [ ] Add one simple accumulated-variable example, preferably total precipitation.
-- [ ] Keep the existing formula only after all symbols are explained.
-- [ ] Explain that mean variables require the complete hourly samples for the local day.
-- [ ] Keep missing values as missing; do not imply zero filling.
+- [x] Define `D` explicitly.
+- [x] Define `A(t)` explicitly as the accumulated ERA5-Land value at UTC time `t`.
+- [x] Explain why a UTC+7 local day crosses two UTC dates.
+- [x] Add one concrete local-day date example.
+- [x] Show the corresponding UTC start and UTC end boundaries.
+- [x] Add one simple accumulated-variable example, preferably total precipitation.
+- [x] Keep the existing formula only after all symbols are explained.
+- [x] Explain that mean variables require the complete hourly samples for the local day.
+- [x] Keep missing values as missing; do not imply zero filling.
 
 ## 2.6 Project Structure
 
-- [ ] Simplify the root project tree.
-- [ ] Show only major root directories/files.
-- [ ] Show only the useful high-level structure of `pipeline/`.
-- [ ] Do not list internal Airflow files in detail.
-- [ ] Remove `airflow-jwt-key.txt` from the root project-structure explanation.
-- [ ] Remove Airflow JWT generation detail from the root README.
-- [ ] Point readers to `orchestration/README.md` for Airflow-specific runtime files.
+- [x] Simplify the root project tree.
+- [x] Show only major root directories/files.
+- [x] Show only the useful high-level structure of `pipeline/`.
+- [x] Do not list internal Airflow files in detail.
+- [x] Remove `airflow-jwt-key.txt` from the root project-structure explanation.
+- [x] Remove Airflow JWT generation detail from the root README.
+- [x] Point readers to `orchestration/README.md` for Airflow-specific runtime files.
 
 ## 2.7 Pipeline Architecture
 
-- [ ] Remove the current architecture diagram based on source filenames/modules.
-- [ ] Replace it with a conceptual architecture that can be understood without reading code.
-- [ ] Prefer a flow similar to:
+- [x] Remove the current architecture diagram based on source filenames/modules.
+- [x] Replace it with a conceptual architecture that can be understood without reading code.
+- [x] Prefer a flow similar to:
 
   ```text
   Copernicus CDS
@@ -299,78 +299,92 @@ Add a root-level `## Prerequisites` section containing:
   Analysis / modelling
   ```
 
-- [ ] Avoid module/file names in the conceptual diagram.
-- [ ] If the diagram still makes the README harder to understand, replace it with a short narrative instead.
+- [x] Avoid module/file names in the conceptual diagram.
+- [x] If the diagram still makes the README harder to understand, replace it with a short narrative instead.
 
 ## 2.8 Environment Setup and `env-example`
 
-- [ ] Keep installation instructions only in the root README.
-- [ ] Keep the single `requirements.txt` installation model.
-- [ ] Expand the environment example to include relevant groups.
+- [ ] Keep installation instructions only in the root README. *(Root side completed; orchestration duplicate removal is deferred to Phase 3.)*
+- [x] Keep the single `requirements.txt` installation model.
+- [x] Expand the environment example to include relevant groups.
 
 ### Application and CDS
 
-- [ ] `APP_ENV`
-- [ ] `CDSAPI_URL`
-- [ ] `CDSAPI_KEY`
+- [x] `APP_ENV`
+- [x] `CDSAPI_URL`
+- [x] `CDSAPI_KEY`
 
 ### Pipeline PostgreSQL
 
-- [ ] Current `POSTGRES_*` variables from `env-example`.
+- [x] Current `POSTGRES_*` variables from `env-example`.
 
 ### Integration-Test PostgreSQL
 
-- [ ] Current `TEST_POSTGRES_*` variables from `env-example`.
+- [x] Current `TEST_POSTGRES_*` variables from `env-example`.
 
 ### Campaign
 
-- [ ] `CAMPAIGN_KEY`
-- [ ] `CAMPAIGN_START_YEAR`
-- [ ] `CAMPAIGN_END_YEAR`
+- [x] `CAMPAIGN_KEY`
+- [x] `CAMPAIGN_START_YEAR`
+- [x] `CAMPAIGN_END_YEAR`
 
 ### Orchestration Scheduling
 
-- [ ] `ERA5_CAMPAIGN_SCHEDULE_ENABLED`
-- [ ] `ERA5_CAMPAIGN_SCHEDULE_CADENCE`
-- [ ] `SUBMISSION_INTERVAL_SECONDS`
+- [x] `ERA5_CAMPAIGN_SCHEDULE_ENABLED`
+- [x] `ERA5_CAMPAIGN_SCHEDULE_CADENCE`
+- [x] `SUBMISSION_INTERVAL_SECONDS`
 
-- [ ] Root README should state what these groups configure at a high level.
-- [ ] Detailed Airflow behavior for cadence and pacing should remain in `orchestration/README.md`.
-- [ ] Never place real credentials or secrets in documentation examples.
+- [x] Root README should state what these groups configure at a high level.
+- [x] Detailed Airflow behavior for cadence and pacing should remain in `orchestration/README.md`.
+- [x] Never place real credentials or secrets in documentation examples.
 
 ## 2.9 Running the Pipeline
 
-- [ ] Keep the standalone pipeline command concise.
-- [ ] Explain that configured periods are processed through the same ETL behavior.
-- [ ] Avoid duplicating Airflow commands here.
-- [ ] Link to the orchestration README for Airflow operation.
+- [x] Keep the standalone pipeline command concise.
+- [x] Explain that configured periods are processed through the same ETL behavior.
+- [x] Avoid duplicating Airflow commands here.
+- [x] Link to the orchestration README for Airflow operation.
 
 ## 2.10 Data Layout
 
-- [ ] Keep one representative RAW and transformed artifact example.
-- [ ] Explain the role of dataset, bounding box, year, and deterministic filename briefly.
-- [ ] Avoid unnecessary internal storage implementation detail.
+- [x] Keep one representative RAW and transformed artifact example.
+- [x] Explain the role of dataset, bounding box, year, and deterministic filename briefly.
+- [x] Avoid unnecessary internal storage implementation detail.
 
 ## 2.11 Persistence and Modelling Access
 
-- [ ] Shorten this section substantially.
-- [ ] Explain canonical PostgreSQL storage in plain language.
-- [ ] Explain idempotent rerun behavior in plain language.
-- [ ] Add one concrete example:
+- [x] Shorten this section substantially.
+- [x] Explain canonical PostgreSQL storage in plain language.
+- [x] Explain idempotent rerun behavior in plain language.
+- [x] Add one concrete example:
   - process January 2024;
   - rerun the same request;
   - the same logical partition is reused rather than duplicated.
-- [ ] Explain that modelling reads canonical data without modifying it.
-- [ ] Move or omit low-level details such as checksum comparison, `daily_climate_id`, fallback UPSERT logic, and overlapping-partition internals unless essential for understanding.
+- [x] Explain that modelling reads canonical data without modifying it.
+- [x] Move or omit low-level details such as checksum comparison, `daily_climate_id`, fallback UPSERT logic, and overlapping-partition internals unless essential for understanding.
 
 ## 2.12 Tests
 
-- [ ] Keep root test commands concise.
-- [ ] Keep detailed test behavior in `tests/README.md`.
-- [ ] Ensure examples use quiet mode where appropriate.
-- [ ] Verify current integration-test filenames against the repository before publishing commands.
+- [x] Keep root test commands concise.
+- [x] Keep detailed test behavior in `tests/README.md`.
+- [x] Ensure examples use quiet mode where appropriate.
+- [x] Verify current integration-test filenames against the repository before publishing commands.
 
 ---
+
+
+## Phase 2 Result
+
+- Root README is now the global entry point for the ETL project.
+- `How It Works` is expressed as business/process narrative instead of checkpoint/task implementation.
+- Local-day semantics now define `D` and `A(t)` and include a concrete 2024-05-01 UTC+7 example.
+- The source-file-oriented architecture diagram was replaced with a conceptual data flow.
+- Root project structure no longer lists Airflow JWT runtime files.
+- Airflow JWT generation/authentication details were removed from the root README.
+- The environment example now includes standalone dates, application PostgreSQL, isolated test PostgreSQL, campaign identity, scheduler cadence, and CDS submission pacing.
+- Persistence/modelling access is now described through canonical storage and an idempotent January 2024 rerun example.
+- Root test examples use quiet mode and point detailed testing behavior to `tests/README.md`.
+- Removal of duplicated prerequisites/install steps from `orchestration/README.md` remains intentionally deferred to Phase 3.
 
 # Phase 3 — Refactor `/orchestration/README.md`
 
