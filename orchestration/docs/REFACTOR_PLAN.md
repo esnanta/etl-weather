@@ -1231,6 +1231,19 @@ semantics:
 The former `CAMPAIGN_START_YEAR` / `CAMPAIGN_END_YEAR` environment variables
 are removed from current configuration. This avoids deriving a full-year campaign
 from an arbitrary date and avoids making the standalone pipeline default silently
-expand to a multi-year campaign. The campaign may now begin/end on any quarter
-boundary, including a partial calendar year, without changing durable progress
-schema or request identity.
+expand to a multi-year campaign. Scheduled campaigns now require one or more complete calendar years: the start\nmust be January 1 and the end December 31. Shorter periods are manual pilots and\ndo not redefine campaign bounds. This keeps Q1 -> Q2 -> Q3 scheduler behavior\nmeaningful without changing durable progress schema or request identity.
+
+
+### 10.12 Full-year scheduled campaign contract — 2026-10-05
+
+Scheduled campaign bounds are intentionally stricter than standalone/manual
+request ranges. A scheduled campaign must span one or more complete calendar
+years: `CAMPAIGN_START_DATE=YYYY-01-01` and
+`CAMPAIGN_END_DATE=YYYY-12-31`. The minimum scheduled campaign is therefore
+one full year. Shorter validation or CDS pilots use manual DagRuns with explicit
+request dates and do not alter campaign bounds.
+
+This decision preserves meaningful Q1 -> Q2 -> Q3 progression in the scheduler,
+keeps yearly reporting intuitive, and avoids coupling short-lived pilot dates to
+durable campaign identity. `CAMPAIGN_KEY` may remain the long-term logical key
+while temporary test bounds are adjusted before real campaign execution.

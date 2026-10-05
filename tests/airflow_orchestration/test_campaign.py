@@ -64,7 +64,7 @@ def test_campaign_quarter_calendar_boundaries(
 
 
 def test_campaign_quarter_rejects_out_of_scope_values() -> None:
-    with pytest.raises(ValueError, match="Campaign year"):
+    with pytest.raises(ValueError, match="Campaign quarter"):
         CampaignQuarter(CAMPAIGN_START_YEAR - 1, 4)
     with pytest.raises(ValueError, match="quarter"):
         CampaignQuarter(CAMPAIGN_START_YEAR, 5)

@@ -24,28 +24,22 @@ def _required_environment(name: str) -> str:
 
 
 def _validate_campaign_bounds(start_date: date, end_date: date) -> None:
-    """Validate ordered quarter-aligned campaign date boundaries."""
+    """Validate a scheduled campaign spanning one or more full calendar years."""
     if start_date > end_date:
         raise RuntimeError(
             "CAMPAIGN_START_DATE must be less than or equal to CAMPAIGN_END_DATE."
         )
-    if (start_date.month, start_date.day) not in {
-        (1, 1),
-        (4, 1),
-        (7, 1),
-        (10, 1),
-    }:
+    if (start_date.month, start_date.day) != (1, 1):
         raise RuntimeError(
-            "CAMPAIGN_START_DATE must be the first day of a calendar quarter."
+            "CAMPAIGN_START_DATE must be January 1 for a scheduled campaign."
         )
-    if (end_date.month, end_date.day) not in {
-        (3, 31),
-        (6, 30),
-        (9, 30),
-        (12, 31),
-    }:
+    if (end_date.month, end_date.day) != (12, 31):
         raise RuntimeError(
-            "CAMPAIGN_END_DATE must be the last day of a calendar quarter."
+            "CAMPAIGN_END_DATE must be December 31 for a scheduled campaign."
+        )
+    if end_date.year < start_date.year:
+        raise RuntimeError(
+            "Scheduled campaign bounds must include at least one calendar year."
         )
 
 

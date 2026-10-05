@@ -37,18 +37,16 @@ CDS_END_DATE=2022-01-03
 #
 # CAMPAIGN_START_DATE / CAMPAIGN_END_DATE:
 #   Inclusive campaign bounds in canonical YYYY-MM-DD format.
-#   The current scheduler processes exact three-month calendar quarters, so
-#   CAMPAIGN_START_DATE must be the first day of a quarter:
-#     01-01, 04-01, 07-01, or 10-01
-#   and CAMPAIGN_END_DATE must be the last day of a quarter:
-#     03-31, 06-30, 09-30, or 12-31
+#   Scheduled campaigns span one or more complete calendar years.
+#   CAMPAIGN_START_DATE must be January 1 and CAMPAIGN_END_DATE must be
+#   December 31. Use a manual DagRun for shorter pilot periods.
 #
 # These values are required. activate-airflow.sh validates and displays them
 # at startup, and orchestration/config.py reads the same exported values for
 # campaign selection and reporting.
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_DATE=2016-01-01
-CAMPAIGN_END_DATE=2017-12-31
+CAMPAIGN_END_DATE=2016-12-31
 
 # Change campaign or schedule settings only while Airflow standalone is
 # stopped, then restart standalone so the DAG processor reparses the DAG.

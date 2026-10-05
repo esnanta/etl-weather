@@ -84,13 +84,13 @@ _validate_iso_date() {
 _validate_iso_date CAMPAIGN_START_DATE "$CAMPAIGN_START_DATE" || return 1 2>/dev/null || exit 1
 _validate_iso_date CAMPAIGN_END_DATE "$CAMPAIGN_END_DATE" || return 1 2>/dev/null || exit 1
 
-if ! [[ "$CAMPAIGN_START_DATE" =~ -(01-01|04-01|07-01|10-01)$ ]]; then
-    echo "ERROR: CAMPAIGN_START_DATE must be the first day of a calendar quarter." >&2
+if ! [[ "$CAMPAIGN_START_DATE" =~ -01-01$ ]]; then
+    echo "ERROR: CAMPAIGN_START_DATE must be January 1 for a scheduled campaign." >&2
     return 1 2>/dev/null || exit 1
 fi
 
-if ! [[ "$CAMPAIGN_END_DATE" =~ -(03-31|06-30|09-30|12-31)$ ]]; then
-    echo "ERROR: CAMPAIGN_END_DATE must be the last day of a calendar quarter." >&2
+if ! [[ "$CAMPAIGN_END_DATE" =~ -12-31$ ]]; then
+    echo "ERROR: CAMPAIGN_END_DATE must be December 31 for a scheduled campaign." >&2
     return 1 2>/dev/null || exit 1
 fi
 

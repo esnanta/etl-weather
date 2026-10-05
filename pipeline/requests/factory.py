@@ -27,8 +27,9 @@ def build_cds_request(
     require_api_key: bool = True,
 ) -> WeatherRequest:
     """Build the active CDS request for an explicit or configured period."""
+    load_dotenv()
     if start_date is None or end_date is None:
-        configured_start, configured_end = resolve_cds_period()
+        configured_start, configured_end = resolve_cds_period(os.environ)
         start_date = start_date or configured_start
         end_date = end_date or configured_end
     if require_api_key:
@@ -44,7 +45,6 @@ def build_cds_request(
 
 
 def _require_cds_api_key() -> None:
-    load_dotenv()
     if not os.getenv("CDSAPI_KEY", "").strip():
         raise ValueError(
             "CDSAPI_KEY is missing. Set CDSAPI_KEY=YOUR_UID:YOUR_API_KEY in .env."
