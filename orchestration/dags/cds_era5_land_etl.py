@@ -6,21 +6,42 @@ the eventual scheduler cadence and never occupies a worker while waiting.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import pendulum
 from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
+from config import validate_and_log_app_environment
 from orchestration.schedule import campaign_schedule
+from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
-from orchestration.tasks.progress import (
-    load_with_progress,
-    prepare_monthly_jobs,
-    transform_with_progress,
-)
+from orchestration.tasks.load import load_with_progress
+from orchestration.tasks.transform import ensure_transformed_checkpoint_with_progress
 
 DAG_ID = "cds_era5_land_etl"
+
+logger = logging.getLogger(__name__)
+validate_and_log_app_environment(logger)
+
+
+def prepare_resolve_raw_checkpoint_kwargs(
+    attempt_raw_checkpoint_result: dict[str, object],
+) -> dict[str, object]:
+    """Build one resolver mapping payload from one first-attempt result."""
+    request_spec = attempt_raw_checkpoint_result.get(
+        "request_spec",
+        attempt_raw_checkpoint_result.get("request"),
+    )
+    if not isinstance(request_spec, dict):
+        raise ValueError("RAW resolver requires first-attempt request metadata.")
+    return {
+        "request_spec": request_spec,
+        "progress_id": attempt_raw_checkpoint_result["progress_id"],
+        "run_mode": attempt_raw_checkpoint_result["run_mode"],
+        "first_result": attempt_raw_checkpoint_result,
+    }
 
 
 with DAG(
@@ -63,33 +84,72 @@ with DAG(
         )
 
     @task(
-        task_id="transform_or_resume",
+        task_id="ensure_transformed_checkpoint",
+        map_index_template="{{ month_label }}",
         retries=0,
         execution_timeout=timedelta(hours=2),
     )
-    def transform_or_resume(extract_result: dict[str, object]) -> dict[str, object]:
-        return transform_with_progress(extract_result)
+    def ensure_transformed_checkpoint(
+        raw_checkpoint_result: dict[str, object],
+    ) -> dict[str, object]:
+        context = get_current_context()
+        request = raw_checkpoint_result.get("request", raw_checkpoint_result.get("request_spec"))
+        if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
+            raise ValueError(
+                "Mapped transformation requires request.start_date "
+                "for the Airflow month label."
+            )
+        context["month_label"] = str(request["start_date"])[:7]
+        return ensure_transformed_checkpoint_with_progress(raw_checkpoint_result)
 
     @task(
         task_id="load",
+        map_index_template="{{ month_label }}",
         retries=1,
         retry_delay=timedelta(minutes=5),
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(minutes=30),
         execution_timeout=timedelta(hours=2),
     )
-    def load(transform_result: dict[str, object]) -> dict[str, object]:
-        return load_with_progress(transform_result)
+    def load(transformed_checkpoint_result: dict[str, object]) -> dict[str, object]:
+        context = get_current_context()
+        request = transformed_checkpoint_result.get("request", transformed_checkpoint_result.get("request_spec"))
+        if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
+            raise ValueError(
+                "Mapped load requires request.start_date "
+                "for the Airflow month label."
+            )
+        context["month_label"] = str(request["start_date"])[:7]
+        return load_with_progress(transformed_checkpoint_result)
 
     monthly_jobs = build_monthly_requests()
-    extracted = CdsPacedExtractOperator.partial(
-        task_id="extract_or_resume",
+    attempt_raw_checkpoint_results = CdsPacedExtractOperator.partial(
+        task_id="attempt_raw_checkpoint",
+        map_index_template="{{ task.month_label }}",
         pool="cds_api",
-        retries=2,
+        retries=0,
+        first_pass=True,
+        execution_timeout=timedelta(hours=6),
+    ).expand_kwargs(monthly_jobs)
+
+    resolve_raw_checkpoint_inputs = attempt_raw_checkpoint_results.output.map(
+        prepare_resolve_raw_checkpoint_kwargs
+    )
+    resolve_raw_checkpoint_results = CdsPacedExtractOperator.partial(
+        task_id="resolve_raw_checkpoint",
+        map_index_template="{{ task.month_label }}",
+        pool="cds_api",
+        retries=1,
         retry_delay=timedelta(minutes=10),
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(hours=1),
         execution_timeout=timedelta(hours=6),
-    ).expand_kwargs(monthly_jobs)
-    transformed = transform_or_resume.expand(extract_result=extracted.output)
-    load.expand(transform_result=transformed)
+    ).expand_kwargs(resolve_raw_checkpoint_inputs)
+
+    ensure_transformed_checkpoint_results = ensure_transformed_checkpoint.expand(
+        raw_checkpoint_result=resolve_raw_checkpoint_results.output
+    )
+    load_results = load.expand(
+        transformed_checkpoint_result=ensure_transformed_checkpoint_results
+    )
+

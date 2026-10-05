@@ -13,12 +13,13 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-
-PACING_SCHEMA = "climate"
-PACING_TABLE = "cds_submission_pacing"
-PACING_KEY = "cds_era5_land"
-INTERVAL_ENV = "CDS_MIN_SUBMISSION_INTERVAL_SECONDS"
-DEFAULT_INTERVAL_SECONDS = 1800
+from orchestration.config import (
+    DEFAULT_INTERVAL_SECONDS,
+    INTERVAL_ENV,
+    PACING_KEY,
+    PACING_SCHEMA,
+    PACING_TABLE,
+)
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,7 @@ memory, triggerer processes, and PostgreSQL size without printing credentials.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import tempfile
@@ -14,6 +15,20 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import disk_usage
+import sys
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
+from config import validate_and_log_app_environment
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _disk(path: Path) -> dict[str, object]:
@@ -80,7 +95,19 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
 def _postgres() -> dict[str, object]:
     try:
         from sqlalchemy import create_engine, text
-        from pipeline.database import DatabaseConfig
+        from orchestration.config import (
+            PACING_SCHEMA,
+            PACING_TABLE,
+            PIPELINE_PROGRESS_DETAIL_TABLE,
+            PIPELINE_PROGRESS_SCHEMA,
+            PIPELINE_PROGRESS_TABLE,
+        )
+        from pipeline.database import (
+            DAILY_CLIMATE_DETAIL_TABLE,
+            DAILY_CLIMATE_TABLE,
+            DatabaseConfig,
+            SCHEMA_NAME,
+        )
 
         engine = create_engine(DatabaseConfig.from_env().url, future=True,
                                connect_args={"connect_timeout": 5})
@@ -91,11 +118,11 @@ def _postgres() -> dict[str, object]:
                 ).scalar_one()
                 tables = {}
                 for table in (
-                    "climate.pipeline_progress",
-                    "climate.pipeline_progress_detail",
-                    "climate.cds_submission_pacing",
-                    "climate_data.daily_climate",
-                    "climate_data.daily_climate_detail",
+                    f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}",
+                    f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}",
+                    f"{PACING_SCHEMA}.{PACING_TABLE}",
+                    f"{SCHEMA_NAME}.{DAILY_CLIMATE_TABLE}",
+                    f"{SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE}",
                 ):
                     size = connection.execute(
                         text("SELECT pg_total_relation_size(to_regclass(:name))"),
@@ -112,6 +139,10 @@ def _postgres() -> dict[str, object]:
 
 
 def main() -> None:
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
     root = Path(__file__).resolve().parents[1]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", root / "orchestration"))
     result = {

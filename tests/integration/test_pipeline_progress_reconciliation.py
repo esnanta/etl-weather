@@ -9,6 +9,10 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
+from orchestration.config import (
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
 from orchestration.progress import PipelineProgressDefinition, ProgressPartition
 from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
@@ -91,7 +95,8 @@ def test_completion_requires_matching_persisted_partition() -> None:
                 row = connection.execute(
                     text(
                         "SELECT execution_status, completed_partition_count "
-                        "FROM climate.pipeline_progress WHERE id = :id"
+                        f"FROM {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE} "
+                        "WHERE id = :id"
                     ),
                     {"id": progress_id},
                 ).one()
@@ -199,7 +204,10 @@ def test_completion_requires_matching_persisted_partition() -> None:
                 )
                 if progress_id is not None:
                     connection.execute(
-                        text("DELETE FROM climate.pipeline_progress WHERE id = :id"),
+                        text(
+                            f"DELETE FROM {PIPELINE_PROGRESS_SCHEMA}."
+                            f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                        ),
                         {"id": progress_id},
                     )
         engine.dispose()
@@ -353,7 +361,10 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
                     )
                 if progress_id is not None:
                     connection.execute(
-                        text("DELETE FROM climate.pipeline_progress WHERE id = :id"),
+                        text(
+                            f"DELETE FROM {PIPELINE_PROGRESS_SCHEMA}."
+                            f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                        ),
                         {"id": progress_id},
                     )
         engine.dispose()

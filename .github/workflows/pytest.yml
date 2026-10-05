@@ -9,6 +9,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: dev
+      CAMPAIGN_KEY: era5_land_2016_2025
+      CAMPAIGN_START_YEAR: "2016"
+      CAMPAIGN_END_YEAR: "2017"
 
     steps:
     - name: Check out repository code

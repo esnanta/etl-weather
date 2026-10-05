@@ -8,11 +8,13 @@ from typing import Any, Mapping
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from orchestration.config import (
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
 from orchestration.progress import PipelineProgressDefinition
-
-PIPELINE_PROGRESS_SCHEMA = "climate"
-PIPELINE_PROGRESS_TABLE = "pipeline_progress"
-PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
+from pipeline.database import DAILY_CLIMATE_DETAIL_TABLE, DAILY_CLIMATE_TABLE, SCHEMA_NAME
 _ALLOWED_EXECUTION_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_BOUNDARY_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_VALIDATION_STATUSES = ("pending", "failed", "valid")
@@ -96,18 +98,6 @@ def create_pipeline_progress_tables(engine: Engine) -> None:
                         CHECK (validation_status IN ('pending', 'failed', 'valid'))
                 )
                 """
-            )
-        )
-        connection.execute(
-            text(
-                f"ALTER TABLE {parent} "
-                "ADD COLUMN IF NOT EXISTS selection_owner TEXT"
-            )
-        )
-        connection.execute(
-            text(
-                f"ALTER TABLE {parent} "
-                "ADD COLUMN IF NOT EXISTS selection_claimed_at TIMESTAMPTZ"
             )
         )
         connection.execute(
@@ -421,7 +411,7 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
             FROM {parent} AS batch
             LEFT JOIN {detail} AS partition
               ON partition.pipeline_progress_id = batch.id
-            LEFT JOIN climate_data.daily_climate AS persisted
+            LEFT JOIN {SCHEMA_NAME}.{DAILY_CLIMATE_TABLE} AS persisted
               ON persisted.request_key = partition.request_key
              AND persisted.source::text = batch.source
              AND persisted.dataset_name = batch.dataset_name
@@ -429,7 +419,7 @@ def reconcile_pipeline_progress(engine: Engine, progress_id: int) -> None:
              AND persisted.end_date = partition.end_date
             LEFT JOIN LATERAL (
                 SELECT COUNT(*) AS row_count
-                FROM climate_data.daily_climate_detail AS observation
+                FROM {SCHEMA_NAME}.{DAILY_CLIMATE_DETAIL_TABLE} AS observation
                 WHERE observation.daily_climate_id = persisted.id
             ) AS observations ON TRUE
             WHERE batch.id = :pipeline_progress_id
@@ -612,6 +602,48 @@ def release_pipeline_progress_claim(
             {"pipeline_progress_id": progress_id},
         )
     return result.rowcount == 1
+
+
+def are_extract_attempts_terminal(
+    engine: Engine,
+    progress_id: int,
+) -> bool:
+    """Return whether every expected partition finished its first extraction attempt."""
+    if progress_id <= 0:
+        raise ValueError("progress_id must be positive.")
+
+    statement = text(
+        f"""
+        SELECT
+            progress.expected_partition_count AS expected_count,
+            COUNT(detail.id) AS actual_count,
+            COUNT(detail.id) FILTER (
+                WHERE detail.extract_status IN ('complete', 'failed')
+            ) AS terminal_count
+        FROM {_parent_table()} AS progress
+        LEFT JOIN {_detail_table()} AS detail
+          ON detail.pipeline_progress_id = progress.id
+        WHERE progress.id = :pipeline_progress_id
+        GROUP BY progress.expected_partition_count
+        """
+    )
+    with engine.connect() as connection:
+        row = connection.execute(
+            statement,
+            {"pipeline_progress_id": progress_id},
+        ).mappings().one_or_none()
+
+    if row is None:
+        raise ValueError("Cannot inspect unknown pipeline progress row.")
+
+    expected_count = int(row["expected_count"])
+    actual_count = int(row["actual_count"])
+    terminal_count = int(row["terminal_count"])
+    return (
+        expected_count > 0
+        and actual_count == expected_count
+        and terminal_count == expected_count
+    )
 
 
 def get_failed_progress_partitions(

@@ -10,11 +10,16 @@ from types import SimpleNamespace
 
 import pytest
 
+from orchestration import campaign_repair
 from orchestration.campaign import CampaignBlocked, CampaignQuarter
-from orchestration.tasks import progress
-from orchestration.tasks.era5_land import build_historical_request_specs
+from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
+from orchestration.repositories.load_evidence import persisted_row_count
+from orchestration.requests import build_historical_request_specs
+from orchestration.tasks import build_monthly_requests as job_tasks
+from orchestration.tasks import extract as extract_tasks
+from orchestration.tasks import load as load_tasks
 from pipeline.extraction.cds import CdsSubmissionDeferred
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 @contextmanager
@@ -22,30 +27,27 @@ def _engine():
     yield object()
 
 
-def _spec():
+def _campaign_spec():
+    year = CAMPAIGN_START_YEAR
     return build_historical_request_specs(
-        "2024-01-01", "2024-01-31", current_local_date=date(2026, 9, 26)
+        f"{year}-01-01", f"{year}-01-31", current_local_date=date.max
     )[0]
 
 
 def _skip_schema_setup(monkeypatch) -> None:
-    for name in (
-        "create_schema", "create_daily_climate_table",
-        "create_daily_climate_detail_table", "create_pipeline_progress_tables",
-    ):
-        monkeypatch.setattr(progress, name, lambda engine: None)
+    monkeypatch.setattr(job_tasks, "initialize_progress_storage", lambda engine: None)
 
 
 def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -> None:
     definitions = []
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        job_tasks, "initialize_pipeline_progress",
         lambda engine, definition: definitions.append(definition) or 42,
     )
 
-    jobs = progress.prepare_monthly_jobs(
+    jobs = job_tasks.prepare_monthly_jobs(
         "manual", {"start_date": "2024-01-01", "end_date": "2024-01-31"}
     )
 
@@ -57,53 +59,56 @@ def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -
 
 
 def test_scheduled_terminal_run_maps_no_partitions(monkeypatch) -> None:
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: None,
     )
-    assert progress.prepare_monthly_jobs(
+    assert job_tasks.prepare_monthly_jobs(
         "scheduled", None, "scheduled__one"
     ) == []
 
 
 def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
+    year = CAMPAIGN_START_YEAR
     specs = build_historical_request_specs(
-        "2024-01-01", "2024-03-31", current_local_date=date(2026, 9, 26)
+        f"{year}-01-01", f"{year}-03-31", current_local_date=date.max
     )
     selected = SimpleNamespace(
-        quarter=CampaignQuarter(2024, 1),
+        quarter=CampaignQuarter(year, 1),
         progress_id=19,
         request_specs=tuple(specs),
     )
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: selected,
     )
 
-    jobs = progress.prepare_monthly_jobs("scheduled", {}, "scheduled__one")
+    jobs = job_tasks.prepare_monthly_jobs("scheduled", {}, "scheduled__one")
     assert len(jobs) == 3
     assert all(job["progress_id"] == 19 for job in jobs)
     assert all(job["run_mode"] == "scheduled" for job in jobs)
     assert [job["request_spec"]["start_date"] for job in jobs] == [
-        "2024-01-01", "2024-02-01", "2024-03-01"
+        f"{year}-01-01", f"{year}-02-01", f"{year}-03-01"
     ]
 
 
 def test_blocked_scheduled_run_maps_no_partitions(monkeypatch, caplog) -> None:
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        progress, "select_earliest_incomplete_quarter",
+        job_tasks, "select_earliest_incomplete_quarter",
         lambda engine, claim_owner: CampaignBlocked(
-            CampaignQuarter(2024, 1), 19, "Manual repair required"
+            CampaignQuarter(CAMPAIGN_START_YEAR, 1),
+            19,
+            "Manual repair required",
         ),
     )
     with caplog.at_level("WARNING"):
-        assert progress.prepare_monthly_jobs(
+        assert job_tasks.prepare_monthly_jobs(
             "scheduled", None, "scheduled__next"
         ) == []
     assert "Manual repair required" in caplog.text
@@ -113,21 +118,21 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
     def unexpected():
         raise AssertionError("Database access is not expected.")
 
-    monkeypatch.setattr(progress, "_progress_engine", unexpected)
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", unexpected)
     with pytest.raises(ValueError, match="require only"):
-        progress.prepare_monthly_jobs("manual", {"start_date": "2024-01-01"})
+        job_tasks.prepare_monthly_jobs("manual", {"start_date": "2024-01-01"})
 
 
 def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> None:
     updates = []
     repairs = []
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "_record",
+        load_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "load_partition",
+        load_tasks, "load_partition",
         lambda result: {
             "boundary": "load",
             "request_key": "monthly-key",
@@ -136,19 +141,19 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
             "rows_processed": 0,
         },
     )
-    monkeypatch.setattr(progress, "_identity", lambda result: ("path", "sha", 100))
+    monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
     monkeypatch.setattr(
-        progress, "_persisted_row_count", lambda engine, result, path, sha: 15
+        load_tasks, "persisted_row_count", lambda engine, result, path, sha: 15
     )
     monkeypatch.setattr(
-        progress, "_reconcile_campaign_repair",
+        load_tasks, "reconcile_campaign_repair",
         lambda *args, **kwargs: repairs.append((args, kwargs)),
     )
 
-    result = progress.load_with_progress(
+    result = load_tasks.load_with_progress(
         {
             "progress_id": 42, "request_key": "monthly-key",
-            "request": _spec(), "run_mode": "manual",
+            "request": _campaign_spec(), "run_mode": "manual",
         }
     )
     assert result["progress_id"] == 42
@@ -163,23 +168,34 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
 
 def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
     updates = []
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "_record",
+        load_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "load_partition",
+        load_tasks, "load_partition",
         lambda result: {"request_key": "monthly-key", "artifact_path": "partition"},
     )
-    monkeypatch.setattr(progress, "_identity", lambda result: ("path", "sha", 100))
+    monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
+    monkeypatch.setattr(
+        load_tasks,
+        "record_failure",
+        lambda progress_id, request_key, boundary, error: updates.append(
+            {
+                f"{boundary}_status": "failed",
+                "validation_status": "failed",
+                "last_error": type(error).__name__,
+            }
+        ),
+    )
 
     def invalid_proof(engine, result, path, checksum):
         raise ValueError("Mismatch")
 
-    monkeypatch.setattr(progress, "_persisted_row_count", invalid_proof)
+    monkeypatch.setattr(load_tasks, "persisted_row_count", invalid_proof)
     with pytest.raises(ValueError, match="Mismatch"):
-        progress.load_with_progress({"progress_id": 42, "request_key": "monthly-key"})
+        load_tasks.load_with_progress({"progress_id": 42, "request_key": "monthly-key"})
     assert updates[-1]["load_status"] == "failed"
     assert updates[-1]["validation_status"] == "failed"
 
@@ -222,7 +238,7 @@ def test_persisted_load_proof_rejects_missing_or_mismatched_rows(row) -> None:
 
     engine = SimpleNamespace(connect=lambda: Connection())
     with pytest.raises(ValueError, match="does not match"):
-        progress._persisted_row_count(
+        persisted_row_count(
             engine, {"daily_climate_id": 7, "request_key": "key"}, "path", "sha"
         )
 
@@ -251,7 +267,7 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
             return Result()
 
     engine = SimpleNamespace(connect=lambda: Connection())
-    assert progress._persisted_row_count(
+    assert persisted_row_count(
         engine, {"daily_climate_id": 7, "request_key": "key"}, "path", "sha"
     ) == 2
 
@@ -259,39 +275,39 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
 def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     from orchestration.campaign import matching_campaign_progress_definition
 
-    definition = matching_campaign_progress_definition(_spec())
+    definition = matching_campaign_progress_definition(_campaign_spec())
     assert definition is not None
     updates = []
     reconciled = []
     released = []
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        campaign_repair, "initialize_pipeline_progress",
         lambda engine, received: 91 if received == definition else None,
     )
     monkeypatch.setattr(
-        progress, "raw_artifact_for_request",
+        campaign_repair, "raw_artifact_for_request",
         lambda request: SimpleNamespace(
             path=SimpleNamespace(as_posix=lambda: "raw.nc")
         ),
     )
-    monkeypatch.setattr(progress, "_identity", lambda result: ("raw.nc", "raw-sha", 80))
+    monkeypatch.setattr(campaign_repair, "artifact_identity", lambda result: ("raw.nc", "raw-sha", 80))
     monkeypatch.setattr(
-        progress, "update_pipeline_progress_detail",
+        campaign_repair, "update_pipeline_progress_detail",
         lambda engine, progress_id, request_key, **fields:
             updates.append((progress_id, request_key, fields)),
     )
     monkeypatch.setattr(
-        progress, "reconcile_pipeline_progress",
+        campaign_repair, "reconcile_pipeline_progress",
         lambda engine, progress_id: reconciled.append(progress_id),
     )
     monkeypatch.setattr(
-        progress, "release_pipeline_progress_claim",
+        campaign_repair, "release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
-    progress._reconcile_campaign_repair(
-        42, _spec(), definition.partitions[0].request_key,
+    campaign_repair.reconcile_campaign_repair(
+        42, _campaign_spec(), definition.partitions[0].request_key,
         "transformed.parquet", "parquet-sha", 100, 15,
         manual_repair=True,
     )
@@ -307,15 +323,18 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
 
 
 def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
+    outside_year = CAMPAIGN_END_YEAR + 1
     partial = build_historical_request_specs(
-        "2024-01-15", "2024-01-31", current_local_date=date(2026, 9, 26)
+        f"{outside_year}-01-15",
+        f"{outside_year}-01-31",
+        current_local_date=date.max,
     )[0]
 
     def unexpected():
         raise AssertionError("Quarter progress must not be touched.")
 
-    monkeypatch.setattr(progress, "_progress_engine", unexpected)
-    progress._reconcile_campaign_repair(
+    monkeypatch.setattr(campaign_repair, "runtime_database_engine", unexpected)
+    campaign_repair.reconcile_campaign_repair(
         42, partial, "partial-key", "path", "sha", 100, 15,
         manual_repair=True,
     )
@@ -323,18 +342,18 @@ def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
 
 def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None:
     released = []
-    monkeypatch.setattr(progress, "_progress_engine", _engine)
+    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
     monkeypatch.setattr(
-        progress, "initialize_pipeline_progress",
+        campaign_repair, "initialize_pipeline_progress",
         lambda engine, definition: 42,
     )
     monkeypatch.setattr(
-        progress, "release_pipeline_progress_claim",
+        campaign_repair, "release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
-    progress._reconcile_campaign_repair(
-        42, _spec(), "monthly-key", "path", "sha", 100, 15,
+    campaign_repair.reconcile_campaign_repair(
+        42, _campaign_spec(), "monthly-key", "path", "sha", 100, 15,
         manual_repair=True,
     )
     assert released == [(42, False)]
@@ -343,18 +362,53 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
 def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
     updates = []
     monkeypatch.setattr(
-        progress, "_record",
+        extract_tasks, "record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        progress, "extract_partition",
+        extract_tasks, "ensure_raw_checkpoint_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
             CdsSubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
     )
     with pytest.raises(CdsSubmissionDeferred):
-        progress.extract_with_progress(_spec(), 42, "manual", paced=True)
+        extract_tasks.ensure_raw_checkpoint_with_progress(_campaign_spec(), 42, "manual", paced=True)
     assert updates == [{
         "extract_status": "running", "transform_status": "pending",
         "load_status": "pending", "validation_status": "pending",
     }]
+
+
+
+def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    _skip_schema_setup(monkeypatch)
+    year = CAMPAIGN_START_YEAR
+    specs = build_historical_request_specs(
+        f"{year}-01-01", f"{year}-03-31", current_local_date=date.max
+    )
+    monkeypatch.setattr(
+        job_tasks, "select_earliest_incomplete_quarter",
+        lambda engine, claim_owner: SimpleNamespace(
+            quarter=CampaignQuarter(year, 1), progress_id=19,
+            request_specs=tuple(specs),
+        ),
+    )
+    anchor = datetime(2026, 9, 27, 10, tzinfo=timezone.utc)
+    jobs = job_tasks.prepare_monthly_jobs(
+        "scheduled", {}, "scheduled__one", slot_anchor=anchor
+    )
+    assert [job["earliest_start_at"] for job in jobs] == [
+        (anchor + timedelta(hours=offset)).isoformat() for offset in range(3)
+    ]
+    assert len({job["progress_id"] for job in jobs}) == 1
+
+
+def test_manual_recovery_has_no_scheduled_slot(monkeypatch) -> None:
+    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    _skip_schema_setup(monkeypatch)
+    monkeypatch.setattr(job_tasks, "initialize_pipeline_progress", lambda engine, definition: 42)
+    jobs = job_tasks.prepare_monthly_jobs(
+        "manual", {"start_date": "2024-01-01", "end_date": "2024-01-31"}
+    )
+    assert jobs[0]["earliest_start_at"] is None

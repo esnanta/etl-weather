@@ -10,9 +10,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
+from config import APPLICATION_SCHEMA
+
 logger = logging.getLogger(__name__)
 
-SCHEMA_NAME = "climate_data"
+# Public schema name retained for existing database callers.
+SCHEMA_NAME = APPLICATION_SCHEMA
 DAILY_CLIMATE_TABLE = "daily_climate"
 DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
 

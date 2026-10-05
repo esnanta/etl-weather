@@ -1,7 +1,7 @@
-"""Read the fixed campaign's exact progress identities for operator reporting.
+"""Read configured campaign progress identities for operator reporting.
 
 Manual ranges and changed configurations can coexist in PostgreSQL, so a
-yearly summary must match the forty current quarter definitions explicitly.
+yearly summary must match the current campaign quarter definitions explicitly.
 """
 
 from __future__ import annotations
@@ -12,8 +12,20 @@ from datetime import date, datetime
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from orchestration.campaign import CampaignQuarter, build_quarter_request_specs, iter_campaign_quarters
-from orchestration.progress import PipelineProgressDefinition, build_pipeline_progress_definition
+from orchestration.campaign import (
+    CampaignQuarter,
+    build_campaign_progress_definition,
+    build_quarter_request_specs,
+    iter_campaign_quarters,
+)
+from orchestration.config import (
+    CAMPAIGN_END_YEAR,
+    CAMPAIGN_START_YEAR,
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
+from orchestration.progress import PipelineProgressDefinition
 
 
 @dataclass(frozen=True)
@@ -42,18 +54,20 @@ def _load_quarter_report(
     quarter: CampaignQuarter,
     definition: PipelineProgressDefinition,
 ) -> QuarterReport:
+    parent_table = f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}"
+    detail_table = f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
     with engine.connect() as connection:
         row = connection.execute(
-            text("""
+            text(f"""
                 SELECT p.id, p.execution_status, p.validation_status,
                        p.completed_partition_count, p.failed_partition_count,
                        p.last_error, latest.last_load_at,
                        latest.last_loaded_month
-                FROM climate.pipeline_progress AS p
+                FROM {parent_table} AS p
                 LEFT JOIN LATERAL (
                     SELECT d.completed_at AS last_load_at,
                            d.start_date AS last_loaded_month
-                    FROM climate.pipeline_progress_detail AS d
+                    FROM {detail_table} AS d
                     WHERE d.pipeline_progress_id = p.id
                       AND d.load_status = 'complete'
                       AND d.validation_status = 'valid'
@@ -78,10 +92,10 @@ def _load_quarter_report(
         if row is None:
             return QuarterReport(quarter, "not_initialized")
         month_rows = connection.execute(
-            text("""
+            text(f"""
                 SELECT start_date, extract_status, transform_status,
                        load_status, validation_status
-                FROM climate.pipeline_progress_detail
+                FROM {detail_table}
                 WHERE pipeline_progress_id = :progress_id
                 ORDER BY start_date
             """),
@@ -121,7 +135,7 @@ def read_campaign_report(engine: Engine) -> tuple[QuarterReport, ...]:
     reports = []
     for quarter in iter_campaign_quarters():
         specs = build_quarter_request_specs(quarter, current_local_date=datetime.max.date())
-        definition = build_pipeline_progress_definition(specs)
+        definition = build_campaign_progress_definition(specs)
         reports.append(_load_quarter_report(engine, quarter, definition))
     return tuple(reports)
 
@@ -130,14 +144,15 @@ def format_campaign_report(reports: tuple[QuarterReport, ...]) -> str:
     """Render one bounded yearly summary with failed quarters and last load."""
     quarters = iter_campaign_quarters()
     if tuple(item.quarter for item in reports) != quarters:
-        raise ValueError("Campaign report must contain forty ordered quarters.")
+        raise ValueError("Campaign report must contain all configured ordered quarters.")
     completed = sum(item.status == "complete" for item in reports)
     failed = sum(item.status == "failed" for item in reports)
     lines = [
-        f"Campaign 2016-2025: {completed}/40 quarters complete; "
-        f"{40 - completed} remaining; {failed} failed."
+        f"Campaign {CAMPAIGN_START_YEAR}-{CAMPAIGN_END_YEAR}: "
+        f"{completed}/{len(quarters)} quarters complete; "
+        f"{len(quarters) - completed} remaining; {failed} failed."
     ]
-    for year in range(2016, 2026):
+    for year in range(CAMPAIGN_START_YEAR, CAMPAIGN_END_YEAR + 1):
         yearly = [item for item in reports if item.quarter.year == year]
         count = sum(item.status == "complete" for item in yearly)
         lines.append(f"{year}: {count}/4 quarters complete")

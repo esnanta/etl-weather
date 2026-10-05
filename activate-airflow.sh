@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 # source activate-airflow.sh
 
+_AIRFLOW_QUIET=0
+for _airflow_arg in "$@"; do
+    case "$_airflow_arg" in
+        -q|--quiet)
+            _AIRFLOW_QUIET=1
+            ;;
+        -h|--help)
+            echo "Usage: source activate-airflow.sh [-q|--quiet]"
+            return 0 2>/dev/null || exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown option '$_airflow_arg'." >&2
+            echo "Usage: source activate-airflow.sh [-q|--quiet]" >&2
+            return 1 2>/dev/null || exit 1
+            ;;
+    esac
+done
+unset _airflow_arg
+
+_airflow_info() {
+    [[ $_AIRFLOW_QUIET -eq 1 ]] && return 0
+    echo "$@"
+}
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
@@ -19,6 +43,56 @@ if [[ -f "$PROJECT_ROOT/.env" ]]; then
     [[ $_AIRFLOW_ALLEXPORT_WAS_SET -eq 0 ]] && set +a
     unset _AIRFLOW_ALLEXPORT_WAS_SET
 fi
+
+if [[ -z "${APP_ENV+x}" || -z "${APP_ENV//[[:space:]]/}" ]]; then
+    echo "WARNING: APP_ENV is required." >&2
+    echo "Set APP_ENV=dev or APP_ENV=prod in $PROJECT_ROOT/.env before starting the application." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+case "${APP_ENV,,}" in
+    dev|prod)
+        export APP_ENV="${APP_ENV,,}"
+        ;;
+    *)
+        echo "WARNING: Invalid APP_ENV='${APP_ENV}'." >&2
+        echo "Set APP_ENV=dev or APP_ENV=prod in $PROJECT_ROOT/.env before starting the application." >&2
+        return 1 2>/dev/null || exit 1
+        ;;
+esac
+
+for _campaign_var in CAMPAIGN_KEY CAMPAIGN_START_YEAR CAMPAIGN_END_YEAR; do
+    _campaign_value="${!_campaign_var-}"
+    if [[ -z "${_campaign_value//[[:space:]]/}" ]]; then
+        echo "ERROR: ${_campaign_var} is required in $PROJECT_ROOT/.env." >&2
+        unset _campaign_var _campaign_value
+        return 1 2>/dev/null || exit 1
+    fi
+done
+unset _campaign_var _campaign_value
+
+if ! [[ "$CAMPAIGN_START_YEAR" =~ ^[0-9]{4}$ ]]; then
+    echo "ERROR: CAMPAIGN_START_YEAR must be a four-digit integer year." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+if ! [[ "$CAMPAIGN_END_YEAR" =~ ^[0-9]{4}$ ]]; then
+    echo "ERROR: CAMPAIGN_END_YEAR must be a four-digit integer year." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+if (( 10#$CAMPAIGN_START_YEAR > 10#$CAMPAIGN_END_YEAR )); then
+    echo "ERROR: CAMPAIGN_START_YEAR must be <= CAMPAIGN_END_YEAR." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+echo "Application environment | APP_ENV=$APP_ENV"
+echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_ENABLED=${ERA5_CAMPAIGN_SCHEDULE_ENABLED:-}"
+echo "Application environment | ERA5_CAMPAIGN_SCHEDULE_CADENCE=${ERA5_CAMPAIGN_SCHEDULE_CADENCE:-}"
+echo "Application environment | CDS_MIN_SUBMISSION_INTERVAL_SECONDS=${CDS_MIN_SUBMISSION_INTERVAL_SECONDS:-}"
+echo "Application environment | CAMPAIGN_KEY=${CAMPAIGN_KEY:-}"
+echo "Application environment | CAMPAIGN_START_YEAR=${CAMPAIGN_START_YEAR:-}"
+echo "Application environment | CAMPAIGN_END_YEAR=${CAMPAIGN_END_YEAR:-}"
 
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/myvenv/bin/activate"
@@ -51,11 +125,14 @@ export AIRFLOW__CORE__DAGS_FOLDER="$AIRFLOW_HOME/dags"
 export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="sqlite:///$AIRFLOW_HOME/airflow.db"
 export PYTHONPATH="$PROJECT_ROOT"
 
-echo "PROJECT_ROOT=$PROJECT_ROOT"
-echo "VIRTUAL_ENV=$VIRTUAL_ENV"
-echo "AIRFLOW_HOME=$AIRFLOW_HOME"
-echo "AIRFLOW_CONFIG=$AIRFLOW_CONFIG"
-echo "AIRFLOW__CORE__DAGS_FOLDER=$AIRFLOW__CORE__DAGS_FOLDER"
-echo "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
-echo "AIRFLOW_JWT_SECRET_FILE=$AIRFLOW_JWT_SECRET_FILE"
-echo "PYTHONPATH=$PYTHONPATH"
+_airflow_info "PROJECT_ROOT=$PROJECT_ROOT"
+_airflow_info "VIRTUAL_ENV=$VIRTUAL_ENV"
+_airflow_info "AIRFLOW_HOME=$AIRFLOW_HOME"
+_airflow_info "AIRFLOW_CONFIG=$AIRFLOW_CONFIG"
+_airflow_info "AIRFLOW__CORE__DAGS_FOLDER=$AIRFLOW__CORE__DAGS_FOLDER"
+_airflow_info "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"
+_airflow_info "AIRFLOW_JWT_SECRET_FILE=$AIRFLOW_JWT_SECRET_FILE"
+_airflow_info "PYTHONPATH=$PYTHONPATH"
+
+unset -f _airflow_info
+unset _AIRFLOW_QUIET

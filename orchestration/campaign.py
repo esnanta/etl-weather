@@ -4,16 +4,18 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from typing import TYPE_CHECKING, Any, Mapping
-from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from orchestration.progress import PipelineProgressDefinition
 
-CAMPAIGN_KEY = "era5_land_2016_2025"
-CAMPAIGN_START_YEAR = 2016
-CAMPAIGN_END_YEAR = 2025
-CAMPAIGN_TIMEZONE = ZoneInfo("Asia/Jakarta")
+from orchestration.config import (
+    AVAILABILITY_LAG_DAYS,
+    CAMPAIGN_END_YEAR,
+    CAMPAIGN_KEY,
+    CAMPAIGN_START_YEAR,
+    CAMPAIGN_TIMEZONE,
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -69,13 +71,25 @@ def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
     )
 
 
+def build_campaign_progress_definition(
+    request_specs: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> PipelineProgressDefinition:
+    """Build durable progress identity scoped to the configured campaign key."""
+    from orchestration.progress import build_pipeline_progress_definition
+
+    return build_pipeline_progress_definition(
+        request_specs,
+        identity_context={"campaign_key": CAMPAIGN_KEY},
+    )
+
+
 def build_quarter_request_specs(
     quarter: CampaignQuarter,
     *,
     current_local_date: date | None = None,
 ) -> list[dict[str, object]]:
     """Build exactly three validated monthly request specs for one campaign quarter."""
-    from orchestration.tasks.era5_land import build_historical_request_specs
+    from orchestration.requests import build_historical_request_specs
 
     specs = build_historical_request_specs(
         quarter.start_date.isoformat(),
@@ -94,8 +108,7 @@ def initialize_campaign_progress(
     *,
     current_local_date: date | None = None,
 ) -> tuple[int, ...]:
-    """Idempotently seed all forty quarter batches before scheduled selection."""
-    from orchestration.progress import build_pipeline_progress_definition
+    """Idempotently seed all configured quarter batches before selection."""
     from orchestration.repositories.pipeline_progress import initialize_pipeline_progress
 
     progress_ids = []
@@ -103,7 +116,7 @@ def initialize_campaign_progress(
         specs = build_quarter_request_specs(
             quarter, current_local_date=current_local_date
         )
-        definition = build_pipeline_progress_definition(specs)
+        definition = build_campaign_progress_definition(specs)
         progress_ids.append(initialize_pipeline_progress(engine, definition))
     return tuple(progress_ids)
 
@@ -112,7 +125,6 @@ def matching_campaign_progress_definition(
     request_spec: Mapping[str, Any],
 ) -> PipelineProgressDefinition | None:
     """Match one exact calendar-month request to the current campaign identity."""
-    from orchestration.progress import build_pipeline_progress_definition
     from pipeline.request import build_request_key, weather_request_from_spec
 
     request = weather_request_from_spec(request_spec)
@@ -128,7 +140,7 @@ def matching_campaign_progress_definition(
 
     quarter = CampaignQuarter(start.year, (start.month - 1) // 3 + 1)
     specs = build_quarter_request_specs(quarter, current_local_date=date.max)
-    definition = build_pipeline_progress_definition(specs)
+    definition = build_campaign_progress_definition(specs)
     request_key = build_request_key(request)
     if request_key not in {partition.request_key for partition in definition.partitions}:
         return None
@@ -148,8 +160,6 @@ def select_earliest_incomplete_quarter(
         reconcile_pipeline_progress,
         try_claim_pipeline_progress,
     )
-    from orchestration.tasks.era5_land import AVAILABILITY_LAG_DAYS
-
     today = current_local_date or datetime.now(CAMPAIGN_TIMEZONE).date()
     eligibility_boundary = today - timedelta(days=AVAILABILITY_LAG_DAYS)
 

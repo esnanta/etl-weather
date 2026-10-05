@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from orchestration.progress import build_pipeline_progress_definition
-from orchestration.tasks.era5_land import build_historical_request_specs
+from orchestration.requests import build_historical_request_specs
 
 
 def _specs(start_date: str, end_date: str) -> list[dict[str, object]]:
@@ -50,6 +50,21 @@ def test_progress_identity_is_stable_and_request_sensitive() -> None:
         "2024-02-01",
         "2024-03-01",
     ]
+
+
+def test_progress_identity_changes_with_context() -> None:
+    specs = _specs("2024-01-01", "2024-01-31")
+
+    first = build_pipeline_progress_definition(
+        specs,
+        identity_context={"campaign_key": "campaign-a"},
+    )
+    second = build_pipeline_progress_definition(
+        specs,
+        identity_context={"campaign_key": "campaign-b"},
+    )
+
+    assert first.configuration_identity != second.configuration_identity
 
 
 def test_progress_definition_rejects_empty_or_mixed_configuration() -> None:

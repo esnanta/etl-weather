@@ -3,11 +3,17 @@ from typing import cast
 import pytest
 from sqlalchemy.engine import Engine
 
+from orchestration.config import (
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PIPELINE_PROGRESS_SCHEMA,
+    PIPELINE_PROGRESS_TABLE,
+)
 from orchestration.progress import (
     PipelineProgressDefinition,
     ProgressPartition,
 )
 from orchestration.repositories.pipeline_progress import (
+    are_extract_attempts_terminal,
     create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
@@ -86,9 +92,15 @@ def test_progress_ddl_is_cadence_neutral_parent_detail_model() -> None:
     create_pipeline_progress_tables(cast(Engine, cast(object, engine)))
 
     sql = "\n".join(engine.connection.statements)
-    assert "CREATE SCHEMA IF NOT EXISTS climate" in sql
-    assert "CREATE TABLE IF NOT EXISTS climate.pipeline_progress" in sql
-    assert "CREATE TABLE IF NOT EXISTS climate.pipeline_progress_detail" in sql
+    assert f"CREATE SCHEMA IF NOT EXISTS {PIPELINE_PROGRESS_SCHEMA}" in sql
+    assert (
+        f"CREATE TABLE IF NOT EXISTS "
+        f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}"
+    ) in sql
+    assert (
+        f"CREATE TABLE IF NOT EXISTS "
+        f"{PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
+    ) in sql
     assert "configuration_identity TEXT NOT NULL" in sql
     assert "expected_partition_count INTEGER NOT NULL" in sql
     assert "completed_partition_count INTEGER NOT NULL DEFAULT 0" in sql
@@ -119,10 +131,14 @@ def test_initialize_progress_seeds_parent_and_expected_details() -> None:
 
     sql = "\n".join(engine.connection.statements)
     assert progress_id == 42
-    assert "INSERT INTO climate.pipeline_progress" in sql
+    assert (
+        f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_TABLE}"
+    ) in sql
     assert "configuration_identity" in sql
     assert "ON CONFLICT (" in sql
-    assert "INSERT INTO climate.pipeline_progress_detail" in sql
+    assert (
+        f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
+    ) in sql
     detail_params = [
         params
         for params in engine.connection.params
@@ -224,3 +240,77 @@ def test_claim_is_atomic_and_released_only_after_verified_completion() -> None:
     assert "execution_status = 'complete'" in release_sql
     assert "validation_status = 'valid'" in release_sql
     assert "selection_owner = NULL" in release_sql
+
+
+
+class _BarrierResult:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def mappings(self):
+        return self
+
+    def one_or_none(self):
+        return self.row
+
+
+class _BarrierConnection:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def execute(self, statement, params):
+        assert params == {"pipeline_progress_id": 42}
+        return _BarrierResult(self.row)
+
+
+class _BarrierEngine:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def connect(self):
+        return _BarrierConnection(self.row)
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        (
+            {"expected_count": 3, "actual_count": 3, "terminal_count": 3},
+            True,
+        ),
+        (
+            {"expected_count": 3, "actual_count": 3, "terminal_count": 2},
+            False,
+        ),
+        (
+            {"expected_count": 3, "actual_count": 2, "terminal_count": 2},
+            False,
+        ),
+    ],
+)
+def test_extract_attempt_barrier_requires_every_expected_terminal_partition(
+    row: dict[str, int],
+    expected: bool,
+) -> None:
+    engine = _BarrierEngine(row)
+
+    assert are_extract_attempts_terminal(
+        cast(Engine, cast(object, engine)),
+        42,
+    ) is expected
+
+
+def test_extract_attempt_barrier_rejects_unknown_progress() -> None:
+    engine = _BarrierEngine(None)
+
+    with pytest.raises(ValueError, match="unknown pipeline progress"):
+        are_extract_attempts_terminal(
+            cast(Engine, cast(object, engine)),
+            42,
+        )

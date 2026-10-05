@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from pipeline.model import DataSource
-from scripts.config import (
-    build_cds_request,
+from config import (
+    database_recreation_allowed,
+    resolve_app_environment,
+    validate_and_log_app_environment,
 )
+from pipeline.model import DataSource
+from request_factory import build_cds_request
 
 
 def test_build_cds_request_requires_api_key(monkeypatch) -> None:
     # Isolate the missing-key scenario from a developer's real .env file.
-    monkeypatch.setattr("scripts.config.load_dotenv", lambda: False)
+    monkeypatch.setattr("request_factory.load_dotenv", lambda: False)
     monkeypatch.delenv("CDSAPI_KEY", raising=False)
 
     with pytest.raises(ValueError):
@@ -44,3 +47,59 @@ def test_build_cds_request_accepts_explicit_period_without_secret_check(
 
     assert request.start_date == "2016-01-01"
     assert request.end_date == "2025-12-31"
+
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("dev", "dev"), ("DEV", "dev"), ("prod", "prod"), ("PROD", "prod")],
+)
+def test_application_environment_accepts_only_explicit_modes(value, expected) -> None:
+    assert resolve_app_environment({"APP_ENV": value}) == expected
+
+
+def test_application_environment_requires_explicit_value() -> None:
+    with pytest.raises(ValueError, match="APP_ENV is required"):
+        resolve_app_environment({})
+    with pytest.raises(ValueError, match="APP_ENV is required"):
+        database_recreation_allowed({})
+
+
+def test_database_recreation_is_allowed_only_in_dev() -> None:
+    assert database_recreation_allowed({"APP_ENV": "dev"}) is True
+    assert database_recreation_allowed({"APP_ENV": "prod"}) is False
+
+
+def test_application_environment_rejects_ambiguous_values() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Set APP_ENV=dev or APP_ENV=prod",
+    ):
+        resolve_app_environment({"APP_ENV": "development"})
+
+
+
+def test_application_environment_rejects_blank_value() -> None:
+    with pytest.raises(ValueError, match="APP_ENV is required"):
+        resolve_app_environment({"APP_ENV": "   "})
+
+
+def test_application_environment_logs_valid_mode(caplog) -> None:
+    import logging
+
+    logger = logging.getLogger("test.app_env")
+    with caplog.at_level(logging.INFO, logger="test.app_env"):
+        assert validate_and_log_app_environment(
+            logger, {"APP_ENV": "dev"}
+        ) == "dev"
+    assert "Application environment | APP_ENV=dev" in caplog.text
+
+
+def test_application_environment_logs_warning_before_abort(caplog) -> None:
+    import logging
+
+    logger = logging.getLogger("test.app_env.invalid")
+    with caplog.at_level(logging.WARNING, logger="test.app_env.invalid"):
+        with pytest.raises(ValueError, match="Set APP_ENV=dev or APP_ENV=prod"):
+            validate_and_log_app_environment(logger, {})
+    assert "Application startup aborted" in caplog.text

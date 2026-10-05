@@ -1,17 +1,16 @@
 import logging
 from types import SimpleNamespace
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from orchestration.tasks import era5_land
-from orchestration.tasks.era5_land import (
-    build_historical_request_specs,
-    extract_partition,
-    inclusive_local_dates,
-    load_partition,
-    transform_partition,
-)
+from orchestration import monitoring
+from orchestration.intervals import inclusive_local_dates
+from orchestration.requests import build_historical_request_specs
+from orchestration.tasks.extract import ensure_raw_checkpoint_partition
+from orchestration.tasks.load import load_partition
+from orchestration.tasks.transform import ensure_transformed_checkpoint_partition
 
 
 def test_build_historical_request_specs_requires_explicit_dates() -> None:
@@ -75,14 +74,14 @@ def test_inclusive_local_dates_rejects_naive_boundaries() -> None:
         inclusive_local_dates(start, end)
 
 
-def test_transform_partition_rejects_wrong_upstream_boundary() -> None:
-    with pytest.raises(ValueError, match="Expected extract_or_resume"):
-        transform_partition({"boundary": "load"})
+def test_ensure_transformed_checkpoint_partition_rejects_wrong_upstream_boundary() -> None:
+    with pytest.raises(ValueError, match="Expected ensure_raw_checkpoint"):
+        ensure_transformed_checkpoint_partition({"boundary": "load"})
 
 
 def test_load_partition_rejects_missing_request_metadata() -> None:
     with pytest.raises(ValueError, match="missing a request"):
-        load_partition({"boundary": "transform_or_resume"})
+        load_partition({"boundary": "ensure_transformed_checkpoint"})
 
 
 def test_partition_boundaries_log_peak_memory_without_changing_xcom(
@@ -93,23 +92,23 @@ def test_partition_boundaries_log_peak_memory_without_changing_xcom(
     spec = build_historical_request_specs(
         "2024-01-01", "2024-01-31", current_local_date=date(2026, 9, 21)
     )[0]
-    extract_result = {"boundary": "extract_or_resume", "request": spec, "request_key": "key"}
+    extract_result = {"boundary": "ensure_raw_checkpoint", "request": spec, "request_key": "key"}
     transform_result = {
-        "boundary": "transform_or_resume", "request": spec, "request_key": "key"
+        "boundary": "ensure_transformed_checkpoint", "request": spec, "request_key": "key"
     }
     load_result = {"boundary": "load", "request": spec, "request_key": "key"}
-    monkeypatch.setattr(runtime, "extract_request_partition", lambda request: extract_result)
-    monkeypatch.setattr(runtime, "transform_request_partition", lambda request: transform_result)
+    monkeypatch.setattr(runtime, "ensure_raw_checkpoint_partition", lambda request: extract_result)
+    monkeypatch.setattr(runtime, "ensure_transformed_checkpoint_partition", lambda request: transform_result)
     monkeypatch.setattr(runtime, "load_request_partition", lambda request: load_result)
 
     with caplog.at_level(logging.INFO, logger="orchestration.tasks.era5_land"):
-        assert extract_partition(spec) is extract_result
-        assert transform_partition(extract_result) is transform_result
+        assert ensure_raw_checkpoint_partition(spec) is extract_result
+        assert ensure_transformed_checkpoint_partition(extract_result) is transform_result
         assert load_partition(transform_result) is load_result
 
     memory_logs = [record.message for record in caplog.records if "[METRIC] task memory" in record.message]
     assert len(memory_logs) == 3
-    for boundary, message in zip(("extract_or_resume", "transform_or_resume", "load"), memory_logs):
+    for boundary, message in zip(("ensure_raw_checkpoint", "ensure_transformed_checkpoint", "load"), memory_logs):
         assert f"boundary={boundary}" in message
         assert "process_peak_rss_mib=" in message
         assert "peak_before_mib=" in message
@@ -127,38 +126,44 @@ def test_peak_memory_is_logged_when_partition_fails(
     def fail_extraction(request: object) -> None:
         raise RuntimeError("extract failed")
 
-    monkeypatch.setattr(runtime, "extract_request_partition", fail_extraction)
+    monkeypatch.setattr(runtime, "ensure_raw_checkpoint_partition", fail_extraction)
     with caplog.at_level(logging.INFO, logger="orchestration.tasks.era5_land"):
         with pytest.raises(RuntimeError, match="extract failed"):
-            extract_partition(spec)
+            ensure_raw_checkpoint_partition(spec)
     assert any(
-        "[METRIC] task memory | boundary=extract_or_resume" in record.message
+        "[METRIC] task memory | boundary=ensure_raw_checkpoint" in record.message
         for record in caplog.records
     )
+
+
+def test_monitoring_data_path_still_targets_repository_data() -> None:
+    expected = Path(__file__).resolve().parents[2] / "data"
+    resolved = Path(monitoring.__file__).resolve().parents[1] / "data"
+    assert resolved == expected
 
 
 def test_disk_warning_reports_low_space_without_failing_task(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(
-        era5_land.shutil,
+        monitoring.shutil,
         "disk_usage",
-        lambda path: SimpleNamespace(free=4 * era5_land.GIB),
+        lambda path: SimpleNamespace(free=4 * monitoring.GIB),
     )
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
-        era5_land.warn_low_disk_space("transform_or_resume")
+        monitoring.warn_low_disk_space("ensure_transformed_checkpoint")
     warnings = [record.message for record in caplog.records if "[DISK]" in record.message]
     assert len(warnings) >= 1
-    assert all("boundary=transform_or_resume" in message for message in warnings)
+    assert all("boundary=ensure_transformed_checkpoint" in message for message in warnings)
     assert any("available_gib=4.00" in message for message in warnings)
 
     caplog.clear()
     monkeypatch.setattr(
-        era5_land.shutil,
+        monitoring.shutil,
         "disk_usage",
-        lambda path: SimpleNamespace(free=6 * era5_land.GIB),
+        lambda path: SimpleNamespace(free=6 * monitoring.GIB),
     )
-    era5_land.warn_low_disk_space("transform_or_resume")
+    monitoring.warn_low_disk_space("ensure_transformed_checkpoint")
     assert not any("[DISK]" in record.message for record in caplog.records)
 
 
@@ -168,11 +173,11 @@ def test_disk_warning_reports_unavailable_measurement(
     def unavailable(path: object) -> None:
         raise OSError("measurement failed")
 
-    monkeypatch.setattr(era5_land.shutil, "disk_usage", unavailable)
+    monkeypatch.setattr(monitoring.shutil, "disk_usage", unavailable)
     with caplog.at_level(logging.WARNING, logger="orchestration.tasks.era5_land"):
-        era5_land.warn_low_disk_space("extract_or_resume")
+        monitoring.warn_low_disk_space("ensure_raw_checkpoint")
     assert any(
         "[DISK] free space check unavailable" in record.message
-        and "boundary=extract_or_resume" in record.message
+        and "boundary=ensure_raw_checkpoint" in record.message
         for record in caplog.records
     )

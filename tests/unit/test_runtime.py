@@ -222,7 +222,7 @@ def _pipeline():
     return request, pipeline, extractor, storage, transformer, loader
 
 
-def test_extract_or_resume_creates_raw_checkpoint_when_missing(monkeypatch) -> None:
+def test_ensure_raw_checkpoint_creates_raw_checkpoint_when_missing(monkeypatch) -> None:
     request, pipeline, extractor, storage, _, _ = _pipeline()
     validation_calls = []
 
@@ -231,7 +231,7 @@ def test_extract_or_resume_creates_raw_checkpoint_when_missing(monkeypatch) -> N
         lambda dataset: validation_calls.append(dataset),
     )
 
-    raw_dataset, artifact, loaded_dataset = pipeline.extract_or_resume(request)
+    raw_dataset, artifact, loaded_dataset = pipeline.ensure_raw_checkpoint(request)
 
     assert extractor.calls == 1
     assert storage.save_raw_calls == 1
@@ -242,7 +242,7 @@ def test_extract_or_resume_creates_raw_checkpoint_when_missing(monkeypatch) -> N
     assert loaded_dataset.raw_data.equals(storage.loaded_dataset_value.raw_data)
 
 
-def test_extract_or_resume_uses_and_validates_existing_raw_checkpoint(monkeypatch) -> None:
+def test_ensure_raw_checkpoint_uses_and_validates_existing_raw_checkpoint(monkeypatch) -> None:
     request, pipeline, extractor, storage, _, _ = _pipeline()
     validation_calls = []
 
@@ -252,7 +252,7 @@ def test_extract_or_resume_uses_and_validates_existing_raw_checkpoint(monkeypatc
         lambda dataset: validation_calls.append(dataset),
     )
 
-    raw_dataset, _, _ = pipeline.extract_or_resume(request)
+    raw_dataset, _, _ = pipeline.ensure_raw_checkpoint(request)
 
     assert extractor.calls == 0
     assert storage.load_raw_calls == 1
@@ -260,7 +260,7 @@ def test_extract_or_resume_uses_and_validates_existing_raw_checkpoint(monkeypatc
     assert validation_calls == [raw_dataset]
 
 
-def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch) -> None:
+def test_ensure_transformed_checkpoint_uses_and_validates_existing_checkpoint(monkeypatch) -> None:
     _, pipeline, _, storage, transformer, _ = _pipeline()
     validation_calls = []
 
@@ -270,7 +270,7 @@ def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch)
         lambda dataset: validation_calls.append(dataset),
     )
 
-    transformed, artifact = pipeline.transform_or_resume(
+    transformed, artifact = pipeline.ensure_transformed_checkpoint(
         storage.loaded_dataset_value,
         storage.raw_artifact_value,
     )
@@ -282,7 +282,7 @@ def test_transform_or_resume_uses_and_validates_existing_checkpoint(monkeypatch)
     assert artifact == storage.transformed_artifact_value
 
 
-def test_transform_or_resume_validates_before_saving_new_checkpoint(
+def test_ensure_transformed_checkpoint_validates_before_saving_new_checkpoint(
     monkeypatch,
 ) -> None:
     _, pipeline, _, storage, transformer, _ = _pipeline()
@@ -293,7 +293,7 @@ def test_transform_or_resume_validates_before_saving_new_checkpoint(
         lambda dataset: validation_calls.append(dataset),
     )
 
-    transformed, _ = pipeline.transform_or_resume(
+    transformed, _ = pipeline.ensure_transformed_checkpoint(
         storage.loaded_dataset_value,
         storage.raw_artifact_value,
     )
