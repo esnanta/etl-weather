@@ -1,8 +1,15 @@
 # ETL Weather
 
-ETL pipeline for downloading Copernicus Climate Data Store (CDS) ERA5-Land hourly data, transforming it into UTC+7 daily climate observations, storing deterministic NetCDF and Parquet artifacts, and loading the results idempotently into PostgreSQL.
+ETL Weather converts Copernicus Climate Data Store (CDS) ERA5-Land hourly data into daily climate observations for the project's local UTC+7 day, preserves reproducible NetCDF and Parquet artifacts, and stores canonical daily observations in PostgreSQL.
 
-The pipeline runs independently from Apache Airflow and can also be orchestrated through the explicit date-range ETL DAG in `orchestration/`. Airflow does not move scientific transformation logic out of `pipeline/`.
+The ETL pipeline can run directly from the command line or be coordinated by Apache Airflow. Airflow remains an orchestration layer; the scientific processing and persistence behavior stay in `pipeline/`.
+
+## Prerequisites
+
+- Python 3.12
+- PostgreSQL for canonical daily climate observations
+- CDS API credentials
+- A single host, or a shared `data/` filesystem visible to every task worker
 
 ## Active Dataset
 
@@ -16,25 +23,11 @@ database output    : PostgreSQL daily climate observations
 
 ## How It Works
 
-```text
-CDS ERA5-Land hourly data
-        ↓
-RAW NetCDF checkpoint
-        ↓
-RAW validation
-        ↓
-UTC+7 daily transformation
-        ↓
-Transformed Parquet checkpoint
-        ↓
-Transformed validation
-        ↓
-Idempotent PostgreSQL load
-        ↓
-Read-only modelling access
-```
+The program starts with hourly ERA5-Land climate data from Copernicus CDS. It checks that the requested source data is complete and suitable for processing, then converts the hourly observations into daily values that follow the project's UTC+7 local day rather than a UTC calendar day.
 
-The hourly RAW checkpoint remains the scientific source of truth. Existing checkpoints are resumed and validated rather than silently overwritten, and repeated database loads update the same logical partition instead of appending duplicates.
+The original hourly data is retained as a reproducible RAW artifact, while the resulting daily observations are stored as Parquet. The validated daily observations are then persisted in PostgreSQL as the canonical dataset used by downstream analysis and modelling.
+
+If the same logical request is run again, the program reuses and validates the existing artifacts where possible and avoids creating duplicate canonical observations. This allows interrupted or repeated processing to continue safely without treating every rerun as new climate data.
 
 ## Variables and Daily Outputs
 
@@ -48,140 +41,90 @@ The hourly RAW checkpoint remains the scientific source of truth. Existing check
 
 ## Local-Day Time Semantics
 
-ERA5-Land input timestamps use UTC, while this project produces daily observations for `Asia/Jakarta` (UTC+7). The transformed data retains both `valid_time` and `valid_time_local`; neither is replaced with a generic `date` field.
+ERA5-Land input timestamps use UTC, while this project produces daily observations for `Asia/Jakarta` (UTC+7). A local calendar day therefore crosses two UTC dates.
 
-For an accumulated variable and local day `D`, the implemented boundary calculation is:
+Let:
+
+- `D` be the local calendar date being produced; and
+- `A(t)` be the accumulated ERA5-Land value at UTC time `t`.
+
+For an accumulated variable, the implemented boundary calculation is:
 
 ```text
 Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
 ```
 
-This uses the UTC boundaries corresponding to a UTC+7 local day. Daily means for `t2m`, `d2m`, and `swvl1` require the complete set of hourly samples for the local day. Missing observations remain missing rather than being converted to zero.
+For example, local day **2024-05-01** runs from:
+
+```text
+2024-05-01 00:00 UTC+7 = 2024-04-30 17:00 UTC
+2024-05-02 00:00 UTC+7 = 2024-05-01 17:00 UTC
+```
+
+For total precipitation, suppose the accumulated values after unit conversion are:
+
+```text
+A(2024-04-30 17:00 UTC) = 8 mm
+A(2024-05-01 00:00 UTC) = 12 mm
+A(2024-05-01 17:00 UTC) = 7 mm
+```
+
+Then the precipitation assigned to local day 2024-05-01 is:
+
+```text
+7 + 12 - 8 = 11 mm/day
+```
+
+The values above are only an arithmetic example of the implemented boundary calculation.
+
+Daily means for `t2m`, `d2m`, and `swvl1` require the complete hourly samples belonging to the local day. Missing observations remain missing rather than being converted to zero. The transformed data retains both `valid_time` and `valid_time_local`.
+
+## Pipeline Architecture
+
+At a high level, the project follows this data flow:
+
+```text
+Copernicus CDS
+      ↓
+Acquire hourly climate data
+      ↓
+Validate source data
+      ↓
+Build UTC+7 daily observations
+      ↓
+Preserve reproducible artifacts
+      ↓
+Store canonical observations
+      ↓
+Analysis / modelling
+```
+
+The important boundary is conceptual: `pipeline/` owns climate-data acquisition, validation, transformation, artifact handling, and persistence. Airflow may coordinate those operations, but it does not redefine their scientific behavior.
 
 ## Project Structure
 
 ```text
 etl-weather/
-├── docs/
-├── orchestration/
-│   ├── campaign/
-│   ├── dags/
-│   ├── docs/
-│   ├── monitoring/
-│   ├── operators/
-│   ├── progress/
-│   ├── repositories/
-│   ├── scheduling/
-│   ├── tasks/
-│   ├── airflow.cfg
-│   └── README.md
-├── pipeline/
-│   ├── contracts/
+├── config.py                 # shared lightweight application configuration
+├── docs/                     # design decisions and project documentation
+├── orchestration/            # Airflow orchestration layer
+│   └── README.md             # Airflow setup and operations
+├── pipeline/                 # ETL and canonical data-access implementation
 │   ├── database/
 │   ├── extraction/
-│   ├── interfaces/
 │   ├── loaders/
-│   ├── models/
-│   ├── observability/
-│   ├── providers/
 │   ├── repositories/
-│   ├── requests/
 │   ├── storage/
 │   ├── transformation/
-│   ├── validation/
-│   └── runtime.py
-├── scripts/
-├── tests/
-├── activate-airflow.sh
-├── airflow-jwt-key.txt         # generated locally; ignored by Git
-├── generate-airflow-jwt-secret.sh
-├── requirements.txt
+│   └── validation/
+├── scripts/                  # standalone and operational entry points
+├── tests/                    # unit, integration, and orchestration tests
+├── env-example               # example environment configuration
+├── requirements.txt          # single project dependency manifest
 └── README.md
 ```
 
-The `pipeline/` package is organized by responsibility. `runtime.py` remains
-the public composition layer, while models, interfaces, request construction,
-provider transport, extraction policy, validation, transformation, storage,
-persistence, repository reads, and observability live in named subpackages.
-Airflow-specific policy remains under `orchestration/`.
-
-## Pipeline Architecture
-
-```text
-                         +------------------------------+
-                         | scripts / Airflow adapters   |
-                         +--------------+---------------+
-                                        |
-                                        v
-                         +------------------------------+
-                         | pipeline/runtime.py          |
-                         | checkpoint composition       |
-                         |                              |
-                         | ensure_raw_checkpoint()      |
-                         | ensure_transformed_checkpoint() |
-                         | load()                       |
-                         +-----+-----------+------------+
-                               |           |
-                 +-------------+           +------------------+
-                 |                                            |
-                 v                                            v
-      +-------------------------+                 +-------------------------+
-      | interfaces/etl.py       |                 | interfaces/etl.py       |
-      | WeatherExtractor        |                 | DataTransformer/Loader  |
-      +------------+------------+                 +------------+------------+
-                   |                                           |
-                   v                                           v
-      +-------------------------+                 +-------------------------+
-      | extraction/             |                 | transformation/         |
-      | cds_era5_land.py        |                 | era5_land_daily.py      |
-      |                         |                 |                         |
-      | context/chunk/cache     |                 | UTC+7 daily science     |
-      +------------+------------+                 +------------+------------+
-                   |                                           |
-                   v                                           v
-      +-------------------------+                 +-------------------------+
-      | providers/              |                 | validation/             |
-      | catalog.py              |                 | era5_land_daily.py      |
-      | cds_client.py           |                 +-------------------------+
-      | cds_era5_land.py        |
-      +------------+------------+
-                   |
-                   v
-          Copernicus CDS ERA5-Land
-
-      +-------------------------+                 +-------------------------+
-      | storage/                |                 | loaders/                |
-      | artifacts.py            |                 | daily_climate_postgres.py|
-      | local_checkpoints.py    |                 | transactional UPSERT    |
-      +------------+------------+                 +------------+------------+
-                   |                                           |
-          +--------+--------+                                  v
-          |                 |                        +----------------------+
-          v                 v                        | PostgreSQL           |
-     RAW NetCDF      Transformed Parquet             | climate_data.*       |
-                                                     +----------+-----------+
-                                                                |
-                                                                v
-                                                     +----------------------+
-                                                     | repositories/        |
-                                                     | daily_climate_reader.py |
-                                                     | read-only modelling  |
-                                                     +----------------------+
-
-Shared responsibility modules
------------------------------
-contracts/era5_land.py       -> scientific/time/output contracts
-models/weather.py            -> requests, datasets, artifacts, enums
-requests/weather.py          -> validation, normalization, partitioning, identity
-requests/factory.py          -> configured CDS/Aceh request construction
-observability/logging.py     -> pipeline metrics and readable process logs
-database/                    -> PostgreSQL configuration and schema bootstrap
-
-Key boundary:
-Airflow orchestrates the checkpoint-backed runtime boundaries, while provider
-transport, scientific transformation, validation, artifact storage, and
-PostgreSQL persistence remain inside `pipeline/`.
-```
+The root README documents the project as a whole. Airflow-specific runtime files, authentication setup, scheduling behavior, and operational recovery are documented in [`orchestration/README.md`](./orchestration/README.md).
 
 ## Environment Setup
 
@@ -192,10 +135,7 @@ python3 -m venv myvenv
 source myvenv/bin/activate
 ```
 
-The project uses one dependency manifest, `requirements.txt`. Install the
-pinned Airflow version first with its matching official constraints, then
-install the complete project manifest without applying the Airflow constraints
-to unrelated project packages:
+The project uses one dependency manifest, `requirements.txt`. Install the pinned Airflow version first with its matching official constraints, then install the complete project manifest:
 
 ```bash
 AIRFLOW_VERSION=3.3.2
@@ -207,63 +147,55 @@ pip install -r requirements.txt
 pip check
 ```
 
-Activate the environment in the current shell before running the pipeline or tests:
-
-```bash
-source myvenv/bin/activate
-```
-
-Copy `env-example` to `.env`, set the application environment and campaign
-identity/range explicitly, then set the CDS credentials:
+Copy `env-example` to `.env` and replace the placeholder values with the local configuration:
 
 ```env
 APP_ENV=dev
 
-CAMPAIGN_KEY=era5_land_2016_2025
-CAMPAIGN_START_YEAR=2016
-CAMPAIGN_END_YEAR=2017
-
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
+
+CDS_START_DATE=2022-01-01
+CDS_END_DATE=2022-01-03
+
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=your_database_name
+POSTGRES_USER=your_username
+POSTGRES_PASSWORD=your_password
+
+TEST_POSTGRES_HOST=localhost
+TEST_POSTGRES_PORT=5432
+TEST_POSTGRES_DATABASE=weather_test
+TEST_POSTGRES_USER=your_test_username
+TEST_POSTGRES_PASSWORD=your_test_password
+
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2016
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+SUBMISSION_INTERVAL_SECONDS=1800
 ```
 
-`APP_ENV` is mandatory and accepts only `dev` or `prod`. The three
-campaign variables are also mandatory for Airflow orchestration.
-`activate-airflow.sh` validates them before startup, while
-`orchestration/config.py` reads the same exported values for campaign
-selection and reporting. Application entrypoints log the selected mode and
-campaign values at startup. Missing or invalid required values abort startup;
-no campaign range is silently assumed.
+`APP_ENV` selects the application environment. `CDS_START_DATE` and `CDS_END_DATE` provide the default inclusive period for standalone pipeline execution. `POSTGRES_*` configures the canonical application database, while `TEST_POSTGRES_*` identifies the isolated PostgreSQL database used by integration tests.
 
-Generate the shared Airflow JWT secret without printing it to the terminal:
+The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, and recovery semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
 
-```bash
-./generate-airflow-jwt-secret.sh
-```
-
-The script creates or atomically replaces the ignored `airflow-jwt-key.txt`
-file and restricts its permission to the current user. `activate-airflow.sh`
-then configures Airflow to read this file through
-`AIRFLOW__API_AUTH__JWT_SECRET_CMD`; the secret is not stored in `.env`.
-
-PostgreSQL and isolated integration-test settings are also documented in `env-example`.
+Never commit real CDS or PostgreSQL credentials.
 
 ## Running the Pipeline
 
-Run the active CDS ERA5-Land pipeline with:
+Run the standalone ERA5-Land pipeline with:
 
 ```bash
 python scripts/run_pipeline_cds.py
 ```
 
-The dataset, variables, and bounding box are defined by project configuration. The default standalone period comes from `CDS_START_DATE` and `CDS_END_DATE` in `.env`; long periods are split into monthly requests by the pipeline runtime.
+The active dataset, variables, and Aceh bounding box are defined by project configuration. The default standalone period comes from `CDS_START_DATE` and `CDS_END_DATE` in `.env`. Longer periods are processed as monthly request partitions while preserving the same ETL behavior.
 
-## Running with Apache Airflow
-
-The manually triggered ERA5-Land ETL DAG accepts an explicit inclusive
-date range and maps it into deterministic monthly partitions. Installation,
-configuration, task flow, and safe rollout instructions are documented in
-[`orchestration/README.md`](./orchestration/README.md).
+For Airflow scheduling, manual recovery, and campaign operation, see [`orchestration/README.md`](./orchestration/README.md).
 
 ## Data Layout
 
@@ -281,13 +213,15 @@ data/
                 └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
 ```
 
-The bounding-box directory prevents artifacts from different spatial requests from colliding. RAW data uses NetCDF, transformed daily data uses Parquet, and filenames deterministically include the request period and variables. RAW artifacts are immutable checkpoints.
+The dataset and bounding-box directories keep different requests separate. RAW hourly data is stored as NetCDF, transformed daily data is stored as Parquet, and deterministic filenames make the request period and variable set identifiable.
 
 ## Persistence and Modelling Access
 
-PostgreSQL stores one metadata row for each logical daily-climate partition and detail rows for daily grid-cell observations. Metadata and observations use deterministic UPSERT identities, so rerunning the same request partition does not create duplicates. Before writing, the loader compares the `request_key`, transformed artifact path/checksum, and observation count; an unchanged partition skips metadata/detail writes and reports zero processed rows, while any mismatch falls back to the transactional UPSERT path. Idempotency is scoped to the `request_key` (provider, dataset, period, variable set, and bounding box), not globally to grid points: overlapping bounding boxes are separate partitions and may store the same time/latitude/longitude observation under different `daily_climate_id` values.
+PostgreSQL stores the canonical daily climate observations. Reprocessing the same logical request does not create another copy of the same partition.
 
-The modelling read path selects data explicitly by source, dataset, period, and bounding box. It returns an in-memory Pandas DataFrame without mutating the canonical climate tables or creating a second physical feature dataset.
+For example, if January 2024 has already been processed and the identical January request is run again, the pipeline validates and reuses the same logical partition rather than appending duplicate daily grid observations.
+
+Downstream modelling reads selected canonical observations into memory without changing the stored climate data or creating a second physical copy simply for feature access.
 
 ## Running Tests
 
@@ -297,10 +231,10 @@ Run the offline unit tests with:
 python -m pytest tests/unit -q
 ```
 
-Run the isolated PostgreSQL integration tests with:
+Run the core isolated PostgreSQL idempotency integration test with:
 
 ```bash
-python -m pytest tests/integration/test_postgresql_idempotency.py -v
+python -m pytest tests/integration/test_postgresql_idempotency.py -q
 ```
 
-The integration tests require the `TEST_POSTGRES_*` variables from `env-example`. Detailed testing contracts and expected behavior are documented in [tests/README.md](./tests/README.md).
+Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).
