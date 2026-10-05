@@ -1,371 +1,196 @@
-# Pipeline Testing
+# Testing
 
-This document defines the testing strategy for the current ERA5-Land ETL and modelling-data access pipeline.
+This document explains how testing is organized for the ERA5-Land ETL project, what each test layer protects, and how to run the current test suites.
 
-Current path:
+For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules are kept in [`tests/AGENTS.md`](./AGENTS.md).
+
+## Testing Strategy
+
+The project uses three main test layers:
 
 ```text
-CDS ERA5-Land hourly RAW
-→ validation
-→ RAW NetCDF checkpoint
-→ UTC+7 daily transformation
-→ transformed validation
-→ Parquet checkpoint
-→ idempotent PostgreSQL load
-→ daily_climate / daily_climate_detail
-→ controlled in-memory modelling access
+tests/unit/
+      ↓
+fast, offline behavior
+
+tests/airflow_orchestration/
+      ↓
+scheduling and orchestration policy
+
+tests/integration/
+      ↓
+real isolated PostgreSQL behavior
 ```
 
-Core behavior must remain testable without Apache Airflow.
+Unit tests and Airflow orchestration tests should not require live CDS requests. PostgreSQL integration tests use a dedicated test database configured through `TEST_POSTGRES_*`.
 
----
+Scientific correctness is part of software correctness: tests must protect the meaning of local daily climate observations, not only whether code executes successfully.
 
-## Testing Goals
+## What the Tests Protect
 
-Tests must protect:
+The suite should give confidence that:
 
-- provider variable naming;
+- ERA5-Land requests use the expected variables and spatial/temporal inputs;
+- hourly source data is validated before transformation;
+- UTC+7 daily observations are calculated consistently;
+- daily units and missing values keep their intended meaning;
+- RAW and transformed artifacts can be resumed safely;
+- repeated processing does not create duplicate canonical observations;
+- database failures do not leave partially committed climate data;
+- read-only modelling access does not change canonical climate observations;
+- Airflow scheduling, retry, pacing, progress, and recovery rules behave as intended.
+
+Detailed invariants such as exact database identities, provenance fields, and persistence rules belong in `tests/AGENTS.md`.
+
+## Unit Tests
+
+Unit tests live in:
+
+```text
+tests/unit/
+```
+
+They cover pipeline and maintenance behavior that can be tested quickly and deterministically without live CDS or PostgreSQL.
+
+Typical responsibilities include:
+
+- request construction and validation;
 - CDS normalization;
-- hourly RAW integrity;
-- temporal/spatial validation;
-- UTC+7 daily semantics;
-- accumulated-variable formulas;
-- daily means and units;
-- transformed schema;
-- deterministic artifact naming;
-- RAW immutability;
-- checkpoint/resume;
-- deterministic request identity;
-- idempotent PostgreSQL loading;
-- unchanged-partition database-write skipping with safe UPSERT fallback;
-- canonical daily-climate table and foreign-key names;
-- controlled database-to-memory access;
-- artifact provenance and checksum integrity;
-- atomic NetCDF and Parquet writes;
-- isolated PostgreSQL idempotency and transaction rollback.
+- local-day transformation and units;
+- source and transformed-data validation;
+- deterministic artifact storage and resume behavior;
+- database schema/configuration logic without a live database;
+- load/idempotency decisions through isolated test doubles;
+- read-only climate-data access behavior;
+- logging, pacing helpers, and local maintenance scripts.
 
-Scientific correctness is part of software correctness.
+Unit tests should be small, readable, and focused on one responsibility.
 
----
+## Airflow Orchestration Tests
 
-## Locked Scientific Contract
-
-Provider variables:
+Airflow-specific tests live in:
 
 ```text
-tp
-t2m
-d2m
-swvl1
-ssrd
+tests/airflow_orchestration/
 ```
 
-Transformed schema:
+They protect orchestration behavior rather than scientific calculations.
 
-```text
-valid_time
-valid_time_local
-latitude
-longitude
-tp
-t2m
-swvl1
-ssrd
-d2m
-```
+Typical responsibilities include:
 
-Output units:
+- DAG parsing and task dependencies;
+- scheduled versus manual mode;
+- campaign selection and configuration;
+- monthly mapping and start-slot policy;
+- retry and deferral behavior;
+- durable progress and reconciliation wiring;
+- CDS submission pacing policy;
+- reporting and monitoring behavior;
+- concurrency, pools, and task metadata handoff.
 
-```text
-tp    → mm/day
-t2m   → degC
-d2m   → degC
-swvl1 → m3/m3
-ssrd  → J/m2/day
-```
-
-Do not drop `valid_time`, rename `valid_time_local` to a generic date field, or replace missing values with zero unless a specific contract explicitly requires it.
-
----
-
-## PostgreSQL Contract Under Test
-
-Canonical tables:
-
-```text
-climate_data.daily_climate
-climate_data.daily_climate_detail
-```
-
-Canonical detail foreign key:
-
-```text
-daily_climate_id
-```
-
-The development database supports only the current schema. Tests must not preserve compatibility behavior for discarded development schemas.
-
-`daily_climate.request_key` identifies a logical request partition.
-
-Partition provenance stored in `daily_climate`:
-
-```text
-downloaded_at
-transformed_artifact_path
-transformed_sha256
-transformed_at
-```
-
-RAW path/checksum are stored in Parquet file metadata rather than PostgreSQL.
-
-Observation uniqueness:
-
-```text
-daily_climate_id + valid_time + latitude + longitude
-```
-
-Retry behavior must use UPSERT semantics rather than duplicate append.
-Before skipping a database write, the loader must match the `request_key`,
-transformed artifact path, transformed checksum, and expected observation count.
-Any mismatch must use the normal transactional UPSERT path.
-
-Provider-to-database mapping:
-
-```text
-tp     → tp_daily_total_mm
-t2m    → t2m_daily_mean_c
-d2m    → d2m_daily_mean_c
-swvl1  → swvl1_daily_mean_m3_m3
-ssrd   → ssrd_daily_total_j_m2
-```
-
----
-
-## Unit Test Responsibilities
-
-Current modules include:
-
-```text
-test_config_requests.py
-test_daily_climate_repository.py
-test_database.py
-test_extract.py
-test_extract_cds_normalization.py
-test_load.py
-test_runtime.py
-test_storage.py
-test_transform.py
-test_request.py
-test_validation.py
-```
-
-`test_load.py` should protect:
-
-- canonical `daily_climate` / `daily_climate_detail` configuration;
-- `daily_climate_id` foreign-key naming;
-- provider-to-database column mapping;
-- deterministic request-key UPSERT;
-- idempotent metadata behavior;
-- UPSERT-oriented observation persistence.
-- unchanged-partition detection and zero-write return behavior;
-- UPSERT fallback when checksum, transformed artifact path, or observation count differs.
-
-`test_daily_climate_repository.py` should protect:
-
-- explicit source/dataset/period/bbox selection;
-- canonical table joins;
-- required DataFrame columns;
-- deterministic ordering;
-- duplicate local-day grid detection;
-- preservation of missing values;
-- read-only PostgreSQL-to-DataFrame behavior.
-
-Routine unit tests must not require a live PostgreSQL server.
-
----
-
-## Checkpoint and Idempotency Regression Rules
-
-Checkpoint behavior:
-
-```text
-same logical request → same artifact path
-RAW existing         → resume, never overwrite silently
-Parquet existing     → resume and validate
-```
-
-Database idempotency:
-
-```text
-same request_key → same logical partition identity
-same observation key → UPSERT, not duplicate append
-same request_key + artifact identity + row count → skip unchanged database write
-any identity/count mismatch → execute transactional UPSERT
-```
-
-When an isolated database integration test is used, loading the same partition twice should leave zero duplicate observation keys.
-
----
-
-## Modelling-Data Access Contract
-
-Controlled modelling-data access is defined as:
-
-> controlled and validated access from canonical PostgreSQL daily climate observations to an in-memory modelling dataset, without creating a duplicate physical dataset and without changing meteorological semantics.
-
-Repository tests should verify:
-
-- selection is explicit by source/dataset/period/spatial or partition identity as appropriate;
-- returned data preserves both `valid_time` and `valid_time_local`;
-- daily statistic columns retain their meanings and units;
-- missing values remain distinguishable from observed zero;
-- canonical climate truth is not mutated by the read path;
-- no extra physical `daily_feature_dataset` is created merely to duplicate existing rows.
-
-The five meteorological variables are candidate parameters only. Tests must not assume all five are final clustering inputs.
-
-Modelling-data access must remain separate from:
-
-```text
-wet-day identification
-feature contribution / subset evaluation
-```
-
----
-
-## Retry, Resume, and Provenance Verification
-
-The suite protects the retry, resume, validation, storage, database, and modelling-data boundaries needed before historical ETL runs.
-
-Provenance coverage protects:
-
-- SHA-256 byte-change detection;
-- preservation of RAW `downloaded_at`;
-- Parquet RAW provenance metadata;
-- rejection of transformed resume after RAW checksum change;
-- PostgreSQL provenance columns;
-- metadata UPSERT of transformed artifact path/checksum;
-- runtime artifact handoff into transform/resume and database load.
-
-The core baseline before Airflow implementation was:
-
-```text
-100 unit tests passed
-2 PostgreSQL integration tests passed
-```
-
-The integration result requires an explicitly configured test database. It is not part of the default offline unit-test run.
-
----
+Scientific transformation behavior should stay covered by unit tests instead of being duplicated in DAG tests.
 
 ## PostgreSQL Integration Tests
 
-`tests/integration/test_postgresql_idempotency.py` uses the real loader and an isolated schema to verify two database behaviors:
-
-1. loading the same unchanged logical partition twice skips the second database write and does not create duplicate observations;
-2. a detail-row failure rolls back both the detail rows and the metadata UPSERT in the same transaction.
-
-Configuration is loaded from `.env` through:
+PostgreSQL integration tests live in:
 
 ```text
-TEST_POSTGRES_HOST
-TEST_POSTGRES_PORT
-TEST_POSTGRES_DATABASE
-TEST_POSTGRES_USER
-TEST_POSTGRES_PASSWORD
+tests/integration/
 ```
 
-If these variables are absent, the integration module is skipped rather than connecting to a development or production database implicitly.
+These tests use real PostgreSQL behavior with the isolated `TEST_POSTGRES_*` configuration.
 
----
+They protect areas that cannot be proven reliably with mocks alone, including:
 
-## Known NetCDF Runtime Warning
+- repeated loads remaining idempotent;
+- transaction rollback after a database failure;
+- campaign-progress reconciliation against persisted climate evidence;
+- CDS submission pacing coordination using the PostgreSQL clock and locking;
+- database bootstrap being safe to run on both a fresh and an already-initialized test database.
 
-The project retains:
+The integration database must be separate from development or production data. `TEST_POSTGRES_DATABASE` is expected to identify a test database.
+
+## Idempotency and Recovery Examples
+
+### Reprocessing the same climate partition
+
+If January 2024 has already been loaded and the same logical request is processed again:
 
 ```text
-numpy==2.5.1
-netCDF4==1.7.4
+first run  → canonical January partition stored
+second run → existing partition validated/reused
+result     → no duplicate daily observations
 ```
 
-Under pytest, importing the NetCDF backend can emit an upstream `numpy.ndarray size changed` runtime warning. It remains visible by project decision because changing either version did not remove the warning consistently, `pip check` remains clean, and NetCDF tests still pass.
+### Database failure during a load
 
-Do not add a broad `RuntimeWarning` filter. Warnings produced by scientific validation, such as negative accumulations, must remain observable.
+If a database error occurs while writing a partition:
 
----
+```text
+metadata write + observation write
+            ↓
+         failure
+            ↓
+transaction rolled back
+            ↓
+no partial canonical partition
+```
+
+### Resuming artifacts
+
+If a valid RAW or transformed artifact already exists, tests verify that the pipeline resumes and validates it rather than silently replacing it.
+
+The exact technical rules behind these behaviors are documented in `tests/AGENTS.md`.
+
+## Running Tests
+
+Run unit and Airflow orchestration regression tests with scheduling disabled:
+
+```bash
+source activate-airflow.sh
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit tests/airflow_orchestration -q
+```
+
+Run the isolated PostgreSQL integration tests with:
+
+```bash
+source activate-airflow.sh
+
+python -m pytest \
+  tests/integration/test_postgresql_idempotency.py \
+  tests/integration/test_pipeline_progress_reconciliation.py \
+  tests/integration/test_submission_pacing.py \
+  tests/integration/test_orchestration_database_bootstrap.py \
+  -q
+```
+
+Integration tests use the `TEST_POSTGRES_*` variables from `env-example`.
+
+The README intentionally does not keep a permanent "N tests passed" baseline because the number changes as the suite evolves. The reproducible command and a clean result are the important contract.
 
 ## Test Style
 
 - Use `pytest`.
-- Keep fixtures small, deterministic, and readable.
-- Prefer offline execution.
-- Mock external systems, not internal scientific logic.
-- Use explicit expected values for formulas, units, and timestamps.
-- Include negative cases for validation and persistence behavior.
+- Prefer small, deterministic fixtures.
+- Keep routine unit tests offline.
+- Mock external systems rather than internal scientific logic.
+- Use explicit expected values for climate formulas, units, and timestamps.
+- Include negative cases for validation, persistence, retry, and recovery behavior.
 - Use temporary directories for generated artifacts.
-- Do not write tests into the real project `data/` directory.
-
----
-
-## Airflow Testing
-
-Airflow tests live in `tests/airflow_orchestration/`.
-
-They should cover orchestration only:
-
-- DAG import/parse;
-- task IDs and dependencies;
-- schedule/data intervals;
-- retries;
-- concurrency/pools;
-- small artifact/control metadata handoff.
-
-Do not duplicate scientific transformation or modelling-data access tests inside DAG tests.
-
----
-
-## Running Tests
-
-```bash
-python -m pytest tests/unit -q
-python -m pytest tests/airflow_orchestration -q
-python -m pytest tests/integration -v
-```
-
-Focused ERA5-Land pipeline suite:
-
-```bash
-python -m pytest \
-  tests/unit/test_request.py \
-  tests/unit/test_extract_cds_normalization.py \
-  tests/unit/test_transform.py \
-  tests/unit/test_validation.py \
-  tests/unit/test_storage.py \
-  tests/unit/test_database.py \
-  tests/unit/test_load.py \
-  tests/unit/test_runtime.py \
-  tests/unit/test_daily_climate_repository.py -v
-```
-
-Latest verified baseline:
-
-```text
-119 unit/orchestration tests passed
-2 PostgreSQL integration tests passed against an isolated test database
-```
-
----
+- Never write test artifacts into the real project `data/` directory.
 
 ## Definition of Done
 
-New behavior should normally have:
+A behavior change is normally complete when it has:
 
 ```text
 implementation
-+ focused unit tests
++ focused automated tests
 + negative cases where relevant
-+ integration/runtime verification for external I/O
-+ documentation update when a data contract changes
++ integration verification for real external I/O where needed
++ documentation update when a public contract changes
 ```
 
-Do not mark a persistence or scientific behavior complete from a manual run alone.
+A manual successful run alone is not sufficient evidence for persistence or scientific behavior.
