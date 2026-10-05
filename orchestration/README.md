@@ -716,9 +716,6 @@ manual dates or scheduled quarter
  attempt_raw_checkpoint [monthly]
                |
                v
-    prepare_retry_pass
-               |
-               v
  resolve_raw_checkpoint [monthly]
                |
                v
@@ -767,8 +764,7 @@ on it.
 | ---                       | ---                           | ---                               |
 | `build_monthly_requests`  | Explicit inclusive dates      | Monthly request specifications    |
 | `attempt_raw_checkpoint`   | Monthly request specification | RAW metadata or failure control   |
-| `prepare_retry_pass`      | Three first-pass results      | Monthly retry/pass-through inputs |
-| `resolve_raw_checkpoint`      | Monthly retry/pass-through    | RAW artifact metadata             |
+| `resolve_raw_checkpoint`   | One first-attempt result       | RAW artifact metadata             |
 | `ensure_transformed_checkpoint`     | RAW artifact metadata         | Transformed artifact metadata     |
 | `load`                    | Transformed artifact metadata | PostgreSQL load status            |
 
@@ -984,9 +980,9 @@ python -m pytest tests/unit tests/airflow_orchestration -q
 ```
 
 This suite covers DAG parsing and graph policy, scheduled/manual selection,
-first-pass barrier and pass-through, +0/+1/+2-hour scheduled offsets, pacing
-deferral behavior, monitoring paths, and the Airflow-independent pipeline
-boundary.
+failure-only first-pass barrier and immediate success pass-through,
++0/+1/+2-hour scheduled offsets, pacing deferral behavior, monitoring paths,
+and the Airflow-independent pipeline boundary.
 
 PostgreSQL integration behavior on the isolated `TEST_POSTGRES_*` database:
 
@@ -1029,14 +1025,14 @@ Manual recovery receives no scheduled start offset.
 
 The `attempt_raw_checkpoint` map gives each month one initial attempt to
 ensure a valid RAW checkpoint (including worker-free pacing deferrals). It may
-resume an existing checkpoint or download and validate a new one. A real
-failure is converted to bounded control metadata so the other months can finish
-their initial pass. `prepare_retry_pass` waits for all initial maps; then
-`resolve_raw_checkpoint` passes through successful months and retries failed
-months with one Airflow retry, reusing validated checkpoints. Together with the first
-pass, this preserves the original maximum of three extraction attempts. Terminal failures
-remain failed in durable progress and block the next quarter until verified
-manual repair. Transform and load follow the resolved extraction results.
+resume an existing checkpoint or download and validate a new one. A real failure is converted to bounded control metadata so the other months can
+finish their initial pass. `resolve_raw_checkpoint` receives each mapped
+first-attempt result directly: successful months pass through immediately to
+transformation and load, while only failed months wait for every expected first
+attempt to reach a terminal extraction state before retrying. The failed resolver
+uses worker-free deferral while waiting for that durable barrier and retains one
+Airflow retry. Terminal failures remain failed in durable progress and block the
+next quarter until verified manual repair.
 
 Before resuming the campaign, check the Airflow UI or CLI for **active and
 queued DagRuns** and their mapped task states. Pausing the DAG prevents new
