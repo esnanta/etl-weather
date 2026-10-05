@@ -58,43 +58,102 @@ def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatc
 
 
 
-@pytest.mark.parametrize("failed_month", ["2016-01-01", "2016-02-01", "2016-03-01"])
-def test_first_pass_failure_is_handed_to_bounded_retry_after_all_first_maps(
-    monkeypatch: pytest.MonkeyPatch, failed_month: str,
+def test_successful_first_result_passes_through_without_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_result = {
+        "boundary": "ensure_raw_checkpoint",
+        "request": {"start_date": "2016-01-01"},
+        "progress_id": 42,
+        "run_mode": "scheduled",
+    }
+
+    def unexpected_barrier(progress_id: int) -> bool:
+        raise AssertionError("Successful first results must not inspect the barrier.")
+
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "first_pass_barrier_complete",
+        unexpected_barrier,
+    )
+    operator = cds_extract_operator.CdsPacedExtractOperator(
+        task_id="resolve_success",
+        request_spec={"start_date": "2016-01-01"},
+        progress_id=42,
+        run_mode="scheduled",
+        first_result=first_result,
+    )
+
+    assert operator.execute({}) is first_result
+
+
+def test_failed_first_result_defers_until_first_pass_barrier(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = []
 
-    def extract(spec, progress_id, mode, *, paced):
-        month = spec["start_date"]
-        calls.append(month)
-        if month == failed_month and calls.count(month) < 3:
-            raise RuntimeError("temporary failure")
-        return {"boundary": "ensure_raw_checkpoint", "request": spec,
-                "progress_id": progress_id, "run_mode": mode}
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "first_pass_barrier_complete",
+        lambda progress_id: False,
+    )
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "ensure_raw_checkpoint_with_progress",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    operator = cds_extract_operator.CdsPacedExtractOperator(
+        task_id="resolve_failed_waiting",
+        request_spec={"start_date": "2016-02-01"},
+        progress_id=42,
+        run_mode="scheduled",
+        first_result={"first_attempt_failed": True},
+    )
 
-    monkeypatch.setattr(cds_extract_operator, "ensure_raw_checkpoint_with_progress", extract)
-    first = []
-    for month in ("2016-01-01", "2016-02-01", "2016-03-01"):
-        first.append(cds_extract_operator.CdsPacedExtractOperator(
-            task_id=f"first_{month}", request_spec={"start_date": month},
-            progress_id=42, run_mode="scheduled", first_pass=True,
-        ).execute({}))
-    assert calls == ["2016-01-01", "2016-02-01", "2016-03-01"]
-    failed_index = ("2016-01-01", "2016-02-01", "2016-03-01").index(failed_month)
-    assert first[failed_index]["first_attempt_failed"] is True
-    for index, month in enumerate(("2016-01-01", "2016-02-01", "2016-03-01")):
-        operator = cds_extract_operator.CdsPacedExtractOperator(
-            task_id=f"retry_{month}", request_spec={"start_date": month},
-            progress_id=42, run_mode="scheduled", first_result=first[index],
-        )
-        if index == failed_index:
-            with pytest.raises(RuntimeError):
-                operator.execute({})
-            assert operator.execute({})["boundary"] == "ensure_raw_checkpoint"
-        else:
-            assert operator.execute({}) is first[index]
-    assert calls == ["2016-01-01", "2016-02-01", "2016-03-01",
-                     failed_month, failed_month]
+    with pytest.raises(TaskDeferred) as deferred:
+        operator.execute({})
+
+    assert deferred.value.method_name == "execute_complete"
+    assert calls == []
+
+
+def test_failed_first_result_retries_after_first_pass_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "first_pass_barrier_complete",
+        lambda progress_id: True,
+    )
+
+    def extract(spec, progress_id, mode, *, paced):
+        calls.append((spec["start_date"], progress_id, mode, paced))
+        return {
+            "boundary": "ensure_raw_checkpoint",
+            "request": spec,
+            "progress_id": progress_id,
+            "run_mode": mode,
+        }
+
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "ensure_raw_checkpoint_with_progress",
+        extract,
+    )
+    operator = cds_extract_operator.CdsPacedExtractOperator(
+        task_id="resolve_failed_ready",
+        request_spec={"start_date": "2016-02-01"},
+        progress_id=42,
+        run_mode="scheduled",
+        first_result={"first_attempt_failed": True},
+    )
+
+    result = operator.execute({})
+
+    assert result["boundary"] == "ensure_raw_checkpoint"
+    assert calls == [("2016-02-01", 42, "scheduled", True)]
 
 
 def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,6 +161,11 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
         raise RuntimeError("terminal")
 
     monkeypatch.setattr(cds_extract_operator, "ensure_raw_checkpoint_with_progress", fail)
+    monkeypatch.setattr(
+        cds_extract_operator,
+        "first_pass_barrier_complete",
+        lambda progress_id: True,
+    )
     operator = cds_extract_operator.CdsPacedExtractOperator(
         task_id="terminal", request_spec={"start_date": "2016-01-01"},
         progress_id=42, run_mode="scheduled", first_result={"first_attempt_failed": True},
