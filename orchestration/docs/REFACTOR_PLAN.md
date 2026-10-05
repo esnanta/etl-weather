@@ -1364,3 +1364,38 @@ The removed orphan closure therefore is not required by the active ETL,
 orchestration, or PostgreSQL integration paths. Dependency cleanup should now
 shift from pruning to final manifest/hygiene audit; avoid further aggressive
 removal without direct reverse-dependency evidence.
+
+
+### 10.19 Final post-refactor cleanup audit — 2026-10-05
+
+Post-refactor cleanup is complete for active code and verified dependency debt.
+
+Completed cleanup:
+
+- Removed the unused `scripts/config.py` compatibility wrapper after final
+  exact caller audit.
+- Removed the provider catalog back-edge while preserving provider/dataset
+  validation and CDS payload behavior.
+- Removed the direct ARCO-facing dependency pins and verified the environment
+  after uninstall.
+- Removed the second orphan reverse-dependency closure and verified it after
+  uninstall.
+- Latest gates remain **287 unit/orchestration tests passed** and **6 isolated
+  PostgreSQL integration tests passed**, with `pip check` reporting no broken
+  requirements.
+- The only observed pytest warning is the previously documented NumPy/netCDF4
+  binary-size RuntimeWarning.
+
+Final hygiene findings:
+
+- `.idea/` remains tracked. Because the project is actively used from
+  PHPStorm, this is treated as optional repository policy rather than cleanup
+  debt and is not removed automatically.
+- No `.ipynb` files are present. Jupyter-related pins are not removed merely
+  on that basis because `requirements.txt` is still a full environment freeze,
+  not a minimal direct-runtime dependency manifest.
+- Remaining shared/transitive pins are intentionally retained unless future
+  reverse-dependency evidence shows they are orphaned.
+
+No live CDS request or scheduled campaign was enabled during cleanup.
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` remains the required cleanup/test state.
