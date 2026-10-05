@@ -1301,3 +1301,23 @@ evidence shows they are orphaned.
 Verification must use an environment where the five removed packages are
 actually absent; merely running tests in the existing virtualenv would not
 prove manifest independence because those packages may still be installed.
+
+
+### 10.16 Dependency cleanup verification — 2026-10-05
+
+The five removed ARCO-facing packages were uninstalled from the active
+environment: `dask`, `zarr`, `gcsfs`, `google-cloud-storage`, and
+`google-cloud-storage-control`. A second uninstall confirmed they were absent.
+
+Verification evidence:
+
+- `python -m pip check` -> **No broken requirements found**.
+- Unit + Airflow orchestration regression -> **287 passed in 6.97s**.
+- Isolated PostgreSQL integration gate -> **6 passed in 1.21s**.
+- Both pytest runs emitted the already-documented NumPy/netCDF4 binary-size
+  RuntimeWarning; no test failed because of it.
+
+This proves the active project environment does not require the five removed
+ARCO-facing packages. Reverse-dependency audit may continue for remaining
+transitive-looking pins, but no additional package should be removed without
+dependency evidence.
