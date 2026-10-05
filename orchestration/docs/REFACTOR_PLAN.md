@@ -1138,3 +1138,78 @@ table/schema names, scientific calculations, Airflow task IDs, mapped
 - S4 provider/extraction split: verified by the user on 2026-10-05 with 61 focused tests passed in 1.02s and 283 unit/orchestration regression tests passed in 7.34s.
 
 - S5 high-blast-radius pipeline core moves: verified by the user on 2026-10-05 with 170 focused tests passed in 5.27s, 283 unit/orchestration regression tests passed in 8.88s, and 6 isolated PostgreSQL integration tests passed in 1.36s.
+
+
+### 10.10 Post-refactor cleanup audit — 2026-10-05
+
+This audit was performed after S1-S5 verification at `dev`
+`53d1fa95274ac8e86f4f983b8998b67610f81ed9`. It is an audit only:
+no Python/runtime behavior, dependency pins, database state, Airflow state, or
+schedule setting was changed.
+
+#### Clean findings
+
+- The final source tree matches the agreed S1-S5 responsibility layout. Legacy
+  root modules such as `pipeline/model.py`, `pipeline/request.py`,
+  `pipeline/interfaces.py`, `pipeline/logging.py`, root
+  `request_factory.py`, and the pre-split CDS modules are absent from the
+  current tree rather than retained as compatibility facades.
+- Current-state root/orchestration documentation was reconciled to the new
+  module paths and the current five-task Airflow graph.
+- No active `pipeline/` source import of Airflow or `orchestration` was found
+  in the cleanup audit. The core ETL boundary therefore remains Airflow-neutral.
+- Public package exports used by `pipeline/runtime.py` for storage,
+  transformation, validation, and loading remain coherent. No cleanup is
+  required merely to reduce `__all__` lists.
+
+#### Cleanup candidates
+
+1. **Unused compatibility wrapper: `scripts/config.py`.**
+   The file describes itself as compatibility imports, but repository code
+   search found no active Python caller importing `scripts.config`. Current
+   entrypoints import root `config.py` and `pipeline.requests.factory`
+   directly. Before deletion, run a final exact caller search and the full
+   offline regression. Documentation references should be updated in the same
+   change.
+2. **Provider catalog back-edge.**
+   `pipeline.providers.catalog` imports ERA5-Land profiles from
+   `cds_era5_land`, while `build_cds_request_payload()` performs a
+   function-local import back to the catalog. This avoids an import-time cycle
+   today, but it is an avoidable two-way dependency. Any cleanup should preserve
+   request normalization/error behavior and receive focused provider/request
+   tests; it is not urgent enough to change during this audit.
+3. **Dependency-manifest drift.**
+   `requirements.txt` still pins `dask`, `zarr`, `gcsfs`, and Google
+   Cloud storage packages, while active source search found no Dask, Zarr,
+   GCSFS, or Google Cloud Storage imports. This conflicts with the documented
+   ARCO-removal policy. However, the manifest is a full pinned environment,
+   so absence of direct imports alone is insufficient evidence that every pin
+   may be deleted. Dependency cleanup must first establish direct-vs-transitive
+   requirements in an isolated environment, then run `pip check`, the full
+   283-test offline suite, and the six PostgreSQL integration tests.
+4. **Tracked IDE metadata.**
+   `.idea/` remains tracked. This is repository hygiene rather than a runtime
+   or S1-S5 correctness issue. Remove it only as a separate housekeeping change
+   if the project no longer intends to version shared IDE settings.
+
+#### Items intentionally not treated as cleanup defects
+
+- Historical old paths/counts inside the audit/mapping/work-log portions of this
+  document and `IMPLEMENTATION_PLAN.md` are retained as historical evidence
+  when clearly framed as past state.
+- Package-level exports in `pipeline.storage`, `pipeline.validation`,
+  `pipeline.transformation`, and `pipeline.loaders` are currently used as
+  stable composition APIs and should not be flattened merely for stylistic
+  consistency.
+- Live CDS/manual/scheduled pilots are rollout verification, not cleanup work.
+  Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` during cleanup.
+
+#### Recommended cleanup order
+
+1. Remove `scripts/config.py` only after one final exact caller audit.
+2. Simplify the provider catalog back-edge with focused request/extraction tests.
+3. Audit and prune legacy dependency pins separately; do not combine dependency
+   changes with code-structure cleanup.
+4. Optionally handle `.idea/` as repository housekeeping.
+5. Re-run the complete offline and isolated PostgreSQL gates after code or
+   dependency cleanup before considering any live pilot.
