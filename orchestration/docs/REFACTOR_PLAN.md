@@ -1345,3 +1345,22 @@ consumers remain intentionally pinned, including `fsspec`,
 This second dependency-pruning batch must be verified by uninstalling the
 removed packages from the active environment, running `pip check`, then the
 full unit/orchestration and isolated PostgreSQL integration gates.
+
+
+### 10.18 Orphan dependency cleanup verification — 2026-10-05
+
+The second dependency-pruning batch was verified after uninstalling the complete
+orphan closure from the active environment.
+
+Verification evidence:
+
+- `python -m pip check` -> **No broken requirements found**.
+- Unit + Airflow orchestration regression -> **287 passed in 7.35s**.
+- Isolated PostgreSQL integration gate -> **6 passed in 1.16s**.
+- Both pytest runs emitted only the already-documented NumPy/netCDF4 binary-size
+  RuntimeWarning; no cleanup regression was observed.
+
+The removed orphan closure therefore is not required by the active ETL,
+orchestration, or PostgreSQL integration paths. Dependency cleanup should now
+shift from pruning to final manifest/hygiene audit; avoid further aggressive
+removal without direct reverse-dependency evidence.
