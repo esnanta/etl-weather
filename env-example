@@ -1,28 +1,100 @@
 # Application environment.
+# dev  : development runtime; guarded database recreation may be available.
+# prod : production runtime; database recreation is unavailable.
+# APP_ENV is mandatory. Missing, blank, or unsupported values abort startup.
 APP_ENV=dev
 
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-# Standalone pipeline default inclusive period (YYYY-MM-DD).
-# Keep this small for local/ad-hoc runs.
+# Standalone pipeline default inclusive period.
+#
+# These values are used only when a standalone pipeline/read entrypoint does
+# not receive an explicit period. Keep the default range deliberately small
+# for local/ad-hoc runs.
+#
+# Required format:
+#   YYYY-MM-DD
 CDS_START_DATE=2022-01-01
 CDS_END_DATE=2022-01-03
 
-# Airflow historical campaign identity and inclusive date bounds.
-# The campaign scheduler processes exact calendar quarters, so the start must
-# be the first day of a quarter and the end the last day of a quarter.
+# Airflow historical campaign scheduling.
+#
+# false:
+#   The DAG is manual-only (schedule=None). Airflow will not create scheduled
+#   DagRuns automatically. Manual DagRuns can still be triggered explicitly.
+#
+# true:
+#   Airflow enables the bounded historical campaign scheduler. Each scheduled
+#   DagRun selects the earliest eligible incomplete campaign quarter from
+#   durable PostgreSQL progress state.
+#
+# Campaign identity and bounded historical date range.
+#
+# CAMPAIGN_KEY:
+#   Stable logical identity used by campaign progress selection and reporting.
+#   Keep this value unchanged for the same logical historical campaign.
+#
+# CAMPAIGN_START_DATE / CAMPAIGN_END_DATE:
+#   Inclusive campaign bounds in canonical YYYY-MM-DD format.
+#   The current scheduler processes exact three-month calendar quarters, so
+#   CAMPAIGN_START_DATE must be the first day of a quarter:
+#     01-01, 04-01, 07-01, or 10-01
+#   and CAMPAIGN_END_DATE must be the last day of a quarter:
+#     03-31, 06-30, 09-30, or 12-31
+#
+# These values are required. activate-airflow.sh validates and displays them
+# at startup, and orchestration/config.py reads the same exported values for
+# campaign selection and reporting.
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_DATE=2016-01-01
 CAMPAIGN_END_DATE=2017-12-31
 
+# Change campaign or schedule settings only while Airflow standalone is
+# stopped, then restart standalone so the DAG processor reparses the DAG.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
+
+# Airflow scheduler cadence used only when
+# ERA5_CAMPAIGN_SCHEDULE_ENABLED=true.
+#
+# Supported values:
+#   30m = scheduler tick every 30 minutes
+#   1h  = scheduler tick every 1 hour
+#   2h  = scheduler tick every 2 hours
+#
+# The cron expressions are evaluated in the DAG timezone (Asia/Jakarta).
+# A scheduler tick means "Airflow may start/select campaign work"; it does NOT
+# mean that one quarter must finish within the cadence interval.
+#
+# The DAG keeps max_active_runs=1, so a new scheduled run will not overlap an
+# already active run. Quarter selection is also protected by durable progress
+# claims in PostgreSQL.
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+
+# Minimum interval between actual CDS submission POST requests, in seconds.
+#
+# This setting is independent from ERA5_CAMPAIGN_SCHEDULE_CADENCE.
+# It controls provider submission pacing, not how often Airflow schedules a DAG.
+#
+# Default:
+#   1800 seconds = 30 minutes
+#
+# The pacing gate is stored in climate_data.submission_pacing and uses the
+# PostgreSQL clock plus row locking so separate workers/runs cannot submit CDS
+# requests too close together.
+#
+# A single monthly partition may require more than one CDS submission, for
+# example a previous-day/month context request plus the target-month request.
+# Each actual submission must pass this pacing gate.
+#
+# When a slot is not yet available, the extraction task defers and is resumed
+# later by Airflow; the wait is not counted as a provider failure.
 SUBMISSION_INTERVAL_SECONDS=1800
 
 # The shared Airflow JWT secret is stored outside .env.
-# See orchestration/README.md for generation instructions.
+# Further instructions for generating the secret are in orchestration/README.md.
 
+# PostgreSQL database used by the pipeline.
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=your_database_name
