@@ -13,6 +13,7 @@ from orchestration.progress import (
     ProgressPartition,
 )
 from orchestration.repositories.pipeline_progress import (
+    are_extract_attempts_terminal,
     create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
@@ -239,3 +240,77 @@ def test_claim_is_atomic_and_released_only_after_verified_completion() -> None:
     assert "execution_status = 'complete'" in release_sql
     assert "validation_status = 'valid'" in release_sql
     assert "selection_owner = NULL" in release_sql
+
+
+
+class _BarrierResult:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def mappings(self):
+        return self
+
+    def one_or_none(self):
+        return self.row
+
+
+class _BarrierConnection:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def execute(self, statement, params):
+        assert params == {"pipeline_progress_id": 42}
+        return _BarrierResult(self.row)
+
+
+class _BarrierEngine:
+    def __init__(self, row: dict[str, int] | None) -> None:
+        self.row = row
+
+    def connect(self):
+        return _BarrierConnection(self.row)
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        (
+            {"expected_count": 3, "actual_count": 3, "terminal_count": 3},
+            True,
+        ),
+        (
+            {"expected_count": 3, "actual_count": 3, "terminal_count": 2},
+            False,
+        ),
+        (
+            {"expected_count": 3, "actual_count": 2, "terminal_count": 2},
+            False,
+        ),
+    ],
+)
+def test_extract_attempt_barrier_requires_every_expected_terminal_partition(
+    row: dict[str, int],
+    expected: bool,
+) -> None:
+    engine = _BarrierEngine(row)
+
+    assert are_extract_attempts_terminal(
+        cast(Engine, cast(object, engine)),
+        42,
+    ) is expected
+
+
+def test_extract_attempt_barrier_rejects_unknown_progress() -> None:
+    engine = _BarrierEngine(None)
+
+    with pytest.raises(ValueError, match="unknown pipeline progress"):
+        are_extract_attempts_terminal(
+            cast(Engine, cast(object, engine)),
+            42,
+        )
