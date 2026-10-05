@@ -1321,3 +1321,27 @@ This proves the active project environment does not require the five removed
 ARCO-facing packages. Reverse-dependency audit may continue for remaining
 transitive-looking pins, but no additional package should be removed without
 dependency evidence.
+
+
+### 10.17 Dependency cleanup: orphan reverse-dependency chains — 2026-10-05
+
+After the five direct ARCO-facing packages were removed and verified, a
+reverse-dependency audit was run against the active environment. It showed:
+
+- `numcodecs` and `donfig` had no remaining consumers.
+- `aiohttp` had no remaining consumer.
+- `google-cloud-core`, `google-auth-oauthlib`,
+  `google-resumable-media`, `grpc-google-iam-v1`, and `grpcio-status`
+  were orphan roots.
+- Their dependency-only descendants `google-api-core`, `google-auth`,
+  `google-crc32c`, `requests-oauthlib`, `oauthlib`, `proto-plus`,
+  `pyasn1-modules`, and `pyasn1` therefore formed orphan chains as well.
+- Active source search found no direct Python imports of these candidates.
+
+The manifest removed only that orphan closure. Shared dependencies with active
+consumers remain intentionally pinned, including `fsspec`,
+`googleapis-common-protos`, `grpcio`, and `protobuf`.
+
+This second dependency-pruning batch must be verified by uninstalling the
+removed packages from the active environment, running `pip check`, then the
+full unit/orchestration and isolated PostgreSQL integration gates.
