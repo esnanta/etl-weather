@@ -233,7 +233,7 @@ Add a root-level `## Prerequisites` section containing:
 - [x] CDS API credentials.
 - [x] A single host, or a shared `data/` filesystem visible to every task worker.
 
-- [ ] Do not repeat these generic prerequisites in the orchestration README. *(Deferred to Phase 3.)*
+- [x] Do not repeat these generic prerequisites in the orchestration README.
 
 ## 2.3 How It Works
 
@@ -304,7 +304,7 @@ Add a root-level `## Prerequisites` section containing:
 
 ## 2.8 Environment Setup and `env-example`
 
-- [ ] Keep installation instructions only in the root README. *(Root side completed; orchestration duplicate removal is deferred to Phase 3.)*
+- [x] Keep installation instructions only in the root README.
 - [x] Keep the single `requirements.txt` installation model.
 - [x] Expand the environment example to include relevant groups.
 
@@ -390,196 +390,216 @@ Add a root-level `## Prerequisites` section containing:
 
 ## 3.1 Opening and Scope
 
-- [ ] Keep the introduction focused on Airflow as an orchestration layer over the existing pipeline.
-- [ ] State that scientific transformation and canonical persistence remain owned by `pipeline/`.
-- [ ] Keep the instruction to run commands from the repository root if still applicable.
-- [ ] Remove generic project prerequisites already documented in `/README.md`.
+- [x] Keep the introduction focused on Airflow as an orchestration layer over the existing pipeline.
+- [x] State that scientific transformation and canonical persistence remain owned by `pipeline/`.
+- [x] Keep the instruction to run commands from the repository root if still applicable.
+- [x] Remove generic project prerequisites already documented in `/README.md`.
 
 ## 3.2 Replace Setup and Installation
 
-- [ ] Remove the duplicated generic `Setup and Installation` section.
-- [ ] Replace it with a short section such as `Airflow Setup After Project Installation`.
-- [ ] Assume the reader has already followed `/README.md`.
+- [x] Remove the duplicated generic `Setup and Installation` section.
+- [x] Replace it with a short section such as `Airflow Setup After Project Installation`.
+- [x] Assume the reader has already followed `/README.md`.
 
 The Airflow-specific continuation should cover:
 
-- [ ] Run `./generate-airflow-jwt-secret.sh`.
-- [ ] Explain what `airflow-jwt-key.txt` is used for.
-- [ ] Explain that it is generated locally and ignored by Git.
-- [ ] Explain why the secret is not stored in `.env`.
-- [ ] Explain that normal activation should reuse the same secret.
-- [ ] Explain that regenerating it intentionally rotates the secret.
-- [ ] Explain that Airflow components must be restarted after rotation.
-- [ ] Run `source activate-airflow.sh`.
-- [ ] Run `airflow db migrate`.
-- [ ] Configure the one-slot CDS API pool if still required by the current implementation.
-- [ ] Show the canonical Airflow startup command used by this project.
+- [x] Run `./generate-airflow-jwt-secret.sh`.
+- [x] Explain what `airflow-jwt-key.txt` is used for.
+- [x] Explain that it is generated locally and ignored by Git.
+- [x] Explain why the secret is not stored in `.env`.
+- [x] Explain that normal activation should reuse the same secret.
+- [x] Explain that regenerating it intentionally rotates the secret.
+- [x] Explain that Airflow components must be restarted after rotation.
+- [x] Run `source activate-airflow.sh`.
+- [x] Run `airflow db migrate`.
+- [x] Configure the one-slot CDS API pool if still required by the current implementation.
+- [x] Show the canonical Airflow startup command used by this project.
 
 ## 3.3 Running the Orchestration
 
-- [ ] Make this section shorter.
-- [ ] Explain only the essential operational flow:
+- [x] Make this section shorter.
+- [x] Explain only the essential operational flow:
   - activate Airflow environment;
   - start Airflow;
   - inspect the DAG;
   - choose scheduled or manual operation;
   - inspect run/task state.
-- [ ] Avoid repeating installation instructions.
-- [ ] Avoid repeating environment-variable descriptions already covered elsewhere.
+- [x] Avoid repeating installation instructions.
+- [x] Avoid repeating environment-variable descriptions already covered elsewhere.
 
 ## 3.4 Project Structure
 
-- [ ] Show only root files directly relevant to Airflow.
-- [ ] Show only the major `orchestration/` subdirectories needed to understand ownership.
-- [ ] Do not repeat the detailed `pipeline/` tree.
-- [ ] Include `airflow-jwt-key.txt` only here if it helps explain Airflow runtime state.
-- [ ] Include `generate-airflow-jwt-secret.sh` only here if it helps explain Airflow setup.
+- [x] Show only root files directly relevant to Airflow.
+- [x] Show only the major `orchestration/` subdirectories needed to understand ownership.
+- [x] Do not repeat the detailed `pipeline/` tree.
+- [x] Include `airflow-jwt-key.txt` only here if it helps explain Airflow runtime state.
+- [x] Include `generate-airflow-jwt-secret.sh` only here if it helps explain Airflow setup.
 
 ## 3.5 Scheduled and Manual Mode Contract
 
-- [ ] Reduce the explanation to a short contract.
-- [ ] Explain scheduled mode with one example:
+- [x] Reduce the explanation to a short contract.
+- [x] Explain scheduled mode with one example:
   - scheduled run selects the earliest eligible incomplete quarter;
   - its months are processed by the same ETL boundaries.
-- [ ] Explain manual mode with one example:
+- [x] Explain manual mode with one example:
   - an operator explicitly requests a date range such as one failed calendar month.
-- [ ] Explain that manual recovery and scheduled work use the same DAG.
-- [ ] Avoid long internal selection/reconciliation implementation detail in the primary explanation.
+- [x] Explain that manual recovery and scheduled work use the same DAG.
+- [x] Avoid long internal selection/reconciliation implementation detail in the primary explanation.
 
 ## 3.6 Scheduler Cadence
 
-- [ ] Refocus this section on `ERA5_CAMPAIGN_SCHEDULE_CADENCE`.
-- [ ] Explain that it controls how often Airflow creates an opportunity for scheduled campaign work.
-- [ ] State clearly that it does not control CDS download speed.
-- [ ] Contrast it briefly with `SUBMISSION_INTERVAL_SECONDS`.
-- [ ] Add one simple example, such as:
+- [x] Refocus this section on `ERA5_CAMPAIGN_SCHEDULE_CADENCE`.
+- [x] Explain that it controls how often Airflow creates an opportunity for scheduled campaign work.
+- [x] State clearly that it does not control CDS download speed.
+- [x] Contrast it briefly with `SUBMISSION_INTERVAL_SECONDS`.
+- [x] Add one simple example, such as:
   - `ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h`;
   - `SUBMISSION_INTERVAL_SECONDS=1800`.
-- [ ] Explain that the first represents scheduler cadence and the second represents CDS submission pacing.
-- [ ] Avoid repeating detailed queue/concurrency internals unless required for safe operation.
+- [x] Explain that the first represents scheduler cadence and the second represents CDS submission pacing.
+- [x] Avoid repeating detailed queue/concurrency internals unless required for safe operation.
 
 ## 3.7 Generic Progress Persistence Foundation
 
-- [ ] Rename the section if a simpler title is clearer, for example `Campaign Progress`.
-- [ ] Explain that progress is stored durably in PostgreSQL.
-- [ ] Explain that progress survives Airflow process restarts and individual DagRuns.
-- [ ] Use a simple quarter example:
+- [x] Rename the section if a simpler title is clearer, for example `Campaign Progress`.
+- [x] Explain that progress is stored durably in PostgreSQL.
+- [x] Explain that progress survives Airflow process restarts and individual DagRuns.
+- [x] Use a simple quarter example:
   - January complete;
   - February incomplete/failed;
   - March complete;
   - quarter remains incomplete;
   - successful February repair allows quarter completion.
-- [ ] Avoid schema-level explanation in the primary narrative.
-- [ ] Mention table names only where operational troubleshooting genuinely benefits from them.
+- [x] Avoid schema-level explanation in the primary narrative.
+- [x] Mention table names only where operational troubleshooting genuinely benefits from them.
 
 ## 3.8 Scheduled Selection and Campaign Examples
 
-- [ ] Replace long implementation narratives with short examples.
-- [ ] Provide one normal scheduled-quarter example.
-- [ ] Provide one failed-month example.
-- [ ] Provide one manual-repair example.
-- [ ] Provide one restart/resume example.
-- [ ] Provide one campaign-progress inspection example.
-- [ ] Keep examples aligned with actual current behavior.
+- [x] Replace long implementation narratives with short examples.
+- [x] Provide one normal scheduled-quarter example.
+- [x] Provide one failed-month example.
+- [x] Provide one manual-repair example.
+- [x] Provide one restart/resume example.
+- [x] Provide one campaign-progress inspection example.
+- [x] Keep examples aligned with actual current behavior.
 
 ## 3.9 Retry and Monthly Start Slots
 
-- [ ] Keep the current behavior documented because it is operationally important.
-- [ ] Explain scheduled month start offsets in plain language.
-- [ ] Explain that successful months can continue even if another month fails.
-- [ ] Explain that failed work is retried after the initial pass/barrier according to current behavior.
-- [ ] Keep manual recovery free from scheduled offsets if that remains current behavior.
-- [ ] Avoid implementation-level control-metadata terminology unless needed.
+- [x] Keep the current behavior documented because it is operationally important.
+- [x] Explain scheduled month start offsets in plain language.
+- [x] Explain that successful months can continue even if another month fails.
+- [x] Explain that failed work is retried after the initial pass/barrier according to current behavior.
+- [x] Keep manual recovery free from scheduled offsets if that remains current behavior.
+- [x] Avoid implementation-level control-metadata terminology unless needed.
 
 ## 3.10 Triggering and Status
 
-- [ ] Keep one canonical manual trigger example.
-- [ ] Keep one canonical campaign-recovery trigger example.
-- [ ] Explain that `airflow dags trigger` creates a new DagRun and returns before completion.
-- [ ] Keep one concise command for checking DagRun status.
-- [ ] Avoid excessive repeated trigger examples.
+- [x] Keep one canonical manual trigger example.
+- [x] Keep one canonical campaign-recovery trigger example.
+- [x] Explain that `airflow dags trigger` creates a new DagRun and returns before completion.
+- [x] Keep one concise command for checking DagRun status.
+- [x] Avoid excessive repeated trigger examples.
 
 ## 3.11 Historical Pilot Evidence
 
 Review these current sections carefully:
 
-- [ ] Offline Scheduled Selection Pilot.
-- [ ] Controlled Scheduled Pilot on the Airflow Host.
-- [ ] Campaign Host Capacity and Post-Change CDS Pilot.
-- [ ] Local Pilot Evidence.
-- [ ] Verified Three-Month Rollout.
-- [ ] Peak Memory examples.
-- [ ] Disk-space examples.
+- [x] Offline Scheduled Selection Pilot.
+- [x] Controlled Scheduled Pilot on the Airflow Host.
+- [x] Campaign Host Capacity and Post-Change CDS Pilot.
+- [x] Local Pilot Evidence.
+- [x] Verified Three-Month Rollout.
+- [x] Peak Memory examples.
+- [x] Disk-space examples.
 
 For each:
 
-- [ ] Keep only evidence that explains current operational behavior.
-- [ ] Convert useful evidence into a compact example where possible.
-- [ ] Remove development chronology that no longer helps an operator.
-- [ ] Do not present historical durations or storage numbers as service guarantees.
-- [ ] If detailed evidence is still valuable, consider moving it to a separate operational/history document rather than keeping it in the main orchestration README.
+- [x] Keep only evidence that explains current operational behavior.
+- [x] Convert useful evidence into a compact example where possible.
+- [x] Remove development chronology that no longer helps an operator.
+- [x] Do not present historical durations or storage numbers as service guarantees.
+- [x] If detailed evidence is still valuable, consider moving it to a separate operational/history document rather than keeping it in the main orchestration README.
 
 ## 3.12 Backup and Restart Recovery
 
-- [ ] Preserve safety-critical recovery guidance.
-- [ ] Shorten procedural detail where possible.
-- [ ] Emphasize the state that must be preserved:
+- [x] Preserve safety-critical recovery guidance.
+- [x] Shorten procedural detail where possible.
+- [x] Emphasize the state that must be preserved:
   - PostgreSQL application/campaign state;
   - shared artifacts;
   - Airflow runtime metadata where needed;
   - stable Airflow JWT secret.
-- [ ] Explain that Airflow SQLite metadata alone is not campaign truth.
-- [ ] Explain that a paused DAG does not stop an already running task.
-- [ ] Keep manual recovery guidance concise and example-driven.
-- [ ] Do not encourage deleting progress rows or pacing state by hand.
+- [x] Explain that Airflow SQLite metadata alone is not campaign truth.
+- [x] Explain that a paused DAG does not stop an already running task.
+- [x] Keep manual recovery guidance concise and example-driven.
+- [x] Do not encourage deleting progress rows or pacing state by hand.
 
 ## 3.13 Task Flow
 
-- [ ] Keep a simple task-flow diagram if it helps operational understanding.
-- [ ] Avoid repeating pipeline-internal architecture.
-- [ ] Keep task principles concise.
-- [ ] Keep mapped month labels only if they materially help operators interpret the Airflow UI.
-- [ ] Simplify or remove the task breakdown table if it duplicates the flow diagram.
+- [x] Keep a simple task-flow diagram if it helps operational understanding.
+- [x] Avoid repeating pipeline-internal architecture.
+- [x] Keep task principles concise.
+- [x] Keep mapped month labels only if they materially help operators interpret the Airflow UI.
+- [x] Simplify or remove the task breakdown table if it duplicates the flow diagram.
 
 ## 3.14 Memory and Disk Observability
 
-- [ ] Decide whether detailed historical memory measurements belong in the main README.
-- [ ] Prefer documenting what operators should look for in logs.
-- [ ] Keep the meaning of peak RSS concise if retained.
-- [ ] Keep the disk-space warning behavior concise if retained.
-- [ ] Remove historical measurements if they distract from current operation.
-- [ ] Preserve the warning that local worker metrics do not represent total host/database capacity.
+- [x] Decide whether detailed historical memory measurements belong in the main README.
+- [x] Prefer documenting what operators should look for in logs.
+- [x] Keep the meaning of peak RSS concise if retained.
+- [x] Keep the disk-space warning behavior concise if retained.
+- [x] Remove historical measurements if they distract from current operation.
+- [x] Preserve the warning that local worker metrics do not represent total host/database capacity.
 
 ## 3.15 Safe Retry, Resume, and Deployment
 
-- [ ] Preserve checkpoint-resume behavior.
-- [ ] Preserve transactional/idempotent persistence statements.
-- [ ] Preserve the rule not to alter/replace artifacts manually as a retry mechanism.
-- [ ] Preserve the warning not to deploy a changed DAG graph into an active DagRun.
-- [ ] Explain the safe sequence briefly:
+- [x] Preserve checkpoint-resume behavior.
+- [x] Preserve transactional/idempotent persistence statements.
+- [x] Preserve the rule not to alter/replace artifacts manually as a retry mechanism.
+- [x] Preserve the warning not to deploy a changed DAG graph into an active DagRun.
+- [x] Explain the safe sequence briefly:
   - disable/pause new scheduling;
   - inspect active/deferred work;
   - finish or diagnose existing runs;
   - deploy the new DAG version;
   - run a clean post-change pilot;
   - verify persisted evidence.
-- [ ] Avoid long development-history explanation.
+- [x] Avoid long development-history explanation.
 
 ## 3.16 Tests
 
-- [ ] Keep only current orchestration test commands.
-- [ ] Use quiet mode.
-- [ ] Verify current test filenames before finalizing commands.
-- [ ] Avoid duplicating detailed testing contracts already documented in `tests/README.md`.
+- [x] Keep only current orchestration test commands.
+- [x] Use quiet mode.
+- [x] Verify current test filenames before finalizing commands.
+- [x] Avoid duplicating detailed testing contracts already documented in `tests/README.md`.
 
 ## 3.17 Cleanup and Local State
 
-- [ ] Keep shutdown instructions concise.
-- [ ] Explain which Airflow files are local runtime state.
-- [ ] Preserve the warning not to remove `orchestration/airflow.db` while Airflow is running.
-- [ ] Keep database reset clearly separated from normal retry/shutdown behavior.
+- [x] Keep shutdown instructions concise.
+- [x] Explain which Airflow files are local runtime state.
+- [x] Preserve the warning not to remove `orchestration/airflow.db` while Airflow is running.
+- [x] Keep database reset clearly separated from normal retry/shutdown behavior.
 
 ---
+
+
+## Phase 3 Result
+
+- Generic Python/PostgreSQL/CDS/shared-filesystem prerequisites and dependency installation were removed from the orchestration README; the document now assumes `/README.md` has already been followed.
+- Airflow-specific continuation now starts with JWT-secret generation, activation, metadata migration, CDS pool setup, and `airflow standalone`.
+- `airflow-jwt-key.txt` and `generate-airflow-jwt-secret.sh` are documented only in the Airflow context, including initial creation, reuse, rotation, and component restart requirements.
+- Running instructions were reduced to the essential operator flow: activate, start, inspect the DAG, run scheduled/manual work, inspect status, and inspect campaign progress.
+- Project structure now shows only Airflow-related root/orchestration paths and relevant operational scripts.
+- Scheduled/manual behavior is explained with concrete quarter and whole-month examples.
+- Scheduler cadence is centered on `ERA5_CAMPAIGN_SCHEDULE_CADENCE` and explicitly separated from `SUBMISSION_INTERVAL_SECONDS`.
+- Generic progress persistence was replaced by a concise `Campaign Progress` explanation using a failed-February quarter example.
+- Historical rollout/pilot chronology was removed from the main README and replaced with current-behavior operational examples.
+- One-hour scheduled month start slots and the first-pass/retry behavior remain documented in plain language.
+- Backup/restart guidance was shortened while preserving PostgreSQL/artifact/JWT state, active-task, pacing, and claim safety rules.
+- Task flow was kept as a simple operational diagram without repeating pipeline architecture.
+- Historical memory and disk measurements were removed; current observability semantics remain documented.
+- Safe retry/resume and safe DAG-deployment rules remain explicit.
+- Test commands were verified against current repository filenames and use quiet mode.
+- Cleanup now distinguishes Airflow local runtime state from canonical climate data.
 
 # Phase 4 — Cross-Document Consistency
 
