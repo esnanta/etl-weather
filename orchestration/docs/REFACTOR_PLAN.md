@@ -1174,15 +1174,15 @@ schedule setting was changed.
    `pipeline.providers.cds_era5_land`. Generic `catalog.py` delegates to
    that helper, while payload construction uses the same local helper directly.
    The dependency is now one-way: `catalog -> cds_era5_land`.
-3. **Dependency-manifest drift.**
-   `requirements.txt` still pins `dask`, `zarr`, `gcsfs`, and Google
-   Cloud storage packages, while active source search found no Dask, Zarr,
-   GCSFS, or Google Cloud Storage imports. This conflicts with the documented
-   ARCO-removal policy. However, the manifest is a full pinned environment,
-   so absence of direct imports alone is insufficient evidence that every pin
-   may be deleted. Dependency cleanup must first establish direct-vs-transitive
-   requirements in an isolated environment, then run `pip check`, the full
-   283-test offline suite, and the six PostgreSQL integration tests.
+3. **Dependency-manifest drift — first pass resolved.**
+   Active source search found no Dask, Zarr, GCSFS, or Google Cloud Storage
+   imports, and `tests/AGENTS.md` explicitly classifies those capabilities as
+   removed ARCO-only dependencies. The direct ARCO-facing pins `dask`,
+   `zarr`, `gcsfs`, `google-cloud-storage`, and
+   `google-cloud-storage-control` were removed from `requirements.txt`.
+   Transitive-looking pins such as `google-auth`, `fsspec`, `aiohttp`,
+   and `numcodecs` remain intentionally untouched until reverse dependency
+   checks prove they are orphaned.
 4. **Tracked IDE metadata.**
    `.idea/` remains tracked. This is repository hygiene rather than a runtime
    or S1-S5 correctness issue. Remove it only as a separate housekeeping change
@@ -1202,11 +1202,12 @@ schedule setting was changed.
 
 #### Recommended cleanup order
 
-1. Audit and prune legacy dependency pins separately; do not combine dependency
-   changes with code-structure cleanup.
-2. Optionally handle `.idea/` as repository housekeeping.
-3. Re-run the complete offline and isolated PostgreSQL gates after code or
-   dependency cleanup before considering any live pilot.
+1. Verify the dependency-pruning batch in an environment where removed packages
+   are actually absent, then run `pip check`, the full offline suite, and the
+   isolated PostgreSQL integration gate.
+2. Audit remaining transitive-looking pins only after reverse-dependency evidence.
+3. Optionally handle `.idea/` as repository housekeeping.
+4. Do not consider any live pilot until dependency cleanup is verified.
 
 ### 10.11 Environment-backed pipeline and campaign dates — 2026-10-05
 
@@ -1276,3 +1277,27 @@ the same helper directly. This preserves provider/dataset validation and payload
 semantics while making the dependency direction one-way.
 
 Dependency-manifest pruning remains a separate next step.
+
+
+### 10.15 Dependency cleanup: direct ARCO pins — 2026-10-05
+
+The previous cleanup batch was verified by the user with **53 focused tests
+passed in 0.87s** and **287 unit/orchestration tests passed in 7.17s**.
+
+Dependency audit then confirmed that active Python source has no imports of
+Dask, Zarr, GCSFS, Google Cloud Storage, Jupyter, or Notebook. The project test
+policy explicitly says not to restore ARCO-only Zarr, Google Cloud Storage,
+Dask, or async HTTP source dependencies. PyPI metadata for the pinned xarray
+release also lists Dask under its optional `parallel` extra and Zarr under its
+optional `io` extra rather than as core requirements.
+
+Accordingly, only the five direct ARCO-facing manifest pins were removed:
+`dask`, `zarr`, `gcsfs`, `google-cloud-storage`, and
+`google-cloud-storage-control`. No transitive-looking dependency was removed
+in this pass. In particular, `aiohttp`, `fsspec`, Google authentication/API
+libraries, `numcodecs`, and other shared pins remain until reverse dependency
+evidence shows they are orphaned.
+
+Verification must use an environment where the five removed packages are
+actually absent; merely running tests in the existing virtualenv would not
+prove manifest independence because those packages may still be installed.
