@@ -34,13 +34,15 @@ def test_etl_dag_task_graph(dag) -> None:
     assert set(dag.task_ids) == {
         "build_monthly_requests",
         "attempt_raw_checkpoint",
-        "prepare_retry_pass",
         "resolve_raw_checkpoint",
         "ensure_transformed_checkpoint",
         "load",
     }
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
         "attempt_raw_checkpoint"
+    }
+    assert dag.get_task("attempt_raw_checkpoint").downstream_task_ids == {
+        "resolve_raw_checkpoint"
     }
     assert dag.get_task("resolve_raw_checkpoint").downstream_task_ids == {
         "ensure_transformed_checkpoint"
@@ -49,23 +51,25 @@ def test_etl_dag_task_graph(dag) -> None:
 
 
 def test_etl_dag_boundary_policies(dag) -> None:
-    first = dag.get_task("attempt_raw_checkpoint")
-    extract = dag.get_task("resolve_raw_checkpoint")
-    transform = dag.get_task("ensure_transformed_checkpoint")
-    load = dag.get_task("load")
+    attempt_raw_checkpoint_task = dag.get_task("attempt_raw_checkpoint")
+    resolve_raw_checkpoint_task = dag.get_task("resolve_raw_checkpoint")
+    ensure_transformed_checkpoint_task = dag.get_task(
+        "ensure_transformed_checkpoint"
+    )
+    load_task = dag.get_task("load")
 
-    assert first.map_index_template == "{{ task.month_label }}"
-    assert extract.map_index_template == "{{ task.month_label }}"
+    assert attempt_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
+    assert resolve_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
     assert dag.get_task("ensure_transformed_checkpoint").map_index_template == "{{ month_label }}"
     assert dag.get_task("load").map_index_template == "{{ month_label }}"
 
-    assert extract.pool == "cds_api"
-    assert extract.retries == 1
-    assert extract.execution_timeout == timedelta(hours=6)
-    assert transform.retries == 0
-    assert transform.execution_timeout == timedelta(hours=2)
-    assert load.retries == 1
-    assert load.execution_timeout == timedelta(hours=2)
+    assert resolve_raw_checkpoint_task.pool == "cds_api"
+    assert resolve_raw_checkpoint_task.retries == 1
+    assert resolve_raw_checkpoint_task.execution_timeout == timedelta(hours=6)
+    assert ensure_transformed_checkpoint_task.retries == 0
+    assert ensure_transformed_checkpoint_task.execution_timeout == timedelta(hours=2)
+    assert load_task.retries == 1
+    assert load_task.execution_timeout == timedelta(hours=2)
 
 
 def test_pipeline_package_does_not_import_airflow() -> None:
@@ -77,11 +81,17 @@ def test_pipeline_package_does_not_import_airflow() -> None:
 
 
 
-def test_first_attempt_barrier_and_retry_pass(dag) -> None:
-    first = dag.get_task("attempt_raw_checkpoint")
-    retry = dag.get_task("resolve_raw_checkpoint")
-    assert first.retries == 0
-    assert first.pool == retry.pool == "cds_api"
-    assert first.downstream_task_ids == {"prepare_retry_pass"}
-    assert dag.get_task("prepare_retry_pass").downstream_task_ids == {"resolve_raw_checkpoint"}
-    assert retry.retries == 1
+def test_successful_raw_attempt_flows_directly_to_resolver(dag) -> None:
+    attempt_raw_checkpoint_task = dag.get_task("attempt_raw_checkpoint")
+    resolve_raw_checkpoint_task = dag.get_task("resolve_raw_checkpoint")
+
+    assert attempt_raw_checkpoint_task.retries == 0
+    assert (
+        attempt_raw_checkpoint_task.pool
+        == resolve_raw_checkpoint_task.pool
+        == "cds_api"
+    )
+    assert attempt_raw_checkpoint_task.downstream_task_ids == {
+        "resolve_raw_checkpoint"
+    }
+    assert resolve_raw_checkpoint_task.retries == 1
