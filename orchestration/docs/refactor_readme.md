@@ -863,3 +863,239 @@ Use quiet commands aligned with the current repository:
 ## Testing Documentation Status
 
 Phase 6 is complete on branch `dev`.
+
+
+# Phase 7 — Test Directory Restructure
+
+This phase reorganizes tests by **test level first** and **domain second**.
+
+Unlike Phases 1–6, this phase is not documentation-only because test files will move and path-sensitive test code may require updates. Production/runtime behavior must remain unchanged.
+
+## 7.1 Target Structure
+
+Use this conceptual structure:
+
+```text
+tests/
+├── unit/
+│   ├── pipeline/
+│   ├── orchestration/
+│   └── operations/
+├── integration/
+│   ├── pipeline/
+│   ├── orchestration/
+│   └── operations/
+├── conftest.py
+├── README.md
+└── AGENTS.md
+```
+
+Physical directories should be created only when they contain tests. Do not add empty directories only for symmetry.
+
+### Domain meaning
+
+- `pipeline/`: scientific ETL, artifacts, canonical climate persistence, read-only climate access, and pipeline-specific helpers.
+- `orchestration/`: Airflow scheduling, DAG/task policy, campaign selection, progress, pacing, retry/deferral, reporting, and orchestration database coordination.
+- `operations/`: maintenance and administrative scripts/workflows such as reset, cleanup, recreation, and repository-level operational tooling.
+
+## 7.2 Constraints
+
+- [ ] Do not modify `pipeline/` implementation.
+- [ ] Do not modify orchestration/DAG runtime behavior.
+- [ ] Do not change scientific contracts.
+- [ ] Do not add or remove intended test coverage.
+- [ ] Allow only test relocation and the minimum test-path/import/fixture updates required by relocation.
+- [ ] Update documentation and CI references to the new paths where required.
+- [ ] Preserve `tests/conftest.py` as the shared top-level fixture/environment layer unless a concrete fixture needs narrower scope.
+- [ ] Do not create new nested `conftest.py` files merely for symmetry.
+
+## 7.3 Current-to-Target Mapping Audit
+
+### Unit — Pipeline
+
+Move the current pipeline-focused unit tests from `tests/unit/` into `tests/unit/pipeline/`:
+
+- [ ] `test_cds_pacing_chunks.py`
+- [ ] `test_config_requests.py`
+- [ ] `test_daily_climate_repository.py`
+- [ ] `test_database.py`
+- [ ] `test_extract.py`
+- [ ] `test_extract_cds_normalization.py`
+- [ ] `test_load.py`
+- [ ] `test_logging.py`
+- [ ] `test_request.py`
+- [ ] `test_runtime.py`
+- [ ] `test_storage.py`
+- [ ] `test_transform.py`
+- [ ] `test_validation.py`
+
+### Unit — Orchestration
+
+Remove the top-level `tests/airflow_orchestration/` category and move its unit tests into `tests/unit/orchestration/`:
+
+- [ ] `test_campaign.py`
+- [ ] `test_campaign_config.py`
+- [ ] `test_dag.py`
+- [ ] `test_database.py`
+- [ ] `test_mode.py`
+- [ ] `test_pipeline_progress.py`
+- [ ] `test_progress.py`
+- [ ] `test_progress_wiring.py`
+- [ ] `test_raw_checkpoint_operator.py`
+- [ ] `test_reporting.py`
+- [ ] `test_schedule.py`
+- [ ] `test_scheduled_selection_pilot.py`
+- [ ] `test_submission_log.py`
+- [ ] `test_submission_pacing.py`
+- [ ] `test_tasks.py`
+
+### Unit — Operations
+
+Move maintenance/administrative unit tests into `tests/unit/operations/`:
+
+- [ ] `test_recreate_postgres_database.py`
+- [ ] `test_reset_airflow_logs.py`
+- [ ] `test_reset_airflow_runtime.py`
+- [ ] `test_reset_all.py`
+- [ ] `test_reset_data.py`
+
+### Integration — Pipeline
+
+Move pipeline persistence integration coverage into `tests/integration/pipeline/`:
+
+- [ ] `test_postgresql_idempotency.py`
+
+### Integration — Orchestration
+
+Move orchestration persistence/coordination integration coverage into `tests/integration/orchestration/`:
+
+- [ ] `test_pipeline_progress_reconciliation.py`
+- [ ] `test_submission_pacing.py`
+- [ ] `test_orchestration_database_bootstrap.py`
+
+### Integration — Operations
+
+- [ ] No current integration test clearly belongs to `operations/`.
+- [ ] Do not create `tests/integration/operations/` until a real integration test requires that domain.
+
+## 7.4 Package and Path-Sensitivity Audit
+
+- [x] No direct `from tests...` or `import tests...` dependency was found in the current test suite search.
+- [x] Shared deterministic environment setup currently lives in `tests/conftest.py` and can remain at the test root.
+- [x] Several tests derive repository paths from `Path(__file__).resolve().parents[2]`; moving them one directory deeper will invalidate that assumption.
+- [ ] Update path-sensitive tests to derive the repository root correctly after relocation.
+- [ ] Prefer a robust repository-root helper/fixture if multiple moved tests need the same calculation, rather than scattering fragile parent indices.
+- [ ] Verify DAG-folder resolution after moving orchestration tests.
+- [ ] Verify direct-script subprocess tests after moving operations tests.
+- [ ] Verify monitoring/data-path assertions after moving orchestration tests.
+- [ ] Add `__init__.py` only where package semantics are useful; do not add files solely to mimic the old layout.
+
+Known path-sensitive tests identified during audit include the current:
+
+- `tests/airflow_orchestration/test_dag.py`
+- `tests/airflow_orchestration/test_schedule.py`
+- `tests/airflow_orchestration/test_tasks.py`
+- `tests/unit/test_recreate_postgres_database.py`
+- `tests/unit/test_reset_all.py`
+
+## 7.5 Commands After Restructure
+
+Canonical commands should become:
+
+### All unit tests
+
+```bash
+source activate-airflow.sh
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit -q
+```
+
+### Unit pipeline only
+
+```bash
+python -m pytest tests/unit/pipeline -q
+```
+
+### Unit orchestration only
+
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit/orchestration -q
+```
+
+### Unit operations only
+
+```bash
+python -m pytest tests/unit/operations -q
+```
+
+### All integration tests
+
+```bash
+python -m pytest tests/integration -q
+```
+
+### Integration pipeline only
+
+```bash
+python -m pytest tests/integration/pipeline -q
+```
+
+### Integration orchestration only
+
+```bash
+python -m pytest tests/integration/orchestration -q
+```
+
+- [ ] Do not document an `integration/operations` command until that directory exists.
+
+## 7.6 Documentation and Reference Updates
+
+After files move:
+
+- [ ] Update `tests/README.md` to describe level-first/domain-second structure.
+- [ ] Update `tests/AGENTS.md` with the new domain ownership.
+- [ ] Update `/README.md` test command/path references.
+- [ ] Update `/orchestration/README.md` test command/path references.
+- [ ] Update root `AGENTS.md` references to specific old test paths.
+- [ ] Search documentation for `tests/airflow_orchestration` and replace active references.
+- [ ] Search documentation for old `tests/unit/test_*.py` and `tests/integration/test_*.py` references and update only current/authoritative documentation.
+- [ ] Preserve historical evidence documents when a path is intentionally historical; do not silently rewrite historical records unless they are intended as current instructions.
+- [ ] Update `orchestration/docs/refactor_readme.md` with the final mapping/results.
+
+## 7.7 CI and Pytest Configuration
+
+- [x] Current GitHub Actions workflow runs `python -m pytest` without hard-coded test subpaths, so directory movement should not require a workflow path change.
+- [x] Current `pytest.ini` defines the integration marker and warning filter but no test-path-specific collection rules.
+- [ ] Verify full GitHub Actions-equivalent collection after the move.
+- [ ] Verify no duplicate module-name/import mismatch occurs after introducing same filenames such as `test_database.py` under different domain packages.
+- [ ] Resolve duplicate module-name collection issues with package structure/import mode if necessary, without renaming tests unless needed.
+
+## 7.8 Validation Sequence
+
+Run tests in this order after relocation:
+
+- [ ] `tests/unit/pipeline`
+- [ ] `tests/unit/orchestration`
+- [ ] `tests/unit/operations`
+- [ ] all `tests/unit`
+- [ ] `tests/integration/pipeline`
+- [ ] `tests/integration/orchestration`
+- [ ] all `tests/integration`
+- [ ] full `python -m pytest -q`
+
+For Airflow-related unit runs, keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` unless schedule behavior itself is under test.
+
+## 7.9 Completion Criteria
+
+Phase 7 is complete when:
+
+- [ ] `tests/airflow_orchestration/` no longer exists.
+- [ ] Unit tests are grouped under `pipeline/`, `orchestration/`, and `operations/`.
+- [ ] Integration tests are grouped under the applicable domains.
+- [ ] No empty domain directory is created only for appearance.
+- [ ] Shared fixtures remain correctly scoped.
+- [ ] Path-sensitive tests work from their new locations.
+- [ ] Documentation references use the new structure.
+- [ ] Full pytest collection and regression pass without changing runtime behavior.
