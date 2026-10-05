@@ -648,8 +648,11 @@ graph but unnecessarily delays successful monthly partitions.
 - [x] Add focused DAG/operator/repository tests proving that one successful mapped month can reach
       transform/load while another first-pass month remains running/deferred,
       while a failed month still waits for the first-pass barrier.
-- [ ] Run the focused DAG/operator suite, full unit/orchestration regression, and
+- [x] Run the focused DAG/operator suite, full unit/orchestration regression, and
       PostgreSQL integration regression before the next live scheduled pilot.
+      Verified locally after the failure-only barrier refactor: 40 focused
+      orchestration tests passed, 283 unit/orchestration tests passed, and
+      6 PostgreSQL integration tests passed.
 
 
 ### 10.8 Structural package and module naming agenda — 2026-10-05
@@ -661,9 +664,27 @@ their actual responsibility rather than only a broad provider/dataset label.
 
 #### Structural principles
 
-- [ ] Keep package roots intentionally small. For `orchestration/`, evaluate a
-      target root containing only `__init__.py`, `airflow.cfg`, `config.py`,
-      `README.md`, and responsibility-oriented subpackages.
+- [x] Use a deliberately small `orchestration/` root. The agreed target
+      direction is:
+
+      ```text
+      orchestration/
+      ├── __init__.py
+      ├── airflow.cfg
+      ├── config.py
+      ├── README.md
+      ├── dags/
+      ├── operators/
+      ├── tasks/
+      ├── repositories/
+      ├── campaign/
+      ├── scheduling/
+      ├── monitoring/
+      └── docs/
+      ```
+
+      Minor adjustments remain allowed if the caller/dependency audit shows a
+      clearer responsibility boundary.
 - [ ] Group orchestration modules by responsibility rather than accumulating
       peer files at the package root. Candidate groups to evaluate include
       campaign policy/state, scheduling/request planning, monitoring/runtime
@@ -680,18 +701,19 @@ their actual responsibility rather than only a broad provider/dataset label.
 
 #### Orchestration naming findings
 
-- [ ] `orchestration/tasks/era5_land.py` is currently only a compatibility
-      facade. Prefer removing it after caller migration rather than renaming it.
-- [ ] Review `orchestration/repositories/cds_pacing.py`. The repository owns a
-      durable provider-submission clock, not an Airflow attempt. Prefer a
-      responsibility name such as `submission_pacing.py` over
-      `attempt_pacing.py`; keep provider-specific identifiers inside the
-      implementation only where the persisted clock is intentionally CDS-scoped.
-- [ ] Move the custom deferrable operator out of `tasks/` into a dedicated
-      operator package. Evaluate a responsibility-oriented target such as
-      `orchestration/operators/raw_checkpoint.py`. Review whether the class
-      `CdsPacedExtractOperator` should become `RawCheckpointOperator` after
-      its provider-specific exception dependency is isolated.
+- [x] Treat `orchestration/tasks/era5_land.py` as a temporary compatibility
+      facade to remove after caller migration; do not rename it into another
+      long-lived facade.
+- [x] Rename `orchestration/repositories/cds_pacing.py` to
+      `orchestration/repositories/submission_pacing.py`. The module owns the
+      durable provider-submission clock; provider-specific identifiers may remain
+      inside the implementation where the persisted clock is intentionally
+      CDS-scoped.
+- [x] Move the custom deferrable operator out of `tasks/` to
+      `orchestration/operators/raw_checkpoint.py` and rename
+      `CdsPacedExtractOperator` to `RawCheckpointOperator`. The implementation
+      still requires an audit to isolate any provider-specific exception or
+      pacing dependency cleanly.
 - [ ] Audit root modules `campaign.py`, `campaign_repair.py`, `database.py`,
       `intervals.py`, `mode.py`, `monitoring.py`, `pacing.py`,
       `progress.py`, `progress_tracking.py`, `reporting.py`,
@@ -703,41 +725,54 @@ their actual responsibility rather than only a broad provider/dataset label.
 - [ ] Audit the root `pipeline/` modules (`interfaces.py`, `model.py`,
       `request.py`, `runtime.py`, and `logging.py`). Keep a root module only
       when it is genuinely package-wide; otherwise group it by responsibility.
-- [ ] `pipeline/extraction/cds.py` currently combines credentials, CDS payload
-      construction, ERA5-Land local-day context, monthly chunking, chunk-cache
-      resume, download, and extractor behavior. Do not solve this only with a
-      rename. First define the split between provider transport/payload logic,
-      ERA5-Land retrieval policy, and resumable chunk extraction. A likely
-      dataset-specific module name after that split is `cds_era5_land.py`.
-- [ ] Keep provider and scientific contract ownership distinct. The current
-      `pipeline/providers/cds.py` contains CDS ERA5-Land dataset profiles and
-      variable mappings, so `providers/cds_era5_land.py` is a reasonable
-      candidate. Do not rename `contracts/era5_land.py` to
-      `contracts/cds_era5_land.py` solely for filename symmetry: UTC+7 daily
-      semantics, accumulated/mean-variable classes, and output units are
-      scientific ERA5-Land contracts and should remain provider-independent
-      unless the audit proves otherwise.
-- [ ] Review `pipeline/transformation/era5_land.py`. Its responsibility is
-      specifically ERA5-Land hourly-to-local-daily transformation; prefer a name
-      that states that output, for example `era5_land_daily.py` or
-      `era5_land_daily_statistics.py`.
-- [ ] `pipeline/validation/era5_land.py` currently validates both RAW hourly
-      provider data and transformed local-daily data. Prefer splitting by
-      contract boundary (for example RAW ERA5-Land validation and daily
-      ERA5-Land validation) rather than only renaming one large mixed module.
-- [ ] Review `pipeline/repositories/daily_climate.py` by repository
-      responsibility, not by a strict one-file-per-table rule. A repository may
-      legitimately coordinate `daily_climate` and `daily_climate_detail`
-      because they form one aggregate/read model. Split repositories only when
-      tables have independent lifecycle/query responsibilities. In particular,
-      operational tables (`pipeline_progress`, `pipeline_progress_detail`,
-      `cds_submission_pacing`) remain orchestration-owned and should not be
-      mirrored into `pipeline/repositories/` merely to achieve table symmetry.
-- [ ] Review whether `daily_climate.py` is accurately named for its current
-      read-only modelling-query responsibility. If its only public concern is
-      loading canonical daily climate data for modelling, consider a more
-      explicit name such as `daily_climate_reader.py` rather than splitting it
-      mechanically by physical table.
+- [ ] Audit `pipeline/extraction/cds.py` before renaming or splitting it. It
+      currently combines credentials, CDS payload construction, ERA5-Land
+      local-day context, monthly chunking, chunk-cache resume, download, and
+      extractor behavior. Explicitly separate what belongs to provider transport
+      from ERA5-Land retrieval policy and resumable chunk extraction before
+      choosing the final module boundaries.
+- [x] Keep `pipeline/contracts/era5_land.py` provider-independent. Its UTC+7
+      daily semantics, accumulated/mean-variable classes, and output units are
+      scientific ERA5-Land contracts. Separately, audit the current
+      `pipeline/providers/cds.py` during extraction/provider restructuring;
+      provider naming must follow its final responsibility rather than filename
+      symmetry with the contract module.
+- [x] Rename `pipeline/transformation/era5_land.py` to
+      `pipeline/transformation/era5_land_daily.py`; the module represents
+      ERA5-Land hourly-to-local-daily transformation.
+- [x] Split `pipeline/validation/era5_land.py` by contract boundary into
+      `pipeline/validation/era5_land_raw.py` and
+      `pipeline/validation/era5_land_daily.py`.
+- [x] Keep repository ownership responsibility-based rather than enforcing one
+      file per physical table. `daily_climate` and `daily_climate_detail`
+      form one canonical climate aggregate/read model.
+- [x] Rename `pipeline/repositories/daily_climate.py` to
+      `pipeline/repositories/daily_climate_reader.py` for its current read-only
+      modelling-query responsibility.
+- [x] Keep operational persistence for `pipeline_progress`,
+      `pipeline_progress_detail`, and `cds_submission_pacing` under
+      `orchestration/repositories/`; do not mirror those tables into
+      `pipeline/repositories/` merely for table symmetry.
+
+#### Agreed naming decisions
+
+The following names are now the preferred targets unless the dependency audit
+uncovers a concrete conflict:
+
+```text
+orchestration/repositories/submission_pacing.py
+orchestration/operators/raw_checkpoint.py
+RawCheckpointOperator
+
+pipeline/contracts/era5_land.py
+pipeline/repositories/daily_climate_reader.py
+pipeline/transformation/era5_land_daily.py
+pipeline/validation/era5_land_raw.py
+pipeline/validation/era5_land_daily.py
+```
+
+`pipeline/extraction/cds.py` remains intentionally unresolved until the
+provider-transport versus ERA5-Land-retrieval-policy audit is complete.
 
 #### Required implementation gate
 
