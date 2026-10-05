@@ -1,13 +1,14 @@
 """Keep campaign ticks configurable while the DAG remains disabled by default.
 
 The scheduler cadence chooses when to seek a quarter; it must remain separate
-from tests._paths import REPOSITORY_ROOT
 from durable progress identity and the PostgreSQL CDS submission clock.
 """
 
 from __future__ import annotations
 
 import pytest
+
+from tests._paths import REPOSITORY_ROOT
 
 from orchestration.scheduling.schedule import (
     CADENCE_ENV,
