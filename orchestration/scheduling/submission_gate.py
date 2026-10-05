@@ -11,7 +11,7 @@ from datetime import datetime
 
 from orchestration.repositories.database import initialize_pacing_storage, runtime_database_engine
 from orchestration.repositories.submission_pacing import reserve_submission
-from pipeline.model import WeatherRequest
+from pipeline.models.weather import WeatherRequest
 
 logger = logging.getLogger(__name__)
 

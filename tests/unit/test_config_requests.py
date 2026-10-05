@@ -7,13 +7,13 @@ from config import (
     resolve_app_environment,
     validate_and_log_app_environment,
 )
-from pipeline.model import DataSource
-from request_factory import build_cds_request
+from pipeline.models.weather import DataSource
+from pipeline.requests.factory import build_cds_request
 
 
 def test_build_cds_request_requires_api_key(monkeypatch) -> None:
     # Isolate the missing-key scenario from a developer's real .env file.
-    monkeypatch.setattr("request_factory.load_dotenv", lambda: False)
+    monkeypatch.setattr("pipeline.requests.factory.load_dotenv", lambda: False)
     monkeypatch.delenv("CDSAPI_KEY", raising=False)
 
     with pytest.raises(ValueError):

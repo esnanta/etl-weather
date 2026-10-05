@@ -2,8 +2,8 @@ import logging
 
 import pandas as pd
 
-import pipeline.logging as pipeline_logging
-from pipeline.logging import (
+import pipeline.observability.logging as pipeline_logging
+from pipeline.observability.logging import (
     log_metric,
     log_section_completed,
     log_section_start,
@@ -30,14 +30,14 @@ def test_key_value_block_has_no_ascii_table_borders() -> None:
 
 
 def test_metric_blocks_end_with_a_blank_line(caplog) -> None:
-    with caplog.at_level(logging.INFO, logger="pipeline.logging"):
+    with caplog.at_level(logging.INFO, logger="pipeline.observability.logging"):
         log_metric("Example", {"status": "ready"})
 
     assert "[METRIC] Example\nstatus : ready\n" in caplog.text
 
 
 def test_completed_section_separates_the_next_process(caplog) -> None:
-    with caplog.at_level(logging.INFO, logger="pipeline.logging"):
+    with caplog.at_level(logging.INFO, logger="pipeline.observability.logging"):
         started_at = log_section_start("EXTRACT")
         log_section_completed("EXTRACT", started_at)
         log_section_start("TRANSFORM")
@@ -52,11 +52,11 @@ def test_completed_section_separates_the_next_process(caplog) -> None:
 def test_dataframe_preview_is_hidden_at_info_and_available_at_debug(caplog) -> None:
     dataframe = pd.DataFrame({"value": [1]})
 
-    with caplog.at_level(logging.INFO, logger="pipeline.logging"):
+    with caplog.at_level(logging.INFO, logger="pipeline.observability.logging"):
         log_dataframe_preview(dataframe)
     assert "[PREVIEW]" not in caplog.text
 
     caplog.clear()
-    with caplog.at_level(logging.DEBUG, logger="pipeline.logging"):
+    with caplog.at_level(logging.DEBUG, logger="pipeline.observability.logging"):
         log_dataframe_preview(dataframe)
     assert "[PREVIEW]" in caplog.text

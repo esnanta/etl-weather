@@ -38,7 +38,7 @@ def ensure_transformed_checkpoint_partition(
     raw_checkpoint_result: Mapping[str, Any],
 ) -> dict[str, object]:
     """Ensure one mapped transformed checkpoint from RAW control metadata."""
-    from pipeline.request import weather_request_from_spec
+    from pipeline.requests.weather import weather_request_from_spec
     from pipeline.runtime import ensure_transformed_checkpoint_partition as ensure_transformed_checkpoint_runtime
 
     request_spec = _request_spec_from_result(

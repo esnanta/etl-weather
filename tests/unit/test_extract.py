@@ -11,7 +11,7 @@ import xarray as xr
 
 import pipeline.extraction.cds_era5_land as cds_extraction
 from pipeline.extraction.cds_era5_land import CdsEra5LandExtractor
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
 from pipeline.providers.cds_era5_land import build_cds_request_payload
 build_era5_land_retrieval_request = getattr(

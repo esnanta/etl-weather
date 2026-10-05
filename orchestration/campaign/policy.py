@@ -127,7 +127,7 @@ def matching_campaign_progress_definition(
     request_spec: Mapping[str, Any],
 ) -> PipelineProgressDefinition | None:
     """Match one exact calendar-month request to the current campaign identity."""
-    from pipeline.request import build_request_key, weather_request_from_spec
+    from pipeline.requests.weather import build_request_key, weather_request_from_spec
 
     request = weather_request_from_spec(request_spec)
     start = date.fromisoformat(request.start_date)

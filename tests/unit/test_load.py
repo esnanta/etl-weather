@@ -19,7 +19,7 @@ prepare_observation_dataframe = getattr(
     postgres_loader,
     "_prepare_observation_dataframe",
 )
-from pipeline.model import (
+from pipeline.models.weather import (
     BoundingBox,
     DataLayer,
     DataSource,

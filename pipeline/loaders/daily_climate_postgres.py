@@ -17,15 +17,15 @@ from pipeline.database import (
     create_schema,
     resolve_database_config,
 )
-from pipeline.interfaces import DataLoader
-from pipeline.logging import log_metric
-from pipeline.model import DatasetArtifact, TransformedWeatherDataset
+from pipeline.interfaces.etl import DataLoader
+from pipeline.observability.logging import log_metric
+from pipeline.models.weather import DatasetArtifact, TransformedWeatherDataset
 from pipeline.storage import (
     artifact_path_for_metadata,
     calculate_file_sha256,
     read_parquet_provenance,
 )
-from pipeline.request import build_request_key, build_variable_signature
+from pipeline.requests.weather import build_request_key, build_variable_signature
 
 logger = logging.getLogger(__name__)
 

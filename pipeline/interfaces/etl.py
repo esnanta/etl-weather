@@ -1,9 +1,11 @@
+"""Define abstract ETL interfaces for extraction, storage, transformation, and loading."""
+
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 import pandas as pd
 
-from pipeline.model import (
+from pipeline.models.weather import (
     DatasetArtifact,
     LoadedWeatherDataset,
     RawWeatherDataset,

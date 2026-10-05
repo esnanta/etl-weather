@@ -1134,4 +1134,6 @@ table/schema names, scientific calculations, Airflow task IDs, mapped
 
 - S3 pipeline low-blast-radius renames: verified by the user on 2026-10-05 with 71 focused tests passed in 2.28s and 283 unit/orchestration regression tests passed in 7.24s.
 
-- S4 provider/extraction split: implemented structurally; focused regression is required before S5 begins.
+- S4 provider/extraction split: verified by the user on 2026-10-05 with 61 focused tests passed in 1.02s and 283 unit/orchestration regression tests passed in 7.34s.
+
+- S5 high-blast-radius pipeline core moves: implemented structurally; full regression is required before any live pilot.

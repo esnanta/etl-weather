@@ -179,40 +179,33 @@ after recreation when there are no import errors.
 
 ```text
 etl-weather/
-├── config.py                       # shared lightweight application settings
-├── request_factory.py              # typed CDS request construction
-├── activate-airflow.sh
-├── airflow-jwt-key.txt             # generated; ignored by Git; mode 600
-├── generate-airflow-jwt-secret.sh
+├── config.py
+├── pipeline/
+│   ├── runtime.py
+│   ├── models/weather.py
+│   ├── interfaces/etl.py
+│   ├── requests/factory.py
+│   ├── requests/weather.py
+│   ├── observability/logging.py
+│   ├── providers/
+│   ├── extraction/cds_era5_land.py
+│   ├── transformation/era5_land_daily.py
+│   ├── validation/
+│   ├── storage/
+│   ├── loaders/daily_climate_postgres.py
+│   └── repositories/daily_climate_reader.py
 └── orchestration/
-    ├── config.py                   # campaign, cadence, pacing, storage policy
-    ├── database.py                 # engine lifecycle and storage bootstrap
-    ├── requests.py                 # validated monthly request specifications
-    ├── intervals.py                # Airflow interval -> local inclusive dates
-    ├── monitoring.py               # disk and process-memory observations
-    ├── progress_tracking.py        # shared progress/artifact recording
-    ├── campaign_repair.py          # validated manual repair reconciliation
-    ├── repositories/               # operational SQL and persisted evidence
-    ├── dags/
-    │   └── cds_era5_land_etl.py
-    ├── docs/
-    │   ├── IMPLEMENTATION_PLAN.md
-    │   ├── REFACTOR_PLAN.md
-    │   └── POSTGRES_RECREATION.md
-    ├── logs/                       # generated; ignored by Git
+    ├── config.py
+    ├── campaign/
+    ├── scheduling/
+    ├── progress/
+    ├── monitoring/
+    ├── repositories/
+    ├── operators/raw_checkpoint.py
     ├── tasks/
-    │   ├── build_monthly_requests.py
-    │   ├── cds_extract_operator.py
-    │   ├── extract.py
-    │   ├── transform.py
-    │   ├── load.py
-    │   ├── era5_land.py            # compatibility re-export facade
-    │   └── progress.py             # compatibility re-export facade
-    ├── airflow.cfg
-    ├── airflow.db                  # generated; ignored by Git
-    └── README.md
+    ├── dags/cds_era5_land_etl.py
+    └── docs/
 ```
-
 ## ERA5-Land ETL DAG
 
 DAG ID:

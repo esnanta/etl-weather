@@ -24,7 +24,7 @@ def ensure_raw_checkpoint_partition(
     paced: bool = False,
 ) -> dict[str, object]:
     """Ensure one mapped RAW checkpoint through the pipeline runtime."""
-    from pipeline.request import weather_request_from_spec
+    from pipeline.requests.weather import weather_request_from_spec
     from pipeline.runtime import ensure_raw_checkpoint_partition as ensure_raw_checkpoint_runtime
 
     request = weather_request_from_spec(request_spec)
@@ -53,7 +53,7 @@ def ensure_raw_checkpoint_with_progress(
 ) -> dict[str, object]:
     """Ensure a RAW checkpoint while preserving pacing deferral and failure semantics."""
     from orchestration.scheduling.submission_gate import SubmissionDeferred
-    from pipeline.request import build_request_key, weather_request_from_spec
+    from pipeline.requests.weather import build_request_key, weather_request_from_spec
 
     request_key = build_request_key(weather_request_from_spec(request_spec))
     record_progress(

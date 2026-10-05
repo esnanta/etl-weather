@@ -15,14 +15,14 @@ from pipeline.repositories.daily_climate_reader import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,
 )
-from pipeline.model import DataSource
+from pipeline.models.weather import DataSource
 from config import (
     CDS_DATASET,
     CDS_END_DATE,
     CDS_START_DATE,
     validate_and_log_app_environment,
 )
-from request_factory import build_aceh_bbox
+from pipeline.requests.factory import build_aceh_bbox
 
 logging.basicConfig(
     level=logging.INFO,

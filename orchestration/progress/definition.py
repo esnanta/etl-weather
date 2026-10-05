@@ -39,7 +39,7 @@ def build_pipeline_progress_definition(
     identity_context: Mapping[str, Any] | None = None,
 ) -> PipelineProgressDefinition:
     """Build cadence-neutral durable progress identity from request partitions."""
-    from pipeline.request import build_request_key, weather_request_from_spec
+    from pipeline.requests.weather import build_request_key, weather_request_from_spec
 
     if not pipeline_name.strip():
         raise ValueError("pipeline_name must not be empty.")

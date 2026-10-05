@@ -7,7 +7,7 @@ import pyarrow.parquet as pq
 import pytest
 import xarray as xr
 
-from pipeline.model import (
+from pipeline.models.weather import (
     BoundingBox,
     DataSource,
     RawWeatherDataset,

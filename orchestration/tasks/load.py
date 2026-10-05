@@ -26,7 +26,7 @@ def load_partition(
     transformed_checkpoint_result: Mapping[str, Any],
 ) -> dict[str, object]:
     """Delegate one mapped load task using transform control metadata."""
-    from pipeline.request import weather_request_from_spec
+    from pipeline.requests.weather import weather_request_from_spec
     from pipeline.runtime import load_request_partition
 
     request_spec = _request_spec_from_result(

@@ -244,7 +244,7 @@ def test_claimed_quarter_blocks_competing_selector(
 
 def test_manual_whole_month_matches_exact_campaign_partition() -> None:
     from orchestration.scheduling.requests import build_historical_request_specs
-    from pipeline.request import build_request_key, weather_request_from_spec
+    from pipeline.requests.weather import build_request_key, weather_request_from_spec
 
     spec = build_historical_request_specs(
         f"{CAMPAIGN_START_YEAR}-02-01",

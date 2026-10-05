@@ -13,16 +13,16 @@ from datetime import datetime
 from pathlib import Path
 
 from pipeline.extraction import CdsEra5LandExtractor
-from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
+from pipeline.interfaces.etl import DataLoader, DataStorage, DataTransformer, WeatherExtractor
 from pipeline.loaders import PostgresDataLoader
-from pipeline.logging import (
+from pipeline.observability.logging import (
     log_metric,
     log_pipeline_header,
     log_pipeline_summary,
     log_section_completed,
     log_section_start,
 )
-from pipeline.model import (
+from pipeline.models.weather import (
     DataSource,
     DatasetArtifact,
     LoadedWeatherDataset,
@@ -33,7 +33,7 @@ from pipeline.model import (
 from pipeline.storage import LocalDataStorage
 from pipeline.storage.artifacts import DATA_DIRECTORY
 from pipeline.transformation import DefaultDataTransformer
-from pipeline.request import (
+from pipeline.requests.weather import (
     build_request,
     build_request_key,
     split_request_by_month,

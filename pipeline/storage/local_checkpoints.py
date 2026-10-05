@@ -11,9 +11,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
 
-from pipeline.interfaces import DataStorage
-from pipeline.logging import _log_dataframe_preview
-from pipeline.model import (
+from pipeline.interfaces.etl import DataStorage
+from pipeline.observability.logging import _log_dataframe_preview
+from pipeline.models.weather import (
     DatasetArtifact,
     RawWeatherDataset,
     TransformedWeatherDataset,

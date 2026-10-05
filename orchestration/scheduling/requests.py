@@ -18,12 +18,12 @@ def build_historical_request_specs(
     current_local_date: date | None = None,
 ) -> list[dict[str, object]]:
     """Validate an explicit historical range and return monthly request specs."""
-    from pipeline.request import (
+    from pipeline.requests.weather import (
         split_request_by_month,
         validate_request,
         weather_request_to_spec,
     )
-    from request_factory import build_cds_request
+    from pipeline.requests.factory import build_cds_request
 
     if not start_date or not end_date:
         raise ValueError(

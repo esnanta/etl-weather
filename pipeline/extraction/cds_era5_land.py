@@ -16,9 +16,9 @@ from pipeline.contracts.era5_land import (
     ERA5_LAND_START_DATE,
     LOCAL_DAY_CONTEXT_DAYS,
 )
-from pipeline.interfaces import WeatherExtractor
-from pipeline.logging import log_metric
-from pipeline.model import RawWeatherDataset, WeatherRequest
+from pipeline.interfaces.etl import WeatherExtractor
+from pipeline.observability.logging import log_metric
+from pipeline.models.weather import RawWeatherDataset, WeatherRequest
 from pipeline.providers.catalog import get_source_dataset_profile
 from pipeline.providers.cds_client import retrieve_cds_dataset
 from pipeline.providers.cds_era5_land import (
@@ -26,7 +26,7 @@ from pipeline.providers.cds_era5_land import (
     build_cds_request_payload,
     normalize_cds_dataset,
 )
-from pipeline.request import (
+from pipeline.requests.weather import (
     build_request,
     build_request_key,
     split_request_by_month,

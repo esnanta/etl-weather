@@ -33,7 +33,7 @@ def reconcile_campaign_repair(
     manual_repair: bool,
 ) -> None:
     """Apply a validated whole-month load to its exact campaign quarter."""
-    from pipeline.request import weather_request_from_spec
+    from pipeline.requests.weather import weather_request_from_spec
 
     definition = matching_campaign_progress_definition(request_spec)
     if definition is None:

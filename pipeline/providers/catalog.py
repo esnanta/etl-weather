@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pipeline.model import DataSource
+from pipeline.models.weather import DataSource
 from pipeline.providers.cds_era5_land import CDS_DATASET_PROFILES
 
 

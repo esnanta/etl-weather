@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 
 import pipeline.repositories.daily_climate_reader as daily_climate_repository
 from pipeline.database import DatabaseConfig
-from pipeline.model import BoundingBox, DataSource
+from pipeline.models.weather import BoundingBox, DataSource
 from pipeline.repositories.daily_climate_reader import (
     DailyClimateSelection,
     load_daily_climate_for_modelling,

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import xarray as xr
 
-from pipeline.model import WeatherRequest
+from pipeline.models.weather import WeatherRequest
 
 
 VARIABLE_DESCRIPTIONS = {

@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from pipeline.database.config import DatabaseConfig, resolve_database_config
-from pipeline.logging import log_metric
+from pipeline.observability.logging import log_metric
 
 DAILY_CLIMATE_COLUMNS = (
     "tp_daily_total_mm",

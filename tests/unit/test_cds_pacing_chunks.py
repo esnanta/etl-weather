@@ -16,7 +16,7 @@ import xarray as xr
 from pipeline.extraction import cds_era5_land as cds
 from pipeline.providers import cds_client
 from orchestration.scheduling.submission_gate import SubmissionDeferred
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
 
 def _request(start: str, end: str) -> WeatherRequest:
@@ -85,7 +85,7 @@ def test_corrupt_chunk_identity_fails_closed(
     request = _request("2024-02-01", "2024-02-02")
     cache = tmp_path / "retrieval"
     cache.mkdir()
-    from pipeline.request import build_request_key
+    from pipeline.requests.weather import build_request_key
 
     xr.Dataset(
         {"tp": ("valid_time", [1.0])},

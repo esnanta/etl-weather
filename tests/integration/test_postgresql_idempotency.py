@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from pipeline.database import DatabaseConfig
 from pipeline.loaders.daily_climate_postgres import load_to_postgresql
-from pipeline.model import (
+from pipeline.models.weather import (
     BoundingBox,
     DataSource,
     RawWeatherDataset,

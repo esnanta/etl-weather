@@ -1,3 +1,5 @@
+"""Define weather requests, datasets, and deterministic artifact metadata."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum

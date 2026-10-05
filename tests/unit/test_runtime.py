@@ -4,8 +4,8 @@ from pathlib import Path
 import pandas as pd
 import xarray as xr
 
-from pipeline.interfaces import DataLoader, DataStorage, DataTransformer, WeatherExtractor
-from pipeline.model import (
+from pipeline.interfaces.etl import DataLoader, DataStorage, DataTransformer, WeatherExtractor
+from pipeline.models.weather import (
     BoundingBox,
     DataLayer,
     DataSource,

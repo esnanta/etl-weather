@@ -12,7 +12,7 @@ import requests
 import xarray as xr
 from dotenv import load_dotenv
 
-from pipeline.model import WeatherRequest
+from pipeline.models.weather import WeatherRequest
 
 logger = logging.getLogger("pipeline.extraction.cds")
 

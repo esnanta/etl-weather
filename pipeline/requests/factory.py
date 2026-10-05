@@ -13,7 +13,7 @@ from config import (
     CDS_START_DATE,
     CDS_VARIABLES,
 )
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
 
 def build_aceh_bbox() -> BoundingBox:

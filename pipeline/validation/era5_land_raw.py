@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from pipeline.logging import log_metric
-from pipeline.model import RawWeatherDataset, WeatherRequest
+from pipeline.observability.logging import log_metric
+from pipeline.models.weather import RawWeatherDataset, WeatherRequest
 from pipeline.providers.catalog import get_source_dataset_profile
 
 

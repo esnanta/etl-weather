@@ -19,14 +19,14 @@ from pipeline.contracts.era5_land import (
     LOCAL_TIMEZONE,
     LOCAL_UTC_OFFSET_HOURS,
 )
-from pipeline.interfaces import DataTransformer
-from pipeline.logging import (
+from pipeline.interfaces.etl import DataTransformer
+from pipeline.observability.logging import (
     _log_dataframe_preview,
     log_dataframe_changes,
     log_dataframe_info,
     log_metric,
 )
-from pipeline.model import LoadedWeatherDataset, TransformedWeatherDataset, WeatherRequest
+from pipeline.models.weather import LoadedWeatherDataset, TransformedWeatherDataset, WeatherRequest
 
 logger = logging.getLogger(__name__)
 

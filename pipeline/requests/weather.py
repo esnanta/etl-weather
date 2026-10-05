@@ -1,3 +1,5 @@
+"""Validate, normalize, serialize, partition, and identify weather requests."""
+
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +10,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from pipeline.model import BoundingBox, DataSource, WeatherRequest
+from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 from pipeline.providers.catalog import get_source_dataset_profile
 
 

@@ -12,8 +12,8 @@ from pipeline.contracts.era5_land import (
     LOCAL_MIDNIGHT_IN_UTC_HOUR,
     LOCAL_UTC_OFFSET_HOURS,
 )
-from pipeline.logging import log_metric
-from pipeline.model import TransformedWeatherDataset, WeatherRequest
+from pipeline.observability.logging import log_metric
+from pipeline.models.weather import TransformedWeatherDataset, WeatherRequest
 from pipeline.providers.catalog import get_source_dataset_profile
 from pipeline.validation.era5_land_raw import ValidationError
 
