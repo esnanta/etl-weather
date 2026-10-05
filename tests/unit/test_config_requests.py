@@ -5,7 +5,6 @@ import pytest
 from config import (
     database_recreation_allowed,
     resolve_app_environment,
-    resolve_campaign_period,
     resolve_cds_period,
     validate_and_log_app_environment,
 )
@@ -110,25 +109,21 @@ def test_application_environment_logs_warning_before_abort(caplog) -> None:
     assert "Application startup aborted" in caplog.text
 
 
-def test_configured_date_ranges_use_canonical_environment_values() -> None:
+def test_configured_cds_period_uses_canonical_environment_values() -> None:
     assert resolve_cds_period({
         "CDS_START_DATE": "2022-01-01",
         "CDS_END_DATE": "2022-01-03",
     }) == ("2022-01-01", "2022-01-03")
-    assert resolve_campaign_period({
-        "CAMPAIGN_START_DATE": "2016-01-01",
-        "CAMPAIGN_END_DATE": "2017-12-31",
-    }) == ("2016-01-01", "2017-12-31")
 
 
-def test_configured_date_range_rejects_invalid_or_inverted_values() -> None:
+def test_configured_cds_period_rejects_invalid_or_inverted_values() -> None:
     with pytest.raises(ValueError, match="valid YYYY-MM-DD"):
         resolve_cds_period({
             "CDS_START_DATE": "2022-02-30",
             "CDS_END_DATE": "2022-03-01",
         })
     with pytest.raises(ValueError, match="less than or equal"):
-        resolve_campaign_period({
-            "CAMPAIGN_START_DATE": "2017-01-01",
-            "CAMPAIGN_END_DATE": "2016-12-31",
+        resolve_cds_period({
+            "CDS_START_DATE": "2022-03-02",
+            "CDS_END_DATE": "2022-03-01",
         })
