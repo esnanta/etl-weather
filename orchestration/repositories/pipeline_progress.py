@@ -604,6 +604,48 @@ def release_pipeline_progress_claim(
     return result.rowcount == 1
 
 
+def are_extract_attempts_terminal(
+    engine: Engine,
+    progress_id: int,
+) -> bool:
+    """Return whether every expected partition finished its first extraction attempt."""
+    if progress_id <= 0:
+        raise ValueError("progress_id must be positive.")
+
+    statement = text(
+        f"""
+        SELECT
+            progress.expected_partition_count AS expected_count,
+            COUNT(detail.id) AS actual_count,
+            COUNT(detail.id) FILTER (
+                WHERE detail.extract_status IN ('complete', 'failed')
+            ) AS terminal_count
+        FROM {_parent_table()} AS progress
+        LEFT JOIN {_detail_table()} AS detail
+          ON detail.pipeline_progress_id = progress.id
+        WHERE progress.id = :pipeline_progress_id
+        GROUP BY progress.expected_partition_count
+        """
+    )
+    with engine.connect() as connection:
+        row = connection.execute(
+            statement,
+            {"pipeline_progress_id": progress_id},
+        ).mappings().one_or_none()
+
+    if row is None:
+        raise ValueError("Cannot inspect unknown pipeline progress row.")
+
+    expected_count = int(row["expected_count"])
+    actual_count = int(row["actual_count"])
+    terminal_count = int(row["terminal_count"])
+    return (
+        expected_count > 0
+        and actual_count == expected_count
+        and terminal_count == expected_count
+    )
+
+
 def get_failed_progress_partitions(
     engine: Engine, progress_id: int
 ) -> tuple[tuple[date, date, str | None], ...]:
