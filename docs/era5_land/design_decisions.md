@@ -37,7 +37,7 @@ ERA5-Land adalah dataset reanalysis yang menggambarkan perkembangan kondisi perm
 
 Data ini tetap merupakan keluaran model pada suatu sel grid. Sebuah nilai tidak boleh dianggap sama dengan pengamatan alat pada satu titik. Dokumentasi CDS juga mengingatkan bahwa pengamatan lapangan dapat mewakili ruang dan waktu yang lebih lokal daripada rata-rata suatu sel model.
 
-**Evaluasi melalui test.** Test permintaan memastikan bahwa program hanya menerima dataset ERA5-Land, menggunakan nama variabel yang disepakati, meminta 24 waktu UTC setiap hari, dan menolak interval unduhan langsung yang melintasi bulan kalender (`tests/unit/test_config_requests.py`, `tests/unit/test_extract.py`, dan `tests/unit/test_utils_request_validation.py`).
+**Evaluasi melalui test.** Test permintaan memastikan bahwa program hanya menerima dataset ERA5-Land, menggunakan nama variabel yang disepakati, meminta 24 waktu UTC setiap hari, dan menolak interval unduhan langsung yang melintasi bulan kalender (`tests/unit/test_config_requests.py`, `tests/unit/test_extract.py`, dan `tests/unit/pipeline/test_request.py`).
 
 Sumber utama bagian ini:
 
@@ -69,7 +69,7 @@ Permintaan 1–3 Januari 2022
     → PostgreSQL menyimpan metadata partisi dan observasi grid-hari
 ```
 
-**Evaluasi melalui test.** Test runtime memeriksa urutan unduh atau resume, validasi RAW, transformasi atau resume, validasi hasil harian, dan penyerahan artefak yang benar ke pemuat database (`tests/unit/test_runtime.py`).
+**Evaluasi melalui test.** Test runtime memeriksa urutan unduh atau resume, validasi RAW, transformasi atau resume, validasi hasil harian, dan penyerahan artefak yang benar ke pemuat database (`tests/unit/pipeline/test_runtime.py`).
 
 ---
 
@@ -100,7 +100,7 @@ Sebagai contoh, `tp = 0,024 m` menjadi `24 mm`, sedangkan `t2m = 300 K` menjadi 
 
 **Dasar ilmiah.** CDS mendefinisikan total presipitasi sebagai kedalaman air dalam meter jika air diratakan pada sel grid. Temperatur disediakan dalam Kelvin, dan dokumentasi menyatakan konversi ke Celsius dilakukan dengan mengurangi 273,15. `ssrd` disediakan dalam J/m², sedangkan `swvl1` merupakan fraksi volume air per volume tanah.
 
-**Evaluasi melalui test.** Test memeriksa hasil 24 mm dari presipitasi, konversi temperatur menjadi 26,85 °C dan 21,85 °C, serta mempertahankan `swvl1 = 0,30` tanpa perubahan satuan (`tests/unit/test_transform.py`). Test juga memastikan metadata CDS seperti `number`, `surface`, dan `expver` tidak masuk sebagai variabel cuaca.
+**Evaluasi melalui test.** Test memeriksa hasil 24 mm dari presipitasi, konversi temperatur menjadi 26,85 °C dan 21,85 °C, serta mempertahankan `swvl1 = 0,30` tanpa perubahan satuan (`tests/unit/pipeline/test_transform.py`). Test juga memastikan metadata CDS seperti `number`, `surface`, dan `expver` tidak masuk sebagai variabel cuaca.
 
 ---
 
@@ -192,7 +192,7 @@ Tampilan angka seperti `97.19999999999993` atau `3.5000000000000004` merupakan e
 
 **Contoh hasil test dua grid.** Untuk data sintetis yang sengaja dibuat berbeda, grid pertama menghasilkan presipitasi 24 mm dan grid kedua 48 mm. Radiasi masing-masing tetap 86.400 dan 172.800 J/m², sehingga tidak ada pencampuran antarkoordinat.
 
-**Evaluasi melalui test.** Test memeriksa resolusi 0,1°, menolak koordinat di luar lattice grid, memastikan rumus harian tetap independen pada beberapa grid, dan membuktikan bahwa dua bounding box menghasilkan jalur artefak berbeda (`tests/unit/test_transform.py`, `tests/unit/test_validation.py`, dan `tests/unit/test_storage.py`).
+**Evaluasi melalui test.** Test memeriksa resolusi 0,1°, menolak koordinat di luar lattice grid, memastikan rumus harian tetap independen pada beberapa grid, dan membuktikan bahwa dua bounding box menghasilkan jalur artefak berbeda (`tests/unit/pipeline/test_transform.py`, `tests/unit/pipeline/test_validation.py`, dan `tests/unit/pipeline/test_storage.py`).
 
 ---
 
@@ -215,7 +215,7 @@ Contoh:
 
 Urutan variabel tidak mengubah identitas logis permintaan. Permintaan `tp, t2m` dianggap sama dengan `t2m, tp`, tetapi perubahan periode atau bounding box menghasilkan identitas berbeda.
 
-**Evaluasi melalui test.** Test membuktikan pembagian parsial lintas bulan, kestabilan identitas terhadap urutan variabel, serta perubahan identitas ketika periode atau wilayah berubah (`tests/unit/test_utils_request_validation.py`).
+**Evaluasi melalui test.** Test membuktikan pembagian parsial lintas bulan, kestabilan identitas terhadap urutan variabel, serta perubahan identitas ketika periode atau wilayah berubah (`tests/unit/pipeline/test_request.py`).
 
 ---
 
@@ -249,7 +249,7 @@ Untuk nilai keadaan per jam, sampel yang masuk adalah pukul 17:00 UTC pada hari 
 
 Implementasi saat ini menyimpan kedua kolom sebagai timestamp tanpa penanda zona waktu. Maknanya ditetapkan oleh kontrak di atas; karena itu pengguna tidak boleh menafsirkannya sebagai dua waktu lokal yang berbeda.
 
-**Evaluasi melalui test.** Test memastikan selisih selalu tujuh jam, `valid_time_local` selalu tengah malam, `valid_time` selalu pukul 17:00 UTC secara semantik, seluruh hari yang diminta tersedia, dan tidak ada observasi grid-hari ganda (`tests/unit/test_transform.py` dan `tests/unit/test_validation.py`).
+**Evaluasi melalui test.** Test memastikan selisih selalu tujuh jam, `valid_time_local` selalu tengah malam, `valid_time` selalu pukul 17:00 UTC secara semantik, seluruh hari yang diminta tersedia, dan tidak ada observasi grid-hari ganda (`tests/unit/pipeline/test_transform.py` dan `tests/unit/pipeline/test_validation.py`).
 
 ---
 
@@ -271,7 +271,7 @@ rata-rata harian = jumlah 24 nilai per jam / 24
 
 Jika satu dari 24 nilai suatu variabel keadaan hilang, rata-rata grid-hari tersebut tidak diterbitkan. Jika beberapa variabel diminta bersama, hasil akhirnya hanya mempertahankan grid-hari yang lengkap untuk seluruh variabel keadaan yang digabungkan.
 
-**Evaluasi melalui test.** Test memeriksa rata-rata 11,5 °C, menolak satu jam yang hilang, menolak satu sampel keadaan bernilai `NaN`, dan memastikan rata-rata dua grid dihitung secara independen (`tests/unit/test_transform.py`).
+**Evaluasi melalui test.** Test memeriksa rata-rata 11,5 °C, menolak satu jam yang hilang, menolak satu sampel keadaan bernilai `NaN`, dan memastikan rata-rata dua grid dihitung secara independen (`tests/unit/pipeline/test_transform.py`).
 
 ---
 
@@ -311,7 +311,7 @@ Rumus yang sama diterapkan pada `ssrd` karena keduanya merupakan parameter akumu
 
 Nilai total negatif yang lebih kecil dari toleransi `−1×10⁻¹⁰` menghasilkan peringatan tetapi tetap dipertahankan. Sistem tidak mengubahnya diam-diam menjadi nol karena nilai negatif dapat menunjukkan persoalan pada data atau batas akumulasi yang perlu ditinjau, bukan otomatis berarti “tidak terjadi hujan/radiasi”.
 
-**Evaluasi melalui test.** Data sintetis dengan kenaikan presipitasi 1 mm per jam menghasilkan tepat 24 mm/hari; radiasi 3.600 J/m² per jam menghasilkan 86.400 J/m²/hari. Test juga memeriksa beberapa grid, nilai batas yang hilang, serta nilai negatif yang dipertahankan bersama peringatan (`tests/unit/test_transform.py`).
+**Evaluasi melalui test.** Data sintetis dengan kenaikan presipitasi 1 mm per jam menghasilkan tepat 24 mm/hari; radiasi 3.600 J/m² per jam menghasilkan 86.400 J/m²/hari. Test juga memeriksa beberapa grid, nilai batas yang hilang, serta nilai negatif yang dipertahankan bersama peringatan (`tests/unit/pipeline/test_transform.py`).
 
 Sumber utama keputusan ini:
 
@@ -335,7 +335,7 @@ periode data yang diambil : 31 Desember 2021–3 Januari 2022
 
 ERA5-Land dimulai pada 1 Januari 1950. Hari lokal 1 Januari 1950 di UTC+7 memerlukan konteks mulai 31 Desember 1949 pukul 17:00 UTC, yang tidak tersedia. Pipeline menolak transformasi hari tersebut secara eksplisit agar tidak menerbitkan hari yang tidak lengkap.
 
-**Evaluasi melalui test.** Test memastikan tanggal pengambilan dimundurkan satu hari, tidak pernah meminta tanggal sebelum awal ERA5-Land, memfilter hasil kembali ke periode target, dan menolak hari lokal 1 Januari 1950 dengan pesan yang menjelaskan konteks yang hilang (`tests/unit/test_extract.py` dan `tests/unit/test_transform.py`). Dokumentasi resmi juga mencatat bahwa parameter forecast tidak tersedia untuk valid time 1 Januari 1950 pukul 00:00 UTC.
+**Evaluasi melalui test.** Test memastikan tanggal pengambilan dimundurkan satu hari, tidak pernah meminta tanggal sebelum awal ERA5-Land, memfilter hasil kembali ke periode target, dan menolak hari lokal 1 Januari 1950 dengan pesan yang menjelaskan konteks yang hilang (`tests/unit/test_extract.py` dan `tests/unit/pipeline/test_transform.py`). Dokumentasi resmi juga mencatat bahwa parameter forecast tidak tersedia untuk valid time 1 Januari 1950 pukul 00:00 UTC.
 
 ---
 
@@ -358,7 +358,7 @@ Perlakuannya bergantung pada jenis variabel:
 
 Identitas sebuah grid ditentukan oleh koordinat, bukan oleh ada atau tidaknya nilai pada satu kolom. Karena itu, baris yang masih mempunyai koordinat tetapi salah satu variabelnya hilang tetap dapat menjadi anggota grid. Namun, apabila transformasi variabel keadaan membuang seluruh grid-hari karena tidak memiliki 24 sampel, pemeriksaan kestabilan grid akan mendeteksi perubahan keanggotaan antartanggal.
 
-**Evaluasi melalui test.** Test membedakan nilai hilang dari nol, memeriksa nilai batas akumulasi yang hilang, menolak mean keadaan yang tidak lengkap, memastikan `NaN` menjadi `NULL`, dan memastikan satu nilai hilang tidak mengubah keanggotaan grid selama baris koordinatnya tetap ada (`tests/unit/test_transform.py`, `tests/unit/test_validation.py`, `tests/unit/test_load.py`, dan `tests/unit/test_daily_climate_repository.py`).
+**Evaluasi melalui test.** Test membedakan nilai hilang dari nol, memeriksa nilai batas akumulasi yang hilang, menolak mean keadaan yang tidak lengkap, memastikan `NaN` menjadi `NULL`, dan memastikan satu nilai hilang tidak mengubah keanggotaan grid selama baris koordinatnya tetap ada (`tests/unit/pipeline/test_transform.py`, `tests/unit/pipeline/test_validation.py`, `tests/unit/pipeline/test_load.py`, dan `tests/unit/pipeline/test_daily_climate_repository.py`).
 
 ---
 
@@ -393,7 +393,7 @@ Hasil harian diperiksa agar:
 
 Akumulasi negatif tetap diizinkan dengan peringatan, sebagaimana dijelaskan pada bagian 9. Nilai hilang juga diperbolehkan pada hasil yang tetap mempertahankan baris grid.
 
-**Evaluasi melalui test.** Test memasukkan jam yang hilang, resolusi salah, offset waktu salah, tanggal lokal hilang, duplikasi, perubahan anggota grid, koordinat yang tidak sejajar, temperatur di bawah nol absolut, `swvl1 > 1`, nilai tak hingga, nilai hilang, dan akumulasi negatif. Kasus yang sah diterima dan kasus yang melanggar kontrak ditolak (`tests/unit/test_validation.py`).
+**Evaluasi melalui test.** Test memasukkan jam yang hilang, resolusi salah, offset waktu salah, tanggal lokal hilang, duplikasi, perubahan anggota grid, koordinat yang tidak sejajar, temperatur di bawah nol absolut, `swvl1 > 1`, nilai tak hingga, nilai hilang, dan akumulasi negatif. Kasus yang sah diterima dan kasus yang melanggar kontrak ditolak (`tests/unit/pipeline/test_validation.py`).
 
 ---
 
@@ -419,7 +419,7 @@ data/
 
 RAW tidak boleh ditimpa. Jika file sudah tersedia, pipeline membacanya kembali dan tetap menjalankan validasi. Parquet yang tersedia juga diperiksa sebelum digunakan kembali.
 
-**Evaluasi melalui test.** Test memeriksa kestabilan jalur, identitas bounding box, penolakan overwrite RAW dan Parquet, resume file yang ada, serta kegagalan yang jelas ketika checkpoint tidak ditemukan (`tests/unit/test_storage.py` dan `tests/unit/test_runtime.py`).
+**Evaluasi melalui test.** Test memeriksa kestabilan jalur, identitas bounding box, penolakan overwrite RAW dan Parquet, resume file yang ada, serta kegagalan yang jelas ketika checkpoint tidak ditemukan (`tests/unit/pipeline/test_storage.py` dan `tests/unit/pipeline/test_runtime.py`).
 
 ---
 
@@ -448,7 +448,7 @@ observasi PostgreSQL
 
 **Alasan.** Nama file yang sama tidak membuktikan bahwa isinya sama. Checksum berubah ketika byte file berubah, sehingga hasil lama tidak digunakan diam-diam setelah sumbernya diganti.
 
-**Evaluasi melalui test.** Test mengubah byte RAW dan memastikan resume ditolak. Test juga menghapus metadata checksum, mengganti jalur RAW, merusak timestamp, dan memastikan setiap ketidaksesuaian menghasilkan kegagalan (`tests/unit/test_storage.py`).
+**Evaluasi melalui test.** Test mengubah byte RAW dan memastikan resume ditolak. Test juga menghapus metadata checksum, mengganti jalur RAW, merusak timestamp, dan memastikan setiap ketidaksesuaian menghasilkan kegagalan (`tests/unit/pipeline/test_storage.py`).
 
 **Batasan.** Provenance belum menyimpan commit Git atau versi algoritme transformasi. Checksum membuktikan identitas file, tetapi belum sepenuhnya menjelaskan versi kode yang menghasilkan file tersebut.
 
@@ -462,7 +462,7 @@ observasi PostgreSQL
 
 **Alasan.** Tanpa langkah ini, proses yang terhenti dapat meninggalkan file akhir yang terlihat sah tetapi sebenarnya hanya berisi sebagian data.
 
-**Evaluasi melalui test.** Test mensimulasikan kegagalan setelah sebagian isi NetCDF atau Parquet ditulis. Setelah kegagalan, tidak boleh ada file akhir maupun file sementara parsial (`tests/unit/test_storage.py`).
+**Evaluasi melalui test.** Test mensimulasikan kegagalan setelah sebagian isi NetCDF atau Parquet ditulis. Setelah kegagalan, tidak boleh ada file akhir maupun file sementara parsial (`tests/unit/pipeline/test_storage.py`).
 
 ### Pemuatan PostgreSQL
 
@@ -470,7 +470,7 @@ observasi PostgreSQL
 
 **Alasan.** Database tidak boleh menyatakan sebuah partisi tersedia ketika observasinya hanya tersimpan sebagian.
 
-**Evaluasi melalui test.** Integration test memasukkan detail yang tidak sah setelah metadata sempat di-upsert. PostgreSQL kemudian diperiksa dan harus berisi nol metadata serta nol detail dari percobaan tersebut (`tests/integration/test_postgresql_idempotency.py`).
+**Evaluasi melalui test.** Integration test memasukkan detail yang tidak sah setelah metadata sempat di-upsert. PostgreSQL kemudian diperiksa dan harus berisi nol metadata serta nol detail dari percobaan tersebut (`tests/integration/pipeline/test_postgresql_idempotency.py`).
 
 ---
 
@@ -582,7 +582,7 @@ Pipeline saat ini tidak melakukan *spatial incremental expansion*, tidak memoton
 
 Kolom nilai cuaca di database dapat berisi `NULL` agar nilai hilang tetap berbeda dari nol. Nama kolom menyatakan statistik dan satuan, misalnya `tp_daily_total_mm` dan `t2m_daily_mean_c`.
 
-**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, perubahan identitas ketika bbox berubah, pemetaan kolom, indeks unik, UPSERT, deteksi partisi tidak berubah, hasil nol baris diproses, serta fallback ketika checksum atau jumlah observasi berbeda. Integration test PostgreSQL terisolasi memuat partisi yang sama dua kali dan mensyaratkan load kedua melewati penulisan observasi, sementara jumlah metadata dan observasi tetap serta tidak ada kunci observasi ganda (`tests/unit/test_utils_request_validation.py`, `tests/unit/test_database.py`, `tests/unit/test_load.py`, dan `tests/integration/test_postgresql_idempotency.py`). Test tersebut membuktikan idempotensi dan optimasi no-op di dalam satu partisi; test tidak menyatakan adanya deduplikasi grid global di antara bbox yang berbeda.
+**Evaluasi melalui test.** Unit test memeriksa identitas permintaan, perubahan identitas ketika bbox berubah, pemetaan kolom, indeks unik, UPSERT, deteksi partisi tidak berubah, hasil nol baris diproses, serta fallback ketika checksum atau jumlah observasi berbeda. Integration test PostgreSQL terisolasi memuat partisi yang sama dua kali dan mensyaratkan load kedua melewati penulisan observasi, sementara jumlah metadata dan observasi tetap serta tidak ada kunci observasi ganda (`tests/unit/pipeline/test_request.py`, `tests/unit/pipeline/test_database.py`, `tests/unit/pipeline/test_load.py`, dan `tests/integration/pipeline/test_postgresql_idempotency.py`). Test tersebut membuktikan idempotensi dan optimasi no-op di dalam satu partisi; test tidak menyatakan adanya deduplikasi grid global di antara bbox yang berbeda.
 
 ---
 
@@ -596,7 +596,7 @@ Data harian dibaca dari PostgreSQL menggunakan pilihan eksplisit: sumber, nama d
 
 Sebelum data diberikan kepada analisis, program memastikan bahwa struktur kolom lengkap, hasil tidak kosong, waktu lokal berada pada tengah malam, tidak ada observasi grid-hari ganda termasuk yang berasal dari partisi berbeda, dan tanggal berada dalam periode yang diminta.
 
-**Evaluasi melalui test.** Test memeriksa filter sumber/dataset/periode/wilayah, struktur hasil, urutan deterministik, pelestarian nilai hilang, penolakan duplikasi, dan sifat hanya-baca (`tests/unit/test_daily_climate_repository.py`).
+**Evaluasi melalui test.** Test memeriksa filter sumber/dataset/periode/wilayah, struktur hasil, urutan deterministik, pelestarian nilai hilang, penolakan duplikasi, dan sifat hanya-baca (`tests/unit/pipeline/test_daily_climate_repository.py`).
 
 ---
 
