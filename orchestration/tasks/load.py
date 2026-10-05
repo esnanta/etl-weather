@@ -6,10 +6,10 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from orchestration.campaign_repair import reconcile_campaign_repair
-from orchestration.database import runtime_database_engine
-from orchestration.monitoring import measure_peak_memory, warn_low_disk_space
-from orchestration.progress_tracking import (
+from orchestration.campaign.repair import reconcile_campaign_repair
+from orchestration.repositories.database import runtime_database_engine
+from orchestration.monitoring.resources import measure_peak_memory, warn_low_disk_space
+from orchestration.progress.tracking import (
     artifact_identity,
     record_failure,
     record_progress,

@@ -1,3 +1,5 @@
+"""Define bounded campaign policy, quarter identity, and scheduled selection."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
-    from orchestration.progress import PipelineProgressDefinition
+    from orchestration.progress.definition import PipelineProgressDefinition
 
 from orchestration.config import (
     AVAILABILITY_LAG_DAYS,
@@ -75,7 +77,7 @@ def build_campaign_progress_definition(
     request_specs: list[dict[str, object]] | tuple[dict[str, object], ...],
 ) -> PipelineProgressDefinition:
     """Build durable progress identity scoped to the configured campaign key."""
-    from orchestration.progress import build_pipeline_progress_definition
+    from orchestration.progress.definition import build_pipeline_progress_definition
 
     return build_pipeline_progress_definition(
         request_specs,
@@ -89,7 +91,7 @@ def build_quarter_request_specs(
     current_local_date: date | None = None,
 ) -> list[dict[str, object]]:
     """Build exactly three validated monthly request specs for one campaign quarter."""
-    from orchestration.requests import build_historical_request_specs
+    from orchestration.scheduling.requests import build_historical_request_specs
 
     specs = build_historical_request_specs(
         quarter.start_date.isoformat(),

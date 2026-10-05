@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from orchestration.database import runtime_database_engine
+from orchestration.repositories.database import runtime_database_engine
 from orchestration.repositories.pipeline_progress import (
     reconcile_pipeline_progress,
     release_pipeline_progress_claim,

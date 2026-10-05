@@ -5,8 +5,8 @@ facade preserves the module-level import path for current helper names without
 retaining mixed task responsibilities.
 """
 
-from orchestration.campaign_repair import reconcile_campaign_repair
-from orchestration.progress_tracking import (
+from orchestration.campaign.repair import reconcile_campaign_repair
+from orchestration.progress.tracking import (
     artifact_identity,
     record_failure,
     record_progress,

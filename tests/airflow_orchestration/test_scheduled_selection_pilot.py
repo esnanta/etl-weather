@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import date
 from types import SimpleNamespace
 
-from orchestration import campaign
+from orchestration.campaign import policy as campaign
 from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
 from orchestration.repositories import pipeline_progress as repository
 from orchestration.tasks import build_monthly_requests as job_tasks

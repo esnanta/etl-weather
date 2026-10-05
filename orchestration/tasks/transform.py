@@ -6,8 +6,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from orchestration.monitoring import measure_peak_memory, warn_low_disk_space
-from orchestration.progress_tracking import (
+from orchestration.monitoring.resources import measure_peak_memory, warn_low_disk_space
+from orchestration.progress.tracking import (
     artifact_identity,
     record_failure,
     record_progress,

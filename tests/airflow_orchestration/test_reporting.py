@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from orchestration.campaign import CampaignQuarter, iter_campaign_quarters
+from orchestration.campaign.policy import CampaignQuarter, iter_campaign_quarters
 from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
-from orchestration.reporting import MonthReport, QuarterReport, format_campaign_report, read_campaign_report
+from orchestration.campaign.reporting import MonthReport, QuarterReport, format_campaign_report, read_campaign_report
 
 
 def test_report_queries_exact_quarter_definitions_without_writes() -> None:
@@ -128,8 +128,8 @@ def test_yearly_summary_counts_only_valid_complete_quarters() -> None:
 
 
 def test_partial_quarter_details_use_exact_parent_id() -> None:
-    from orchestration.reporting import _load_quarter_report
-    from orchestration.campaign import (
+    from orchestration.campaign.reporting import _load_quarter_report
+    from orchestration.campaign.policy import (
         build_campaign_progress_definition,
         build_quarter_request_specs,
     )

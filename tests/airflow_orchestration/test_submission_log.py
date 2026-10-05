@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from orchestration import pacing
+from orchestration.scheduling import submission_gate as pacing
 from pipeline.extraction.cds import CdsSubmissionDeferred
 
 
@@ -22,12 +22,12 @@ def test_submission_log_fields_use_separate_lines(monkeypatch, caplog, granted):
     monkeypatch.setattr(pacing, "runtime_database_engine", engine)
     monkeypatch.setattr(pacing, "initialize_pacing_storage", lambda engine: None)
     monkeypatch.setattr(
-        pacing, "reserve_cds_submission",
+        pacing, "reserve_submission",
         lambda engine: SimpleNamespace(granted=granted, checked_at=submitted,
                                        next_allowed_at=next_allowed),
     )
     request = SimpleNamespace(start_date="2016-01-01", end_date="2016-01-31")
-    with caplog.at_level(logging.INFO, logger="orchestration.pacing"):
+    with caplog.at_level(logging.INFO, logger="orchestration.scheduling.submission_gate"):
         if granted:
             pacing.reserve_or_defer(request)
         else:

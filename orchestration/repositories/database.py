@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from orchestration.repositories.cds_pacing import create_cds_pacing_table
+from orchestration.repositories.submission_pacing import create_submission_pacing_table
 from orchestration.repositories.pipeline_progress import create_pipeline_progress_tables
 from pipeline.database import (
     DatabaseConfig,
@@ -45,8 +45,8 @@ def initialize_progress_storage(
 
 
 def initialize_pacing_storage(engine: Engine) -> None:
-    """Ensure the durable CDS submission clock exists at submission-gate time."""
-    create_cds_pacing_table(engine)
+    """Ensure the durable submission clock exists at submission-gate time."""
+    create_submission_pacing_table(engine)
 
 
 def initialize_application_storage(

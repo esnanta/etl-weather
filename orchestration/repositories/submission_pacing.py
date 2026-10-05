@@ -1,7 +1,7 @@
-"""Coordinate CDS submission timestamps so separate workers obey one pacing clock.
+"""Persist one global provider-submission clock for orchestration workers.
 
-The one-slot Airflow pool serializes extraction tasks but cannot enforce elapsed
-time between provider calls, so a durable database row records each reservation.
+The Airflow pool serializes extraction tasks but cannot enforce elapsed time
+between provider calls, so this repository uses one durable singleton row.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from sqlalchemy.engine import Engine
 from orchestration.config import (
     DEFAULT_INTERVAL_SECONDS,
     INTERVAL_ENV,
-    PACING_KEY,
     PACING_SCHEMA,
     PACING_TABLE,
 )
@@ -24,6 +23,8 @@ from orchestration.config import (
 
 @dataclass(frozen=True)
 class SubmissionDecision:
+    """Describe whether one provider submission slot was reserved."""
+
     granted: bool
     checked_at: datetime
     next_allowed_at: datetime
@@ -41,14 +42,14 @@ def submission_interval_seconds() -> int:
     return seconds
 
 
-def create_cds_pacing_table(engine: Engine) -> None:
-    """Create a separate operational clock without changing progress identity."""
+def create_submission_pacing_table(engine: Engine) -> None:
+    """Create the durable global submission clock without provider identity."""
     with engine.begin() as connection:
         connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {PACING_SCHEMA}"))
         connection.execute(
             text(
                 f"""CREATE TABLE IF NOT EXISTS {PACING_SCHEMA}.{PACING_TABLE} (
-                    pacing_key TEXT PRIMARY KEY,
+                    singleton_id SMALLINT PRIMARY KEY CHECK (singleton_id = 1),
                     last_submission_at TIMESTAMPTZ,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )"""
@@ -56,18 +57,12 @@ def create_cds_pacing_table(engine: Engine) -> None:
         )
 
 
-def reserve_cds_submission(
+def reserve_submission(
     engine: Engine,
     *,
     interval_seconds: int | None = None,
 ) -> SubmissionDecision:
-    """Atomically reserve a submission or return when the clock permits one.
-
-    The row lock spans the read and update, and the database clock is read only
-    after acquiring it. A crash after commit conservatively delays the next
-    attempt even if the provider call did not start. Call this immediately before
-    each actual retrieve, including context chunks and task retries.
-    """
+    """Atomically reserve the global submission clock or return its next slot."""
     seconds = submission_interval_seconds() if interval_seconds is None else interval_seconds
     if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 0:
         raise ValueError("interval_seconds must be a nonnegative integer.")
@@ -76,14 +71,15 @@ def reserve_cds_submission(
     with engine.begin() as connection:
         connection.execute(
             text(
-                f"INSERT INTO {table} (pacing_key) VALUES (:key) "
-                "ON CONFLICT (pacing_key) DO NOTHING"
-            ),
-            {"key": PACING_KEY},
+                f"INSERT INTO {table} (singleton_id) VALUES (1) "
+                "ON CONFLICT (singleton_id) DO NOTHING"
+            )
         )
         last_submission = connection.execute(
-            text(f"SELECT last_submission_at FROM {table} WHERE pacing_key = :key FOR UPDATE"),
-            {"key": PACING_KEY},
+            text(
+                f"SELECT last_submission_at FROM {table} "
+                "WHERE singleton_id = 1 FOR UPDATE"
+            )
         ).scalar_one()
         checked_at = connection.execute(text("SELECT clock_timestamp()")).scalar_one()
         next_allowed_at = (
@@ -96,10 +92,8 @@ def reserve_cds_submission(
         connection.execute(
             text(
                 f"UPDATE {table} SET last_submission_at = :submitted_at, "
-                "updated_at = :submitted_at WHERE pacing_key = :key"
+                "updated_at = :submitted_at WHERE singleton_id = 1"
             ),
-            {"key": PACING_KEY, "submitted_at": checked_at},
+            {"submitted_at": checked_at},
         )
-        return SubmissionDecision(
-            True, checked_at, checked_at + timedelta(seconds=seconds)
-        )
+        return SubmissionDecision(True, checked_at, checked_at + timedelta(seconds=seconds))

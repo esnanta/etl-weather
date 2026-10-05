@@ -90,17 +90,15 @@ PIPELINE_PROGRESS_TABLE = "pipeline_progress"
 # Monthly partition progress table name.
 PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
 
-# Shared application schema used by the CDS pacing table.
+# Shared application schema used by the submission pacing table.
 PACING_SCHEMA = APPLICATION_SCHEMA
 
-# CDS pacing table name.
-PACING_TABLE = "cds_submission_pacing"
+# Submission pacing table name.
+PACING_TABLE = "submission_pacing"
 
-# Stable row key for the ERA5-Land CDS submission clock.
-PACING_KEY = "cds_era5_land"
 
-# Environment variable controlling minimum seconds between CDS submissions.
-INTERVAL_ENV = "CDS_MIN_SUBMISSION_INTERVAL_SECONDS"
+# Environment variable controlling minimum seconds between provider submissions.
+INTERVAL_ENV = "SUBMISSION_INTERVAL_SECONDS"
 
-# Default minimum interval between CDS submissions, in seconds.
+# Default minimum interval between provider submissions, in seconds.
 DEFAULT_INTERVAL_SECONDS = 1800

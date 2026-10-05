@@ -10,11 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from orchestration import campaign_repair
-from orchestration.campaign import CampaignBlocked, CampaignQuarter
+from orchestration.campaign import repair as campaign_repair
+from orchestration.campaign.policy import CampaignBlocked, CampaignQuarter
 from orchestration.config import CAMPAIGN_END_YEAR, CAMPAIGN_START_YEAR
 from orchestration.repositories.load_evidence import persisted_row_count
-from orchestration.requests import build_historical_request_specs
+from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks import build_monthly_requests as job_tasks
 from orchestration.tasks import extract as extract_tasks
 from orchestration.tasks import load as load_tasks
@@ -273,7 +273,7 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
 
 
 def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
-    from orchestration.campaign import matching_campaign_progress_definition
+    from orchestration.campaign.policy import matching_campaign_progress_definition
 
     definition = matching_campaign_progress_definition(_campaign_spec())
     assert definition is not None

@@ -87,7 +87,7 @@ abort startup and instruct the operator to set `APP_ENV=dev` or
    `POSTGRES_*` variables, and the Airflow campaign settings in `.env`.
    For scheduled operation, configure `ERA5_CAMPAIGN_SCHEDULE_ENABLED`,
    `ERA5_CAMPAIGN_SCHEDULE_CADENCE`, and
-   `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` there rather than passing them on
+   `SUBMISSION_INTERVAL_SECONDS` there rather than passing them on
    each terminal command.
    When the root `.env` file exists, `activate-airflow.sh` automatically loads
    and exports its values, preserving the shell's previous `allexport` state.
@@ -133,7 +133,7 @@ CAMPAIGN_END_YEAR=2017
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
-CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
+SUBMISSION_INTERVAL_SECONDS=1800
 ```
 
 Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` while validating configuration.
@@ -300,9 +300,9 @@ identity. `max_active_runs=1` remains the overlap guard; a tick does not
 select a fixed calendar quarter or change the 30-minute CDS submission gate.
 
 CDS submission interval controls provider pacing between actual retrieval
-submissions. Set `CDS_MIN_SUBMISSION_INTERVAL_SECONDS` in the runtime environment;
+submissions. Set `SUBMISSION_INTERVAL_SECONDS` in the runtime environment;
 the default is `1800` seconds (30 minutes), an operational starting point rather
-than a provider quota. A dedicated `climate_data.cds_submission_pacing` row uses the
+than a provider quota. A dedicated `climate_data.submission_pacing` row uses the
 PostgreSQL clock and a row lock to coordinate manual and scheduled attempts
 across workers. The CDS HTTP session reserves it immediately before each
 submission POST, including internal library retries, extra local-day context
@@ -345,7 +345,7 @@ climate_data.daily_climate
 climate_data.daily_climate_detail
 climate_data.pipeline_progress
 climate_data.pipeline_progress_detail
-climate_data.cds_submission_pacing
+climate_data.submission_pacing
 ```
 
 `pipeline_progress` represents one logical requested range or batch using
@@ -612,7 +612,7 @@ or HTTP retry messages, `RAW Temporal Validation PASSED`, and
 `RAW Spatial Validation PASSED`. Also record the run state and the RAW
 checkpoint status. Compare the `submitted_at` timestamps of **every**
 reservation: each successive POST must be at least
-`CDS_MIN_SUBMISSION_INTERVAL_SECONDS` apart (default 1,800 seconds).
+`SUBMISSION_INTERVAL_SECONDS` apart (default 1,800 seconds).
 A deferred request must not appear as a reserved POST before its
 `next_allowed_at`. A provider job POST retry may not occur naturally in this pilot;
 if none occurs, record that fact rather than claiming live retry coverage.
@@ -650,7 +650,7 @@ The local Airflow metadata database is SQLite, while the campaign truth is in
 PostgreSQL. Keep the PostgreSQL database, the shared `data/` artifacts, and
 Airflow metadata together when preparing a recoverable snapshot. The PostgreSQL
 backup must include both `climate_data.pipeline_progress` /
-`climate_data.pipeline_progress_detail` and `climate_data.cds_submission_pacing`,
+`climate_data.pipeline_progress_detail` and `climate_data.submission_pacing`,
 as well as `climate_data.daily_climate` /
 `climate_data.daily_climate_detail`. A progress-only restore cannot prove
 completed loads and a missing pacing clock can permit an early CDS submission.
@@ -990,7 +990,7 @@ PostgreSQL integration behavior on the isolated `TEST_POSTGRES_*` database:
 python -m pytest \
   tests/integration/test_postgresql_idempotency.py \
   tests/integration/test_pipeline_progress_reconciliation.py \
-  tests/integration/test_cds_submission_pacing.py \
+  tests/integration/test_submission_pacing.py \
   tests/integration/test_orchestration_database_bootstrap.py \
   -q
 ```

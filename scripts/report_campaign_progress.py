@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy import create_engine
 
 from config import validate_and_log_app_environment
-from orchestration.reporting import format_campaign_report, read_campaign_report
+from orchestration.campaign.reporting import format_campaign_report, read_campaign_report
 from pipeline.database import DatabaseConfig
 
 logging.basicConfig(

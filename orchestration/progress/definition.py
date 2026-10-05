@@ -1,3 +1,5 @@
+"""Define deterministic durable progress identities for orchestration batches."""
+
 from __future__ import annotations
 
 import hashlib

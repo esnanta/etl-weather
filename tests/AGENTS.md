@@ -126,7 +126,7 @@ database and the shared `climate_data` application schema:
 ```text
 climate_data.pipeline_progress
 climate_data.pipeline_progress_detail
-climate_data.cds_submission_pacing
+climate_data.submission_pacing
 ```
 
 Tests must protect cadence-neutral persistence. The parent row uses explicit
@@ -196,7 +196,7 @@ Scientific expected values must be traceable to accumulation formulas, unit conv
 - `airflow_orchestration/test_progress_wiring.py`: progress-aware extraction/load wiring, campaign repair, offsets, and persisted-load evidence.
 - `integration/test_postgresql_idempotency.py`: real PostgreSQL idempotency and transaction rollback using an isolated test database.
 - `integration/test_pipeline_progress_reconciliation.py`: persisted weather evidence and parent-progress reconciliation.
-- `integration/test_cds_submission_pacing.py`: PostgreSQL-clock pacing reservation and row-lock behavior.
+- `integration/test_submission_pacing.py`: PostgreSQL-clock pacing reservation and row-lock behavior.
 - `integration/test_orchestration_database_bootstrap.py`: fresh and repeated five-table bootstrap in the isolated `TEST_POSTGRES_*` database.
 
 ## Dependency and Warning Policy

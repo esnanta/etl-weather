@@ -65,7 +65,7 @@ ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
 # Default:
 #   1800 seconds = 30 minutes
 #
-# The pacing gate is stored in climate_data.cds_submission_pacing and uses the
+# The pacing gate is stored in climate_data.submission_pacing and uses the
 # PostgreSQL clock plus row locking so separate workers/runs cannot submit CDS
 # requests too close together.
 #
@@ -75,7 +75,7 @@ ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
 #
 # When a slot is not yet available, the extraction task defers and is resumed
 # later by Airflow; the wait is not counted as a provider failure.
-CDS_MIN_SUBMISSION_INTERVAL_SECONDS=1800
+SUBMISSION_INTERVAL_SECONDS=1800
 
 # The shared Airflow JWT secret is stored outside .env
 # Further instructions for generating

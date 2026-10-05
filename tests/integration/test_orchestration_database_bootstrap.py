@@ -15,7 +15,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.database import initialize_application_storage
+from orchestration.repositories.database import initialize_application_storage
 from pipeline.database import (
     DAILY_CLIMATE_DETAIL_TABLE,
     DAILY_CLIMATE_TABLE,

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from orchestration import monitoring
-from orchestration.intervals import inclusive_local_dates
-from orchestration.requests import build_historical_request_specs
+from orchestration.monitoring import resources as monitoring
+from orchestration.scheduling.intervals import inclusive_local_dates
+from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks.extract import ensure_raw_checkpoint_partition
 from orchestration.tasks.load import load_partition
 from orchestration.tasks.transform import ensure_transformed_checkpoint_partition
@@ -138,7 +138,7 @@ def test_peak_memory_is_logged_when_partition_fails(
 
 def test_monitoring_data_path_still_targets_repository_data() -> None:
     expected = Path(__file__).resolve().parents[2] / "data"
-    resolved = Path(monitoring.__file__).resolve().parents[1] / "data"
+    resolved = Path(monitoring.__file__).resolve().parents[2] / "data"
     assert resolved == expected
 
 

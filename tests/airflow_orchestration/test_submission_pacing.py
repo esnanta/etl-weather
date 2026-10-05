@@ -1,4 +1,4 @@
-"""Protect the operational CDS interval contract before task integration.
+"""Protect the operational submission interval contract before task integration.
 
 Pacing settings must stay independent of campaign identity and reject values
 that could silently remove the intended delay.
@@ -6,7 +6,7 @@ that could silently remove the intended delay.
 
 import pytest
 
-from orchestration.repositories.cds_pacing import (
+from orchestration.repositories.submission_pacing import (
     DEFAULT_INTERVAL_SECONDS,
     INTERVAL_ENV,
     submission_interval_seconds,

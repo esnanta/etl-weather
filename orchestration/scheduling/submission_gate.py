@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from orchestration.database import initialize_pacing_storage, runtime_database_engine
-from orchestration.repositories.cds_pacing import reserve_cds_submission
+from orchestration.repositories.database import initialize_pacing_storage, runtime_database_engine
+from orchestration.repositories.submission_pacing import reserve_submission
 from pipeline.extraction.cds import CdsSubmissionDeferred
 from pipeline.model import WeatherRequest
 
@@ -20,7 +20,7 @@ def reserve_or_defer(request: WeatherRequest) -> None:
     """Reserve the database clock for one real CDS retrieval attempt."""
     with runtime_database_engine() as engine:
         initialize_pacing_storage(engine)
-        decision = reserve_cds_submission(engine)
+        decision = reserve_submission(engine)
     if not decision.granted:
         logger.info(
             "CDS submission deferred\nchunk=%s..%s\nnext_allowed_at=%s",

@@ -12,7 +12,7 @@ from datetime import date, datetime
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from orchestration.campaign import (
+from orchestration.campaign.policy import (
     CampaignQuarter,
     build_campaign_progress_definition,
     build_quarter_request_specs,
@@ -25,7 +25,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.progress import PipelineProgressDefinition
+from orchestration.progress.definition import PipelineProgressDefinition
 
 
 @dataclass(frozen=True)

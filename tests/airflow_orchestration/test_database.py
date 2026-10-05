@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from orchestration import database
+from orchestration.repositories import database
 
 
 def test_runtime_engine_disposes_without_database_creation(monkeypatch) -> None:

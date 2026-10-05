@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from orchestration.schedule import (
+from orchestration.scheduling.schedule import (
     CADENCE_ENV,
     ENABLED_ENV,
     campaign_schedule,
@@ -25,7 +25,7 @@ def test_explicit_cadence(cadence: str, cron: str) -> None:
 
 
 def test_disabled_default_and_independent_pacing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CDS_MIN_SUBMISSION_INTERVAL_SECONDS", "3600")
+    monkeypatch.setenv("SUBMISSION_INTERVAL_SECONDS", "3600")
     assert campaign_schedule({}) is None
     assert campaign_schedule({ENABLED_ENV: "true"}) == "0 */2 * * *"
 

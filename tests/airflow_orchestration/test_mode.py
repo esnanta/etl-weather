@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from orchestration.mode import RunMode, resolve_run_mode
+from orchestration.scheduling.run_mode import RunMode, resolve_run_mode
 
 
 class RunType(str, Enum):

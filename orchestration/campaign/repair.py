@@ -6,9 +6,9 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from orchestration.campaign import matching_campaign_progress_definition
-from orchestration.database import runtime_database_engine
-from orchestration.progress_tracking import artifact_identity
+from orchestration.campaign.policy import matching_campaign_progress_definition
+from orchestration.repositories.database import runtime_database_engine
+from orchestration.progress.tracking import artifact_identity
 from orchestration.repositories.pipeline_progress import (
     initialize_pipeline_progress,
     reconcile_pipeline_progress,

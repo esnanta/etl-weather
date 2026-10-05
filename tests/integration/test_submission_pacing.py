@@ -1,26 +1,21 @@
-"""Verify that PostgreSQL serializes CDS submission reservations across workers.
-
-The same database clock must survive separate connections, concurrent claims,
-and task process termination without admitting early requests.
-"""
+"""Verify that PostgreSQL serializes global submission reservations across workers."""
 
 from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from uuid import uuid4
 
 import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from orchestration.repositories import cds_pacing
+from orchestration.repositories import submission_pacing
 from pipeline.database import DatabaseConfig
 
 pytestmark = pytest.mark.integration
 
 
-def test_reservations_are_durable_and_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reservations_are_durable_and_atomic() -> None:
     load_dotenv()
     names = (
         "TEST_POSTGRES_HOST",
@@ -43,16 +38,28 @@ def test_reservations_are_durable_and_atomic(monkeypatch: pytest.MonkeyPatch) ->
         schema="climate_data",
     )
     engine = create_engine(config.url, future=True)
-    key = f"pacing-test-{uuid4().hex}"
-    monkeypatch.setattr(cds_pacing, "PACING_KEY", key)
     table_ready = False
     try:
-        cds_pacing.create_cds_pacing_table(engine)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"DROP TABLE IF EXISTS {submission_pacing.PACING_SCHEMA}."
+                    f"{submission_pacing.PACING_TABLE}"
+                )
+            )
+        submission_pacing.create_submission_pacing_table(engine)
         table_ready = True
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
+                    f"{submission_pacing.PACING_TABLE}"
+                )
+            )
         with ThreadPoolExecutor(max_workers=2) as executor:
             decisions = list(
                 executor.map(
-                    lambda _: cds_pacing.reserve_cds_submission(
+                    lambda _: submission_pacing.reserve_submission(
                         engine, interval_seconds=1800
                     ),
                     range(2),
@@ -63,13 +70,13 @@ def test_reservations_are_durable_and_atomic(monkeypatch: pytest.MonkeyPatch) ->
         blocked = next(decision for decision in decisions if not decision.granted)
         assert blocked.next_allowed_at > blocked.checked_at
 
-        after_restart = cds_pacing.reserve_cds_submission(
+        after_restart = submission_pacing.reserve_submission(
             engine, interval_seconds=1800
         )
         assert not after_restart.granted
         assert after_restart.next_allowed_at == blocked.next_allowed_at
 
-        immediate = cds_pacing.reserve_cds_submission(engine, interval_seconds=0)
+        immediate = submission_pacing.reserve_submission(engine, interval_seconds=0)
         assert immediate.granted
         assert immediate.next_allowed_at == immediate.checked_at
     finally:
@@ -77,9 +84,8 @@ def test_reservations_are_durable_and_atomic(monkeypatch: pytest.MonkeyPatch) ->
             with engine.begin() as connection:
                 connection.execute(
                     text(
-                        f"DELETE FROM {cds_pacing.PACING_SCHEMA}.{cds_pacing.PACING_TABLE} "
-                        "WHERE pacing_key = :key"
-                    ),
-                    {"key": key},
+                        f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
+                        f"{submission_pacing.PACING_TABLE}"
+                    )
                 )
         engine.dispose()

@@ -115,7 +115,7 @@ Target application tables:
 | `climate_data.daily_climate_detail` | Daily observations |
 | `climate_data.pipeline_progress` | Operational batch progress |
 | `climate_data.pipeline_progress_detail` | Partition progress and evidence |
-| `climate_data.cds_submission_pacing` | Shared submission clock |
+| `climate_data.submission_pacing` | Shared submission clock |
 
 One schema means one application schema; PostgreSQL system schemas are unaffected.
 Database name and credentials continue to come from the existing environment.
@@ -387,7 +387,7 @@ For every subsequent fix:
 | 2026-10-04 | P6 reset-all implementation | Added `scripts/reset_all.py` as an inspect-only-by-default orchestrator over the already verified maintenance functions. It validates mandatory `APP_ENV`, hard-denies prod before database configuration access, displays all reset targets, reuses the PostgreSQL static/runtime preflight, and shows one final yes/no confirmation only with `--execute`. Execution order is PostgreSQL recreation first, then data, Airflow logs, and Airflow runtime cleanup; a database recreation failure therefore prevents local artifact/runtime deletion. Added focused composition/guard tests, including direct-file execution under prod and verification that no deletion logic is duplicated. | Run `tests/unit/test_reset_all.py` together with the component tests, then run `python scripts/reset_all.py` in inspect-only mode. Do not use `--execute` until reviewed. |
 | 2026-10-04 | P6 reset-all verification | User ran the guarded maintenance/component/reset-all unit suite with quiet activation: **49 passed in 1.98s**. Inspect-only `reset_all.py` then verified `APP_ENV=dev`, PostgreSQL target `localhost:5432/weather` (user `postgres`, schema `climate_data`), data/log/runtime paths, preserved `orchestration/airflow.cfg`, zero blocking Airflow task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. Inspect-only completed with no reset actions executed. | All preflight guards are clear. Actual P6 reset may proceed only via `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python scripts/reset_all.py --execute` and explicit interactive confirmation. |
 | 2026-10-04 | P6 destructive reset execution | User executed `reset_all.py --execute` under `APP_ENV=dev` with campaign scheduling explicitly disabled. Preflight again reported zero blocking task states, zero queued/running DagRuns, zero blocking Airflow processes, and zero other PostgreSQL sessions. After one explicit `y` confirmation, PostgreSQL database `weather` was recreated, `climate_data` bootstrap logged ready status for canonical weather tables, then local cleanup removed **2** top-level data entries, **2** Airflow log entries, and **4** generated Airflow runtime files. Tracked `orchestration/airflow.cfg` was explicitly preserved. | Run post-reset verification before marking P6 complete: verify all five `climate_data` tables and empty fresh progress/pacing state; verify Airflow SQLite/runtime state is absent until reinitialized; verify retained config/credentials/JWT/source files remain present. |
-| 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `cds_submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
+| 2026-10-04 | P6 post-reset storage verification | User verified the recreated PostgreSQL target `localhost:5432/weather` and schema `climate_data`. All five application tables are present: `daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `submission_pacing`; every table has **0 rows**, confirming fresh progress/pacing/weather state. Filesystem verification shows `data/` and `orchestration/logs/` present and empty, `orchestration/airflow.db` absent as intended, and retained `orchestration/airflow.cfg`, `.env`, and `airflow-jwt-key.txt` present. | Reinitialize Airflow SQLite metadata and recreate/verify the `cds_api` pool, then verify the fresh Airflow state before closing P6. |
 | 2026-10-04 | P6 Airflow metadata reinitialization | User ran `airflow db migrate`; Airflow created a fresh SQLite metadata database at `orchestration/airflow.db` and reported migration success. `airflow db check` returned connection successful. Pool `cds_api` was recreated with **1 slot** and the expected description. The new SQLite file is present (~724K). Airflow emitted a Starlette/httpx deprecation warning during migration, but migration completed successfully. The final DAG-list grep returned no matching output, so DAG parse/registration is not yet verified. | Diagnose DAG discovery/import state with `airflow dags list-import-errors` and an unfiltered DAG list before closing P6. |
 | 2026-10-04 | P6 standalone runtime decision | User confirmed that local Airflow should be run with `airflow standalone` rather than separate scheduler/API-server/DAG-processor/triggerer terminals. Immediately after fresh metadata initialization, both `airflow dags list-import-errors` and `airflow dags list` returned `No data found`, consistent with a fresh metadata DB before a DAG processor has parsed the DAG. Updated the orchestration README so standalone is the canonical local runtime and documented this fresh-metadata behavior. | Start standalone with scheduling disabled, allow DAG parsing, then verify `cds_era5_land_etl` appears and no import errors are recorded. |
 | 2026-10-04 | P6 closure | After starting the fresh local Airflow runtime, user verified `airflow dags list` contains `cds_era5_land_etl` from `orchestration/dags/cds_era5_land_etl.py`, and `airflow dags list-import-errors` returns `No data found`. This closes DAG discovery/import verification on the recreated SQLite metadata. P6 now has complete evidence for guarded reset, PostgreSQL recreation/bootstrap, filesystem cleanup, Airflow metadata recreation, pool recreation, retained configuration/credentials, and fresh DAG registration. | P6 complete. Next phase is P7 controlled runtime verification; do not begin live CDS work until explicitly requested. |
@@ -452,7 +452,7 @@ source activate-airflow.sh
 python -m pytest \
   tests/integration/test_postgresql_idempotency.py \
   tests/integration/test_pipeline_progress_reconciliation.py \
-  tests/integration/test_cds_submission_pacing.py \
+  tests/integration/test_submission_pacing.py \
   -q
 ```
 
@@ -515,7 +515,7 @@ never import their callers. Recheck actual imports after each implementation bat
 | --- | --- |
 | `pipeline/database/config.py` | `SCHEMA_NAME = "climate_data"`; canonical weather table names |
 | `repositories/pipeline_progress.py` | `PIPELINE_PROGRESS_SCHEMA = "climate"`; two progress table names; hard-coded `climate_data.daily_climate*` joins |
-| `repositories/cds_pacing.py` | `PACING_SCHEMA = "climate"`; pacing key/table, interval env name, 1,800-second default |
+| `repositories/submission_pacing.py` | `PACING_SCHEMA = "climate"`; pacing key/table, interval env name, 1,800-second default |
 | `tasks/progress.py` | Hard-coded `climate_data.daily_climate*` load-evidence query; one-hour slot calculation |
 | `orchestration/reporting.py` | Literal `climate.pipeline_progress*` queries; repeated 2016–2025 bounds and 40/4/3 display counts |
 | `scripts/inspect_campaign_capacity.py` | Five fully qualified table names spanning both schemas |
@@ -555,8 +555,8 @@ Reannounce any additional path before editing it.
 | `tests/unit/test_config_requests.py` | Update factory imports/monkeypatch targets and protect credential behavior |
 | `tests/airflow_orchestration/test_tasks.py`, `test_progress.py`, `test_campaign.py` | Update moved helper/constant references |
 | `tests/airflow_orchestration/test_progress_wiring.py`, `test_scheduled_selection_pilot.py` | Update recording/setup/selection monkeypatch targets after splitting progress wrappers |
-| `tests/airflow_orchestration/test_cds_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
-| `tests/integration/test_pipeline_progress_reconciliation.py`, `test_cds_submission_pacing.py` | Update schema/configuration references and test isolation targets |
+| `tests/airflow_orchestration/test_submission_pacing.py`, `test_submission_log.py`, `test_pipeline_progress.py`, `test_reporting.py`, `test_schedule.py` | Update settings/engine owners and schema expectations while preserving behavior assertions |
+| `tests/integration/test_pipeline_progress_reconciliation.py`, `test_submission_pacing.py` | Update schema/configuration references and test isolation targets |
 | `README.md`, `tests/AGENTS.md`, `docs/AIRFLOW_BEST_PRACTICE.md`, `docs/AIRFLOW_CODING_GUIDELINES.md` | Align configuration location, operational schema, current mapped DAG graph, and first-pass documentation |
 
 No changes are currently required to `scripts/report_campaign_progress.py` if
@@ -631,7 +631,7 @@ graph but unnecessarily delays successful monthly partitions.
       exactly one resolved RAW result and one transform/load path. A failed month
       must not enter transform/load until its retry resolver succeeds.
 - [x] **Use CDS pacing wait time for local work.** With the operational
-      `CDS_MIN_SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
+      `SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
       months should be free to transform and load while another monthly CDS
       submission is waiting for its provider slot.
 - [x] **Align DAG-local Python names with Airflow task IDs.** Remove transitional
@@ -704,11 +704,8 @@ their actual responsibility rather than only a broad provider/dataset label.
 - [x] Treat `orchestration/tasks/era5_land.py` as a temporary compatibility
       facade to remove after caller migration; do not rename it into another
       long-lived facade.
-- [x] Rename `orchestration/repositories/cds_pacing.py` to
-      `orchestration/repositories/submission_pacing.py`. The module owns the
-      durable provider-submission clock; provider-specific identifiers may remain
-      inside the implementation where the persisted clock is intentionally
-      CDS-scoped.
+- [x] Rename `orchestration/repositories/submission_pacing.py` to
+      `orchestration/repositories/submission_pacing.py`. The module owns the durable provider-submission clock. Its table, functions, and identifiers are provider-neutral because orchestration currently uses one global submission clock.
 - [x] Move the custom deferrable operator out of `tasks/` to
       `orchestration/operators/raw_checkpoint.py` and rename
       `CdsPacedExtractOperator` to `RawCheckpointOperator`. The implementation
@@ -750,7 +747,7 @@ their actual responsibility rather than only a broad provider/dataset label.
       `pipeline/repositories/daily_climate_reader.py` for its current read-only
       modelling-query responsibility.
 - [x] Keep operational persistence for `pipeline_progress`,
-      `pipeline_progress_detail`, and `cds_submission_pacing` under
+      `pipeline_progress_detail`, and `submission_pacing` under
       `orchestration/repositories/`; do not mirror those tables into
       `pipeline/repositories/` merely for table symmetry.
 
@@ -929,7 +926,7 @@ orchestration/
 
 The three operational persistence concerns remain under
 `orchestration/repositories/`: `pipeline_progress`,
-`pipeline_progress_detail`, and `cds_submission_pacing`. The first two remain
+`pipeline_progress_detail`, and `submission_pacing`. The first two remain
 one `pipeline_progress.py` repository because parent/detail rows form one
 durable progress aggregate.
 
@@ -949,7 +946,7 @@ durable progress aggregate.
 | `orchestration/progress_tracking.py` | `orchestration/progress/tracking.py` | Move durable task-boundary progress recording and artifact identity checks. |
 | `orchestration/monitoring.py` | `orchestration/monitoring/resources.py` | Move disk and peak-memory monitoring. |
 | `orchestration/database.py` | `orchestration/repositories/database.py` | Move orchestration DB engine lifecycle and application-storage bootstrap coordination. |
-| `orchestration/repositories/cds_pacing.py` | `orchestration/repositories/submission_pacing.py` | Rename durable submission-clock repository; persisted CDS table/key may remain CDS-specific. |
+| `orchestration/repositories/submission_pacing.py` | `orchestration/repositories/submission_pacing.py` | Rename durable submission-clock repository; persisted table and API names are provider-neutral; no pacing key is retained. |
 | `orchestration/repositories/load_evidence.py` | unchanged | Name already states its persistence evidence responsibility. |
 | `orchestration/repositories/pipeline_progress.py` | unchanged | Keep parent/detail progress aggregate in one repository. |
 | `orchestration/tasks/cds_extract_operator.py` | `orchestration/operators/raw_checkpoint.py` | Move custom deferrable operator and rename `CdsPacedExtractOperator` -> `RawCheckpointOperator`. |
@@ -1078,9 +1075,9 @@ interpret that exception.
 
 Critical callers found during the audit include:
 
-- `orchestration.repositories.cds_pacing`: `orchestration/database.py`,
+- `orchestration.repositories.submission_pacing`: `orchestration/database.py`,
   `orchestration/pacing.py`, and
-  `tests/airflow_orchestration/test_cds_pacing.py`.
+  `tests/airflow_orchestration/test_submission_pacing.py`.
 - `orchestration.tasks.cds_extract_operator`: DAG wiring and
   `test_paced_operator.py`.
 - campaign/schedule/progress root modules: task preparation/load helpers,

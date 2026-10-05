@@ -6,8 +6,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from orchestration.monitoring import measure_peak_memory, warn_low_disk_space
-from orchestration.progress_tracking import (
+from orchestration.monitoring.resources import measure_peak_memory, warn_low_disk_space
+from orchestration.progress.tracking import (
     artifact_identity,
     record_failure,
     record_progress,
@@ -36,7 +36,7 @@ def ensure_raw_checkpoint_partition(
     with measure_peak_memory("ensure_raw_checkpoint"):
         warn_low_disk_space("ensure_raw_checkpoint")
         if paced:
-            from orchestration.pacing import reserve_or_defer
+            from orchestration.scheduling.submission_gate import reserve_or_defer
 
             return ensure_raw_checkpoint_runtime(
                 request, before_submission=reserve_or_defer

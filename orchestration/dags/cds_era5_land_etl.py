@@ -14,7 +14,7 @@ from airflow.sdk import DAG, get_current_context, task
 from airflow.sdk.definitions.param import Param, ParamsDict
 
 from config import validate_and_log_app_environment
-from orchestration.schedule import campaign_schedule
+from orchestration.scheduling.schedule import campaign_schedule
 from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.tasks.cds_extract_operator import CdsPacedExtractOperator
 from orchestration.tasks.load import load_with_progress

@@ -13,7 +13,7 @@ from orchestration.config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
-from orchestration.progress import PipelineProgressDefinition, ProgressPartition
+from orchestration.progress.definition import PipelineProgressDefinition, ProgressPartition
 from orchestration.repositories.pipeline_progress import (
     create_pipeline_progress_tables,
     get_pipeline_progress_by_id,

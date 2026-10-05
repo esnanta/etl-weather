@@ -19,7 +19,7 @@ logger = logging.getLogger("orchestration.tasks.era5_land")
 
 def warn_low_disk_space(boundary: str) -> None:
     """Warn about low space on artifact and temporary-data filesystems."""
-    data_directory = Path(__file__).resolve().parents[1] / "data"
+    data_directory = Path(__file__).resolve().parents[2] / "data"
     artifact_path = data_directory if data_directory.is_dir() else data_directory.parent
     locations = [("artifacts", artifact_path)]
     try:
