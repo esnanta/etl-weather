@@ -611,6 +611,46 @@ dataset/period, transformed path/checksum, positive observation count, and every
 expected detail. A manual repair must match an exact whole campaign month.
 Keep the order of record, reconcile, and claim-release calls.
 
+### 10.7 Post-pilot orchestration follow-up agenda — 2026-10-05
+
+Do not implement these items while the current scheduled DagRun is active.
+The 2026-10-04/05 live pilot exposed behavior that is correct under the current
+graph but unnecessarily delays successful monthly partitions.
+
+- [ ] **Make the retry barrier failure-only.** A monthly partition whose
+      `attempt_raw_checkpoint [YYYY-MM]` first pass succeeds must continue
+      immediately through `resolve_raw_checkpoint [YYYY-MM]` as a pass-through,
+      then `ensure_transformed_checkpoint [YYYY-MM]`, then `load [YYYY-MM]`.
+      It must not wait for other months to finish their first pass.
+- [ ] **Keep the global barrier only for failed first attempts.** A first-pass
+      failure must remain bounded control metadata, allow the other first-pass
+      months to continue, and become eligible for retry only after all first-pass
+      attempts have reached a terminal first-pass result.
+- [ ] **Prevent duplicate downstream execution.** A successful month must have
+      exactly one resolved RAW result and one transform/load path. A failed month
+      must not enter transform/load until its retry resolver succeeds.
+- [ ] **Use CDS pacing wait time for local work.** With the operational
+      `CDS_MIN_SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
+      months should be free to transform and load while another monthly CDS
+      submission is waiting for its provider slot.
+- [ ] **Align DAG-local Python names with Airflow task IDs.** Remove transitional
+      names such as `first_attempts`, `retry_jobs`,
+      `resolved_raw_checkpoint`, and generic `transformed`. Use one consistent
+      convention derived from the task identity, for example
+      `attempt_raw_checkpoint_results`, `prepare_retry_pass_output`,
+      `resolve_raw_checkpoint_results`, and
+      `ensure_transformed_checkpoint_results`.
+- [ ] **Audit the same naming drift outside the DAG before editing.** Search
+      orchestration code, tests, and current-state documentation for local
+      variables/helpers that still describe the old extraction/transform naming
+      or no longer match the final task/boundary terminology. Historical records
+      may retain old names when explicitly marked as historical.
+- [ ] Add focused DAG tests proving that one successful mapped month can reach
+      transform/load while another first-pass month remains running/deferred,
+      while a failed month still waits for the first-pass barrier.
+- [ ] Run the focused DAG/operator suite, full unit/orchestration regression, and
+      PostgreSQL integration regression before the next live scheduled pilot.
+
 ### 10.6 Findings to preserve or review separately
 
 1. **Broad first-pass exception handling.** The operator catches all
