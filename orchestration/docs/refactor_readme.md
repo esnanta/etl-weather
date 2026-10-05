@@ -59,22 +59,159 @@ The goal is to make the root README explain the ETL project globally and in busi
 
 # Phase 1 — Audit Existing Content
 
-- [ ] Review both READMEs against the current `dev` implementation.
-- [ ] Classify existing content as:
+- [x] Review both READMEs against the current `dev` implementation.
+- [x] Classify existing content as:
   - global ETL/project information;
   - Airflow-specific information;
   - operational example;
   - historical/development evidence.
-- [ ] Identify duplicated explanations between the two READMEs.
-- [ ] Identify implementation details that are too low-level for the root README.
-- [ ] Identify historical rollout notes that can be removed, shortened, or converted into examples.
-- [ ] Confirm current names and terminology before editing:
+- [x] Identify duplicated explanations between the two READMEs.
+- [x] Identify implementation details that are too low-level for the root README.
+- [x] Identify historical rollout notes that can be removed, shortened, or converted into examples.
+- [x] Confirm current names and terminology before editing:
   - DAG: `cds_era5_land_etl`;
   - task terminology;
   - campaign terminology;
   - current bounding box;
   - no ARCO terminology;
   - no deprecated `backfill` terminology where it no longer reflects the current design.
+
+## Phase 1 Audit Findings
+
+### Root README — Content Classification
+
+**Global ETL/project information to keep in the root README**
+
+- Project purpose and active ERA5-Land dataset.
+- Input/output overview.
+- Variables and daily outputs.
+- Local-day UTC+7 semantics.
+- High-level project structure.
+- Environment and dependency installation.
+- Standalone pipeline execution.
+- Data layout.
+- High-level persistence and modelling access.
+- Concise test entry points.
+- Link to Airflow orchestration documentation.
+
+**Airflow-specific content currently misplaced in the root README**
+
+- `airflow-jwt-key.txt` in the root project tree.
+- `generate-airflow-jwt-secret.sh` operational explanation.
+- `AIRFLOW__API_AUTH__JWT_SECRET_CMD` behavior.
+- Airflow campaign-validation details inside the environment narrative.
+- Airflow implementation details that belong in `orchestration/README.md`.
+
+**Root content that is too implementation-oriented**
+
+- The current `How It Works` flow is expressed in checkpoint/runtime terminology rather than business-process language.
+- `Project Structure` exposes more orchestration internals than a root project overview needs.
+- `Pipeline Architecture` is dominated by module and filename names such as `runtime.py`, `interfaces/etl.py`, provider modules, loaders, repositories, and individual runtime functions.
+- `Persistence and Modelling Access` exposes low-level identities, checksum comparison, UPSERT fallback behavior, and database-row relationships that are unnecessary for a first-level project explanation.
+
+**Root content requiring clarification rather than removal**
+
+- `Local-Day Time Semantics` should remain, but `D` and `A(t)` are not currently defined.
+- The local-day formula needs a concrete date example.
+- The environment example currently omits the full PostgreSQL, test-PostgreSQL, cadence, and submission-pacing configuration even though those settings exist in `env-example`.
+
+### Orchestration README — Content Classification
+
+**Airflow-specific operational information to keep**
+
+- Airflow's responsibility as orchestration rather than scientific processing.
+- JWT-secret generation and lifecycle.
+- `source activate-airflow.sh`.
+- Airflow metadata initialization and CDS pool setup.
+- Scheduled/manual mode behavior.
+- Campaign cadence and submission pacing.
+- Durable campaign progress.
+- Retry, recovery, resume, and task-state inspection.
+- Safe deployment rules while a DagRun is active.
+- Airflow-specific test commands and local runtime cleanup.
+
+**Generic project information duplicated from the root README**
+
+- Python 3.12 prerequisite.
+- PostgreSQL prerequisite.
+- CDS API credential prerequisite.
+- Shared `data/` filesystem prerequisite.
+- Virtual-environment creation.
+- Dependency installation from `requirements.txt`.
+- General `.env` setup.
+
+These should be owned by the root README and referenced rather than repeated.
+
+**Historical/development evidence that currently dominates the document**
+
+- Offline Scheduled Selection Pilot.
+- Controlled Scheduled Pilot on the Airflow Host.
+- Campaign Host Capacity and Post-Change CDS Pilot.
+- Local Pilot Evidence.
+- Verified Three-Month Rollout.
+- Historical peak-memory measurements.
+- Historical disk/capacity observations.
+- Development-era deployment notes tied to specific pilot runs.
+
+These sections should be shortened into current-behavior examples, or moved out of the primary orchestration README when the historical detail still has value.
+
+**Operational sections that are currently too long**
+
+- `Running the Orchestration`.
+- `Scheduled and Manual Mode Contract`.
+- `Scheduler Cadence vs CDS Submission Interval`.
+- `Generic Progress Persistence Foundation`.
+- Campaign selection/reconciliation explanation.
+- Backup and restart recovery.
+- Trigger/status examples.
+- Retry-barrier explanation.
+- Deployment-during-campaign explanation.
+
+The underlying safety rules should remain, but the primary explanation should become example-driven.
+
+### Confirmed Current Terminology and Configuration
+
+- Active DAG ID: `cds_era5_land_etl`.
+- Active task IDs:
+  - `build_monthly_requests`;
+  - `attempt_raw_checkpoint`;
+  - `resolve_raw_checkpoint`;
+  - `ensure_transformed_checkpoint`;
+  - `load`.
+- Scheduled campaign uses durable quarter selection.
+- Active campaign environment variables:
+  - `CAMPAIGN_KEY`;
+  - `CAMPAIGN_START_YEAR`;
+  - `CAMPAIGN_END_YEAR`;
+  - `ERA5_CAMPAIGN_SCHEDULE_ENABLED`;
+  - `ERA5_CAMPAIGN_SCHEDULE_CADENCE`;
+  - `SUBMISSION_INTERVAL_SECONDS`.
+- Supported cadence values in current orchestration config: `30m`, `1h`, and `2h`.
+- Default orchestration cadence: `2h`.
+- Default provider submission interval: `1800` seconds.
+- Scheduled monthly slot spacing: one hour.
+- Active application timezone: `Asia/Jakarta`.
+- Active dataset: `reanalysis-era5-land`.
+- Active variables: `tp`, `t2m`, `swvl1`, `ssrd`, `d2m`.
+- Active Aceh bounding box:
+  - north: `6.1`;
+  - south: `1.9`;
+  - east: `98.3`;
+  - west: `94.9`.
+- No ARCO workflow terminology was found in the two README files under review.
+- No obsolete DAG name `cds_era5_land_historical_backfill` was found in the two README files under review.
+- No obsolete task name `plan_monthly_requests` was found in the two README files under review.
+- No deprecated Aceh bbox values were found in the two README files under review.
+
+### Audit Decision
+
+Phase 1 confirms the planned documentation split:
+
+- `/README.md` will be rewritten as the global, business-oriented entry point for the ETL project.
+- `/orchestration/README.md` will become a concise Airflow operations guide.
+- Historical evidence will not be used as the primary structure of the orchestration README.
+- Safety-critical retry, recovery, persistence, and deployment rules will be preserved even when surrounding explanations are shortened.
+- No implementation change is required or authorized by this audit.
 
 ---
 
