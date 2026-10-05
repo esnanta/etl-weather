@@ -1,3 +1,5 @@
+"""Persist and resume immutable local RAW NetCDF and transformed Parquet checkpoints."""
+
 from __future__ import annotations
 
 import logging

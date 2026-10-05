@@ -9,7 +9,7 @@ from pipeline.storage.artifacts import (
     raw_artifact_for_request,
     transformed_artifact_for_request,
 )
-from pipeline.storage.local import (
+from pipeline.storage.local_checkpoints import (
     PARQUET_PROVENANCE_KEYS,
     LocalDataStorage,
     convert_netcdf_to_dataframe,

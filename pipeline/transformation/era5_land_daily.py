@@ -1,3 +1,5 @@
+"""Transform ERA5-Land hourly observations into UTC+7 local-daily outputs."""
+
 from __future__ import annotations
 
 import logging

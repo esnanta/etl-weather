@@ -1,3 +1,5 @@
+"""Load canonical daily-climate partitions transactionally into PostgreSQL."""
+
 from __future__ import annotations
 
 import logging

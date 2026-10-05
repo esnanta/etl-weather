@@ -1130,4 +1130,6 @@ table/schema names, scientific calculations, Airflow task IDs, mapped
 ### Structural refactor phase evidence
 
 - S1 orchestration leaf moves: implemented on `dev`; user verification reported 106 focused orchestration tests passed in 4.15s and 4 PostgreSQL integration tests passed in 0.82s on 2026-10-05.
-- S2 operator/task alignment: implemented structurally; focused regression is required before S3 begins.
+- S2 operator/task alignment: verified by the user on 2026-10-05 with 51 focused tests passed in 4.48s and 283 unit/orchestration regression tests passed in 6.73s.
+
+- S3 pipeline low-blast-radius renames: implemented structurally; focused regression is required before S4 begins.

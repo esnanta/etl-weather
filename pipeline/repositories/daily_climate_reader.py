@@ -1,3 +1,5 @@
+"""Read canonical daily-climate observations for modelling without mutation."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
