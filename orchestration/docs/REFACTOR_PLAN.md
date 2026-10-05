@@ -178,12 +178,12 @@ Verify these against the implementation baseline before editing:
 
 - One DAG: `cds_era5_land_etl`; keep the DAG identity stable.
 - Current graph: `build_monthly_requests`, mapped `attempt_raw_checkpoint`,
-  `prepare_retry_pass`, mapped `resolve_raw_checkpoint`, mapped
-  `ensure_transformed_checkpoint`, and mapped `load`. Monthly mapped
-  instances use a `YYYY-MM` display label for Airflow UI observability.
-- All first-pass extraction results reach the retry barrier before retry-pass work.
-  Successful results pass through; failed partitions receive the existing bounded
-  attempts. Preserve the failure-control payload and exception handling.
+  mapped `resolve_raw_checkpoint`, mapped `ensure_transformed_checkpoint`,
+  and mapped `load`. Monthly mapped instances use a `YYYY-MM` display label
+  for Airflow UI observability.
+- Successful first-pass RAW results continue immediately through
+  `resolve_raw_checkpoint` as pass-through results. Only failed first-pass
+  results wait for the durable extraction barrier before bounded retry work.
 - Scheduled monthly lower bounds are +0/+1/+2 hours from the selection-time
   anchor (`slot_anchor` or current UTC time). Do not substitute `logical_date`.
   All maps still belong to one DagRun. Manual jobs have no scheduled offset.
@@ -396,6 +396,7 @@ For every subsequent fix:
 | 2026-10-04 | Post-P7 mapped-instance observability | User approved keeping DAG ID `cds_era5_land_etl` and displaying mapped monthly instances as `YYYY-MM`. The initial observability change renamed the Airflow retry/pass-through task from the old `extract_or_resume` task ID to `resolve_raw_checkpoint` and added named mapping labels. This entry is superseded by the subsequent checkpoint naming alignment, which also renames the pipeline API and remaining Airflow task identities to postcondition-oriented checkpoint names. | Run focused DAG/operator tests, then the full offline unit/orchestration regression before resetting/restarting the development Airflow runtime. |
 | 2026-10-04 | Checkpoint naming alignment | User approved postcondition-oriented pipeline API names `ensure_raw_checkpoint()` and `ensure_transformed_checkpoint()`, plus Airflow task identities `attempt_raw_checkpoint [YYYY-MM]`, `prepare_retry_pass`, `resolve_raw_checkpoint [YYYY-MM]`, `ensure_transformed_checkpoint [YYYY-MM]`, and `load [YYYY-MM]`. Runtime boundary metadata and orchestration helper names were aligned so code, tests, logs, and Airflow UI use the same checkpoint terminology. Historical references to old task IDs remain marked as historical where needed. | Run focused checkpoint/DAG tests and full offline regression before resetting/restarting Airflow. |
 | 2026-10-04 | Campaign environment source of truth | Moved `CAMPAIGN_KEY`, `CAMPAIGN_START_YEAR`, and `CAMPAIGN_END_YEAR` from hard-coded orchestration constants to required environment-backed configuration. Added startup/config validation, CI values, campaign-key context in durable campaign `configuration_identity`, and matching selection/reporting/manual-repair identity construction. Updated current-state environment documentation and config-driven tests. | Run focused campaign/config/reporting tests and the full offline + PostgreSQL regression before restarting Airflow. |
+| 2026-10-05 | Failure-only RAW retry barrier | The first clean scheduled pilot completed successfully and exposed unnecessary idle time: successful monthly RAW maps were held behind the global retry-preparation barrier. Rewired the DAG so each successful `attempt_raw_checkpoint` maps directly to `resolve_raw_checkpoint` pass-through, then transform/load. Failed first results alone defer on durable per-progress extraction state until all expected first attempts are terminal, then retry. Removed the Airflow `prepare_retry_pass` task and aligned DAG-local result/input variable names with final task identities. | Run focused DAG/operator/progress tests, full offline regression, and PostgreSQL integration regression before the next live pilot. |
 
 Current next action: refactor follow-up only. P1 through P7 are complete. Keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` and do not submit live CDS work until a separately approved rollout phase. Preserve `pipeline/` as the ETL/scientific implementation owner.
 
@@ -575,12 +576,11 @@ a narrower pipeline change than relocating the entire database package.
 | --- | ---: | --- | --- |
 | `build_monthly_requests` | 0 | 5 minutes | Resolve run mode and initialize/select progress |
 | `attempt_raw_checkpoint` | 0 | 6 hours | Mapped, `cds_api`, `first_pass=True` |
-| `prepare_retry_pass` | 0 | Not explicitly set | Consume all first-pass results |
-| `resolve_raw_checkpoint` | 1 | 6 hours | Mapped, `cds_api`; retry/pass-through resolver with 10-minute delay, exponential backoff, maximum 1 hour |
+| `resolve_raw_checkpoint` | 1 | 6 hours | Mapped, `cds_api`; immediate pass-through for successful first results, durable-barrier wait only for failed first results, then bounded retry with 10-minute delay, exponential backoff, maximum 1 hour |
 | `ensure_transformed_checkpoint` | 0 | 2 hours | Mapped from resolved extraction |
 | `load` | 1 | 2 hours | Mapped; 5-minute delay, exponential backoff, maximum 30 minutes |
 
-Keep the six-task dependency order in section 6. The DAG start date is fixed at
+Keep the five-task dependency order in section 6. The DAG start date is fixed at
 2026-01-01 Asia/Jakarta. Earliest-start slots are lower bounds, not a guarantee
 that maps execute or finish in index order. The retry barrier does not establish
 a global chronological order among retry-pass maps.
@@ -592,12 +592,13 @@ Payload contracts:
 | Prepared monthly job | `request_spec`, `progress_id`, `run_mode`, `earliest_start_at` |
 | Successful extraction/transformation | `boundary`, `request`, `request_key`, `artifact_path`, `artifact_status`, plus progress ID and mode |
 | First-pass failure | `first_attempt_failed=True`, `request_spec`, `progress_id`, `run_mode`, `earliest_start_at` |
-| Prepared retry job | `request_spec`, `progress_id`, `run_mode`, `first_result` |
+| Resolver mapping input | `request_spec`, `progress_id`, `run_mode`, `first_result` |
 | Successful load | `boundary`, `request`, `request_key`, `artifact_path`, `daily_climate_id`, `rows_processed`, `load_status`, plus progress ID and mode |
 
-Successful first-pass results are returned directly by the retry operator.
-Retry-job preparation does not copy `earliest_start_at` as an operator argument;
-preserve this existing detail. Pacing deferral propagates without marking the
+Successful first-pass results are returned directly by the resolver. Resolver
+mapping input is derived per mapped first-attempt result, so successful months do
+not wait for other first-pass maps. Failed resolver maps poll durable extraction
+state before retrying. Pacing deferral propagates without marking the
 partition failed; wakeup calls execution again and rechecks the shared gate.
 
 Manual configuration must contain exactly the two canonical dates. Scheduled
@@ -617,35 +618,34 @@ Do not implement these items while the current scheduled DagRun is active.
 The 2026-10-04/05 live pilot exposed behavior that is correct under the current
 graph but unnecessarily delays successful monthly partitions.
 
-- [ ] **Make the retry barrier failure-only.** A monthly partition whose
+- [x] **Make the retry barrier failure-only.** A monthly partition whose
       `attempt_raw_checkpoint [YYYY-MM]` first pass succeeds must continue
       immediately through `resolve_raw_checkpoint [YYYY-MM]` as a pass-through,
       then `ensure_transformed_checkpoint [YYYY-MM]`, then `load [YYYY-MM]`.
       It must not wait for other months to finish their first pass.
-- [ ] **Keep the global barrier only for failed first attempts.** A first-pass
+- [x] **Keep the global barrier only for failed first attempts.** A first-pass
       failure must remain bounded control metadata, allow the other first-pass
       months to continue, and become eligible for retry only after all first-pass
       attempts have reached a terminal first-pass result.
-- [ ] **Prevent duplicate downstream execution.** A successful month must have
+- [x] **Prevent duplicate downstream execution.** A successful month must have
       exactly one resolved RAW result and one transform/load path. A failed month
       must not enter transform/load until its retry resolver succeeds.
-- [ ] **Use CDS pacing wait time for local work.** With the operational
+- [x] **Use CDS pacing wait time for local work.** With the operational
       `CDS_MIN_SUBMISSION_INTERVAL_SECONDS=300` pilot setting, successful RAW
       months should be free to transform and load while another monthly CDS
       submission is waiting for its provider slot.
-- [ ] **Align DAG-local Python names with Airflow task IDs.** Remove transitional
+- [x] **Align DAG-local Python names with Airflow task IDs.** Remove transitional
       names such as `first_attempts`, `retry_jobs`,
-      `resolved_raw_checkpoint`, and generic `transformed`. Use one consistent
-      convention derived from the task identity, for example
-      `attempt_raw_checkpoint_results`, `prepare_retry_pass_output`,
-      `resolve_raw_checkpoint_results`, and
-      `ensure_transformed_checkpoint_results`.
-- [ ] **Audit the same naming drift outside the DAG before editing.** Search
+      `resolved_raw_checkpoint`, and generic `transformed`. The DAG now uses
+      `attempt_raw_checkpoint_results`, `resolve_raw_checkpoint_inputs`,
+      `resolve_raw_checkpoint_results`,
+      `ensure_transformed_checkpoint_results`, and `load_results`.
+- [x] **Audit the same naming drift outside the DAG before editing.** Search
       orchestration code, tests, and current-state documentation for local
       variables/helpers that still describe the old extraction/transform naming
       or no longer match the final task/boundary terminology. Historical records
       may retain old names when explicitly marked as historical.
-- [ ] Add focused DAG tests proving that one successful mapped month can reach
+- [x] Add focused DAG/operator/repository tests proving that one successful mapped month can reach
       transform/load while another first-pass month remains running/deferred,
       while a failed month still waits for the first-pass barrier.
 - [ ] Run the focused DAG/operator suite, full unit/orchestration regression, and
