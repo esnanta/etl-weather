@@ -690,3 +690,129 @@ This refactor is complete when:
 
 README refactor Phases 1 through 5 are complete on branch `dev`.
 
+
+
+# Phase 6 — Refactor `/tests/README.md`
+
+This phase extends the documentation-only refactor to the testing guide.
+
+## 6.1 Scope
+
+- [ ] Documentation-only change.
+- [ ] Do not modify tests, pipeline code, orchestration code, configuration implementation, database schema, or scripts.
+- [ ] Keep `tests/README.md` focused on how testing is organized, what each test layer protects, and how to run the current suites.
+- [ ] Avoid repeating project overview from `/README.md` or Airflow operational guidance from `/orchestration/README.md`.
+
+## 6.2 Audit Current Content
+
+- [x] Review `tests/README.md` against the current `dev` test directories.
+- [x] Compare testing documentation with `/README.md` and `/orchestration/README.md` for overlap.
+- [x] Identify stale test filenames and historical baselines.
+- [x] Identify sections that are too implementation-oriented for a testing README.
+- [x] Identify language that can be simplified without weakening test contracts.
+
+### Audit findings
+
+- The current document still reflects an older pipeline-only testing state and underrepresents the present orchestration and database-progress coverage.
+- The `Unit Test Responsibilities` filename list is incomplete compared with the current `tests/unit/` directory.
+- Current unit coverage also includes pacing, logging, database recreation, and reset/runtime maintenance behavior.
+- Current integration coverage includes:
+  - `test_postgresql_idempotency.py`;
+  - `test_pipeline_progress_reconciliation.py`;
+  - `test_submission_pacing.py`;
+  - `test_orchestration_database_bootstrap.py`.
+- Current Airflow coverage is much broader than the short list in the README and includes campaign configuration/selection, schedule, progress/reconciliation wiring, reporting, RAW checkpoint deferral/retry, submission pacing/logging, and DAG/task policy.
+- Historical baseline text such as `100 unit tests passed`, `119 unit/orchestration tests passed`, and `2 PostgreSQL integration tests passed` is stale and should be removed rather than maintained as permanent documentation.
+- The current project baseline previously verified for this refactor context is `208` unit + Airflow orchestration tests and `5` PostgreSQL integration tests; however, the README should prefer reproducible commands over hard-coded pass counts that become stale.
+- `Running Tests` should use quiet mode consistently.
+- Running the entire `tests/integration` directory is less explicit than listing the intended isolated PostgreSQL integration files.
+- The `Known NetCDF Runtime Warning` section should be removed entirely by user decision.
+- Several sections repeat implementation detail already better owned by root/design documentation, especially:
+  - full transformed schema and unit contract;
+  - detailed PostgreSQL column/provenance mapping;
+  - low-level UPSERT comparison logic;
+  - detailed modelling-data-access definition.
+- These details may remain only where they explain what a test layer protects; they should not read like a second implementation/design specification.
+- `Retry, Resume, and Provenance Verification` overlaps with root persistence semantics and can be folded into a simpler test-responsibility section.
+- `Checkpoint and Idempotency Regression Rules` is useful but should be rewritten in plain language with a short example.
+- `Test Style` and `Definition of Done` remain appropriate, but can be shortened.
+- The document should clearly distinguish:
+  - unit tests: fast/offline behavior;
+  - Airflow orchestration tests: scheduling and orchestration policy without CDS work;
+  - PostgreSQL integration tests: real isolated database behavior.
+
+## 6.3 Proposed Structure
+
+Refactor `tests/README.md` toward this structure:
+
+- [ ] `# Testing`
+- [ ] `## Testing Strategy` — concise purpose and three test layers.
+- [ ] `## What the Tests Protect` — business/scientific correctness in plain language.
+- [ ] `## Unit Tests` — responsibilities and current directory, without maintaining a long filename catalog unless useful.
+- [ ] `## Airflow Orchestration Tests` — scheduling, mode, mapping, retry/deferral, progress, pacing, and reporting.
+- [ ] `## PostgreSQL Integration Tests` — isolated database requirement and the four current integration modules.
+- [ ] `## Idempotency and Recovery Examples` — short examples instead of low-level UPSERT internals.
+- [ ] `## Running Tests` — canonical quiet commands.
+- [ ] `## Test Style` — concise development rules.
+- [ ] `## Definition of Done` — concise acceptance criteria.
+
+## 6.4 Content Changes
+
+- [ ] Remove `Known NetCDF Runtime Warning` completely.
+- [ ] Remove historical test-count baselines.
+- [ ] Remove or greatly shorten the opening ETL path because the root README already explains the pipeline.
+- [ ] Reduce `Locked Scientific Contract` to the scientific behaviors tests must protect rather than duplicating the full project data contract.
+- [ ] Reduce `PostgreSQL Contract Under Test` to observable test expectations.
+- [ ] Avoid detailed provenance-column lists unless a specific test responsibility requires them.
+- [ ] Avoid explaining modelling architecture; state only that repository tests protect read-only access and preservation of climate semantics.
+- [ ] Keep the rule that routine unit tests must not require live PostgreSQL or CDS.
+- [ ] Keep the rule that external systems should be isolated/mocked in unit tests.
+- [ ] Keep explicit negative-case testing for validation and persistence behavior.
+- [ ] Keep temporary-artifact isolation and the rule not to write tests into the real project `data/` directory.
+- [ ] Keep scientific correctness as part of software correctness, but explain it in plain language.
+
+## 6.5 Canonical Test Commands
+
+Use quiet commands aligned with the current repository:
+
+- [ ] Unit + Airflow orchestration regression:
+
+  ```bash
+  source activate-airflow.sh
+
+  ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+  python -m pytest tests/unit tests/airflow_orchestration -q
+  ```
+
+- [ ] Isolated PostgreSQL integration:
+
+  ```bash
+  source activate-airflow.sh
+
+  python -m pytest \
+    tests/integration/test_postgresql_idempotency.py \
+    tests/integration/test_pipeline_progress_reconciliation.py \
+    tests/integration/test_submission_pacing.py \
+    tests/integration/test_orchestration_database_bootstrap.py \
+    -q
+  ```
+
+- [ ] Explain that integration tests use `TEST_POSTGRES_*` and must point to an isolated test database.
+- [ ] Do not embed a permanent numeric pass-count baseline in the README.
+
+## 6.6 Cross-Document Boundaries
+
+- [ ] Root README remains responsible for installation, environment setup, ETL overview, and basic test entry points.
+- [ ] Orchestration README remains responsible for Airflow operation and may show its canonical orchestration test commands.
+- [ ] Tests README becomes the authoritative explanation of testing strategy and test-layer responsibilities.
+- [ ] Avoid duplicating local-day formulas, project architecture, Airflow JWT setup, campaign operating procedures, or full database schema documentation.
+- [ ] Link back to root/orchestration documentation where appropriate instead of repeating those explanations.
+
+## 6.7 Final Validation
+
+- [ ] Verify every referenced test file exists on branch `dev`.
+- [ ] Verify all commands use current filenames and quiet mode.
+- [ ] Verify no stale numeric baseline remains.
+- [ ] Verify `Known NetCDF Runtime Warning` is absent.
+- [ ] Verify terminology matches current pipeline/orchestration documentation.
+- [ ] Verify only documentation files are changed.
