@@ -24,10 +24,12 @@ def test_clear_data_contents_preserves_root_and_removes_children(tmp_path: Path)
 
 
 def test_data_reset_prod_is_hard_denied(monkeypatch) -> None:
-    monkeypatch.setattr(reset_data, "resolve_app_environment", lambda: "prod")
     monkeypatch.setattr(
-        reset_data,
-        "clear_data_contents",
+        "scripts.reset_data.resolve_app_environment",
+        lambda: "prod",
+    )
+    monkeypatch.setattr(
+        "scripts.reset_data.clear_data_contents",
         lambda: (_ for _ in ()).throw(AssertionError("must not delete")),
     )
 
@@ -35,10 +37,12 @@ def test_data_reset_prod_is_hard_denied(monkeypatch) -> None:
 
 
 def test_data_reset_inspect_never_deletes(monkeypatch) -> None:
-    monkeypatch.setattr(reset_data, "resolve_app_environment", lambda: "dev")
     monkeypatch.setattr(
-        reset_data,
-        "clear_data_contents",
+        "scripts.reset_data.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        "scripts.reset_data.clear_data_contents",
         lambda: (_ for _ in ()).throw(AssertionError("inspect must not delete")),
     )
 
@@ -46,11 +50,13 @@ def test_data_reset_inspect_never_deletes(monkeypatch) -> None:
 
 
 def test_data_reset_no_confirmation_never_deletes(monkeypatch) -> None:
-    monkeypatch.setattr(reset_data, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(reset_data, "_confirmation", lambda: False)
     monkeypatch.setattr(
-        reset_data,
-        "clear_data_contents",
+        "scripts.reset_data.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr("scripts.reset_data._confirmation", lambda: False)
+    monkeypatch.setattr(
+        "scripts.reset_data.clear_data_contents",
         lambda: (_ for _ in ()).throw(AssertionError("no must not delete")),
     )
 
