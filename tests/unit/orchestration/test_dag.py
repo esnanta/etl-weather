@@ -1,12 +1,12 @@
 """Verify the mapped Airflow DAG graph and execution policy."""
 
 from datetime import timedelta
-from ..._paths import REPOSITORY_ROOT
 
 import pytest
 
-airflow = pytest.importorskip("airflow")
+from ..._paths import REPOSITORY_ROOT
 
+pytest.importorskip("airflow")
 from airflow.models import DagBag
 
 
