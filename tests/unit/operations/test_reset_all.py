@@ -10,9 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ..._paths import REPOSITORY_ROOT
-
 from scripts import reset_all
+from ..._paths import REPOSITORY_ROOT
 
 
 def _config():
