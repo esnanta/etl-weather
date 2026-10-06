@@ -45,14 +45,17 @@ def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatc
             raise SubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         return {"boundary": "ensure_raw_checkpoint"}
 
-    monkeypatch.setattr(raw_checkpoint, "ensure_raw_checkpoint_with_progress", extract)
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        extract,
+    )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="paced_test", request_spec={"start_date": "2024-01-01"},
         progress_id=42, run_mode="manual",
     )
     with pytest.raises(TaskDeferred) as deferred:
         operator.execute({})
-    assert deferred.value.method_name == "execute_complete"
+    assert getattr(deferred.value, "method_name", None) == "execute_complete"
     assert operator.execute_complete({}) == {"boundary": "ensure_raw_checkpoint"}
     assert attempts == [(42, "manual", True), (42, "manual", True)]
 
@@ -72,8 +75,7 @@ def test_successful_first_result_passes_through_without_barrier(
         raise AssertionError("Successful first results must not inspect the barrier.")
 
     monkeypatch.setattr(
-        raw_checkpoint,
-        "first_pass_barrier_complete",
+        "orchestration.operators.raw_checkpoint.first_pass_barrier_complete",
         unexpected_barrier,
     )
     operator = raw_checkpoint.RawCheckpointOperator(
@@ -93,13 +95,11 @@ def test_failed_first_result_defers_until_first_pass_barrier(
     calls = []
 
     monkeypatch.setattr(
-        raw_checkpoint,
-        "first_pass_barrier_complete",
+        "orchestration.operators.raw_checkpoint.first_pass_barrier_complete",
         lambda progress_id: False,
     )
     monkeypatch.setattr(
-        raw_checkpoint,
-        "ensure_raw_checkpoint_with_progress",
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
     operator = raw_checkpoint.RawCheckpointOperator(
@@ -113,7 +113,7 @@ def test_failed_first_result_defers_until_first_pass_barrier(
     with pytest.raises(TaskDeferred) as deferred:
         operator.execute({})
 
-    assert deferred.value.method_name == "execute_complete"
+    assert getattr(deferred.value, "method_name", None) == "execute_complete"
     assert calls == []
 
 
@@ -123,8 +123,7 @@ def test_failed_first_result_retries_after_first_pass_barrier(
     calls = []
 
     monkeypatch.setattr(
-        raw_checkpoint,
-        "first_pass_barrier_complete",
+        "orchestration.operators.raw_checkpoint.first_pass_barrier_complete",
         lambda progress_id: True,
     )
 
@@ -138,8 +137,7 @@ def test_failed_first_result_retries_after_first_pass_barrier(
         }
 
     monkeypatch.setattr(
-        raw_checkpoint,
-        "ensure_raw_checkpoint_with_progress",
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
         extract,
     )
     operator = raw_checkpoint.RawCheckpointOperator(
@@ -160,10 +158,12 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     def fail(spec, progress_id, mode, *, paced):
         raise RuntimeError("terminal")
 
-    monkeypatch.setattr(raw_checkpoint, "ensure_raw_checkpoint_with_progress", fail)
     monkeypatch.setattr(
-        raw_checkpoint,
-        "first_pass_barrier_complete",
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        fail,
+    )
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.first_pass_barrier_complete",
         lambda progress_id: True,
     )
     operator = raw_checkpoint.RawCheckpointOperator(
