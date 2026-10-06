@@ -1,70 +1,55 @@
-# Application environment.
-# dev  : development runtime; guarded database recreation may be available.
-# prod : production runtime; database recreation is unavailable.
-# APP_ENV is mandatory. Missing, blank, or unsupported values abort startup.
+# App environment.
+# dev: development mode (guarded DB recreation may be available)
+# prod: production mode (DB recreation is disabled)
+# APP_ENV is required; invalid or empty values stop startup.
 APP_ENV=dev
 
+# CDS API connection.
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-# Standalone pipeline default inclusive period.
-#
-# These values are used only when a standalone pipeline/read entrypoint does
-# not receive an explicit period. They may be short ranges because standalone
-# and manual pilots are intentionally independent from the scheduled campaign.
-#
-# Required format:
-#   YYYY-MM-DD
-CDS_START_DATE=2022-01-01
-CDS_END_DATE=2022-01-03
-
-# Airflow historical campaign scheduling.
-#
-# false:
-#   The DAG is manual-only (schedule=None). Airflow will not create scheduled
-#   DagRuns automatically. Manual DagRuns can still be triggered explicitly.
-#
-# true:
-#   Airflow enables the bounded historical campaign scheduler. Each scheduled
-#   DagRun selects the earliest eligible incomplete campaign quarter from
-#   durable PostgreSQL progress state.
-#
-# CAMPAIGN_KEY:
-#   Stable logical identity used by campaign progress selection and reporting.
-#
-# CAMPAIGN_START_YEAR / CAMPAIGN_END_YEAR:
-#   Scheduled campaigns always cover one or more complete calendar years.
-#   Enter only four-digit years, for example 2016 and 2025.
-#   The scheduler derives January 1 of the start year and December 31 of the
-#   end year automatically. For a short pilot, use a manual DagRun with
-#   explicit start_date/end_date instead of shortening the campaign years.
-CAMPAIGN_KEY=era5_land_2016_2025
-CAMPAIGN_START_YEAR=2016
-CAMPAIGN_END_YEAR=2016
-
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
-
-# Airflow scheduler cadence used only when scheduling is enabled.
-# Supported values: 30m, 1h, 2h.
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
-
-# Minimum interval between actual provider submission POST requests, in seconds.
-# This is independent from scheduler cadence.
-SUBMISSION_INTERVAL_SECONDS=1800
-
-# The shared Airflow JWT secret is stored outside .env.
-# Further instructions for generating the secret are in orchestration/README.md.
-
+# Primary PostgreSQL database.
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=your_database_name
 POSTGRES_USER=your_username
 POSTGRES_PASSWORD=your_password
 
-# Isolated PostgreSQL database used only by integration tests.
-# TEST_POSTGRES_DATABASE must contain the word "test".
+# Separate PostgreSQL database for integration tests only.
+# TEST_POSTGRES_DATABASE must include the word "test".
 TEST_POSTGRES_HOST=localhost
 TEST_POSTGRES_PORT=5432
 TEST_POSTGRES_DATABASE=weather_test
 TEST_POSTGRES_USER=your_test_username
 TEST_POSTGRES_PASSWORD=your_test_password
+
+# Default inclusive date range for standalone runs.
+# Used only when no explicit period is provided.
+# Format: YYYY-MM-DD
+CDS_START_DATE=2022-01-01
+CDS_END_DATE=2022-01-03
+
+# Airflow historical campaign settings.
+# CAMPAIGN_KEY: stable identifier for campaign progress and reporting.
+# CAMPAIGN_START_YEAR / CAMPAIGN_END_YEAR:
+# - Must be 4-digit years.
+# - Scheduler uses Jan 1 of start year to Dec 31 of end year.
+# - For short pilots, prefer manual runs with explicit start_date/end_date.
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2016
+
+# ERA5_CAMPAIGN_SCHEDULE_ENABLED=false: manual DAG runs only (no auto schedule).
+# ERA5_CAMPAIGN_SCHEDULE_ENABLED=true: run scheduled bounded historical campaigns.
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
+
+# Airflow schedule cadence (used only when scheduling is enabled).
+# Allowed values: 30m, 1h, 2h.
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+
+# Minimum interval between provider submission POST requests (seconds).
+# Independent of scheduler cadence.
+SUBMISSION_INTERVAL_SECONDS=300
+
+# Shared Airflow JWT secret is managed outside .env.
+# See orchestration/README.md for setup instructions.
