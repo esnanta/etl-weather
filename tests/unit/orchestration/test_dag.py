@@ -1,8 +1,7 @@
 """Verify the mapped Airflow DAG graph and execution policy."""
 
 from datetime import timedelta
-from pathlib import Path
-from tests._paths import REPOSITORY_ROOT
+from ..._paths import REPOSITORY_ROOT
 
 import pytest
 
