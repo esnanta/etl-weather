@@ -139,7 +139,9 @@ def test_peak_memory_is_logged_when_partition_fails(
 
 def test_monitoring_data_path_still_targets_repository_data() -> None:
     expected = REPOSITORY_ROOT / "data"
-    resolved = Path(monitoring.__file__).resolve().parents[2] / "data"
+    module_file = monitoring.__file__
+    assert module_file is not None
+    resolved = Path(module_file).resolve().parents[2] / "data"
     assert resolved == expected
 
 
