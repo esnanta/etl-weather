@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests._paths import REPOSITORY_ROOT
+from ..._paths import REPOSITORY_ROOT
 
 from scripts import reset_all
 
