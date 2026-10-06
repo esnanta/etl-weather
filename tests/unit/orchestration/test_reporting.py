@@ -23,7 +23,8 @@ def test_report_queries_exact_quarter_definitions_without_writes() -> None:
         def mappings(self):
             return self
 
-        def one_or_none(self):
+        @staticmethod
+        def one_or_none():
             return None
 
     class Connection:
@@ -33,13 +34,15 @@ def test_report_queries_exact_quarter_definitions_without_writes() -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def execute(self, statement, params):
+        @staticmethod
+        def execute(statement, params):
             assert str(statement).lstrip().startswith("SELECT")
             queries.append(params)
             return Result()
 
     class Engine:
-        def connect(self):
+        @staticmethod
+        def connect():
             return Connection()
 
     reports = read_campaign_report(Engine())
@@ -172,7 +175,8 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def execute(self, statement, params):
+        @staticmethod
+        def execute(statement, params):
             if "pipeline_progress_detail\n" in str(statement):
                 assert params == {"progress_id": 42}
                 return Result([month])
@@ -181,7 +185,8 @@ def test_partial_quarter_details_use_exact_parent_id() -> None:
             return Result([parent])
 
     class Engine:
-        def connect(self):
+        @staticmethod
+        def connect():
             return Connection()
 
     report = _load_quarter_report(Engine(), quarter, definition)
