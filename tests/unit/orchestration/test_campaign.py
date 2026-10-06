@@ -1,8 +1,11 @@
 from calendar import monthrange
+from collections.abc import Generator
 from datetime import date
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 from orchestration.campaign.policy import (
     CAMPAIGN_END_DATE,
@@ -20,6 +23,15 @@ from orchestration.campaign.policy import (
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 CAMPAIGN_QUARTER_COUNT = len(iter_campaign_quarters())
+
+
+@pytest.fixture
+def dummy_engine() -> Generator[Engine, None, None]:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 def _month_end(year: int, month: int) -> str:
@@ -92,7 +104,7 @@ def test_quarter_request_specs_map_exactly_three_whole_months() -> None:
     ]
 
 
-def test_campaign_initialization_seeds_every_quarter(monkeypatch) -> None:
+def test_campaign_initialization_seeds_every_quarter(monkeypatch, dummy_engine: Engine) -> None:
     definitions = []
 
     def record_progress(engine, definition):
@@ -103,7 +115,7 @@ def test_campaign_initialization_seeds_every_quarter(monkeypatch) -> None:
         "orchestration.repositories.pipeline_progress.initialize_pipeline_progress",
         record_progress,
     )
-    ids = initialize_campaign_progress(object(), current_local_date=date.max)
+    ids = initialize_campaign_progress(dummy_engine, current_local_date=date.max)
 
     assert ids == tuple(range(1, CAMPAIGN_QUARTER_COUNT + 1))
     assert len(definitions) == CAMPAIGN_QUARTER_COUNT
@@ -158,10 +170,12 @@ def progress_selection(monkeypatch):
     return statuses, reconciled
 
 
-def test_selection_starts_at_first_incomplete_quarter(progress_selection) -> None:
+def test_selection_starts_at_first_incomplete_quarter(
+    progress_selection, dummy_engine: Engine
+) -> None:
     _, reconciled = progress_selection
     selected = select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__one",
+        dummy_engine, claim_owner="scheduled__one",
         current_local_date=date.max
     )
 
@@ -172,16 +186,18 @@ def test_selection_starts_at_first_incomplete_quarter(progress_selection) -> Non
     assert reconciled == [1]
 
 
-def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) -> None:
+def test_selection_revisits_earliest_gap_after_missed_ticks(
+    progress_selection, dummy_engine: Engine
+) -> None:
     statuses, reconciled = progress_selection
     statuses.update({1: "complete", 2: "complete", 4: "complete"})
 
     first = select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__one",
+        dummy_engine, claim_owner="scheduled__one",
         current_local_date=date.max
     )
     second = select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__one",
+        dummy_engine, claim_owner="scheduled__one",
         current_local_date=date.max
     )
 
@@ -190,35 +206,41 @@ def test_selection_revisits_earliest_gap_after_missed_ticks(progress_selection) 
     assert reconciled == [1, 2, 3, 1, 2, 3]
 
 
-def test_selection_is_no_op_when_all_quarters_are_complete(progress_selection) -> None:
+def test_selection_is_no_op_when_all_quarters_are_complete(
+    progress_selection, dummy_engine: Engine
+) -> None:
     statuses, reconciled = progress_selection
     statuses.update(
         {number: "complete" for number in range(1, CAMPAIGN_QUARTER_COUNT + 1)}
     )
 
     assert select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__one",
+        dummy_engine, claim_owner="scheduled__one",
         current_local_date=date.max
     ) is None
     assert reconciled == list(range(1, CAMPAIGN_QUARTER_COUNT + 1))
 
 
-def test_selection_waits_for_whole_quarter_eligibility(progress_selection) -> None:
+def test_selection_waits_for_whole_quarter_eligibility(
+    progress_selection, dummy_engine: Engine
+) -> None:
     _, reconciled = progress_selection
 
     assert select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__one",
+        dummy_engine, claim_owner="scheduled__one",
         current_local_date=date(CAMPAIGN_START_YEAR, 4, 5)
     ) is None
     assert reconciled == []
 
 
-def test_failed_quarter_blocks_automatic_resubmission(progress_selection) -> None:
+def test_failed_quarter_blocks_automatic_resubmission(
+    progress_selection, dummy_engine: Engine
+) -> None:
     statuses, reconciled = progress_selection
     statuses[1] = "failed"
 
     selected = select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__next",
+        dummy_engine, claim_owner="scheduled__next",
         current_local_date=date.max
     )
     assert isinstance(selected, CampaignBlocked)
@@ -229,14 +251,14 @@ def test_failed_quarter_blocks_automatic_resubmission(progress_selection) -> Non
 
 
 def test_claimed_quarter_blocks_competing_selector(
-    progress_selection, monkeypatch
+    progress_selection, monkeypatch, dummy_engine: Engine
 ) -> None:
     monkeypatch.setattr(
         "orchestration.repositories.pipeline_progress.try_claim_pipeline_progress",
         lambda engine, progress_id, owner: False,
     )
     selected = select_earliest_incomplete_quarter(
-        object(), claim_owner="scheduled__competing",
+        dummy_engine, claim_owner="scheduled__competing",
         current_local_date=date.max
     )
     assert isinstance(selected, CampaignBlocked)
@@ -279,5 +301,7 @@ def test_partial_month_and_changed_configuration_do_not_repair_campaign() -> Non
         _month_end(CAMPAIGN_START_YEAR, 2),
         current_local_date=date.max,
     )[0]
-    changed["bbox"]["north_lat"] = 5.2
+    bbox = changed["bbox"]
+    assert isinstance(bbox, dict)
+    bbox["north_lat"] = 5.2
     assert matching_campaign_progress_definition(changed) is None

@@ -5,32 +5,38 @@ the failure gate that requires explicit recovery.
 """
 
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
+from collections.abc import Generator, Mapping
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 from orchestration.campaign import repair as campaign_repair
 from orchestration.campaign.policy import CampaignBlocked, CampaignQuarter
 from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from orchestration.repositories.load_evidence import persisted_row_count
+from orchestration.scheduling.requests import build_historical_request_specs
+from orchestration.scheduling.submission_gate import SubmissionDeferred
+from orchestration.tasks import build_monthly_requests as job_tasks
+from orchestration.tasks import load as load_tasks
+from orchestration.tasks import raw_checkpoint as extract_tasks
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
-from orchestration.repositories.load_evidence import persisted_row_count
-from orchestration.scheduling.requests import build_historical_request_specs
-from orchestration.tasks import build_monthly_requests as job_tasks
-from orchestration.tasks import raw_checkpoint as extract_tasks
-from orchestration.tasks import load as load_tasks
-from orchestration.scheduling.submission_gate import SubmissionDeferred
-from datetime import datetime, timedelta, timezone
 
 
 @contextmanager
-def _engine():
-    yield object()
+def _engine() -> Generator[Engine, None, None]:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
-def _campaign_spec():
+def _campaign_spec() -> dict[str, object]:
     year = CAMPAIGN_START_YEAR
     return build_historical_request_specs(
         f"{year}-01-01", f"{year}-01-31", current_local_date=date.max
@@ -38,15 +44,18 @@ def _campaign_spec():
 
 
 def _skip_schema_setup(monkeypatch) -> None:
-    monkeypatch.setattr(job_tasks, "initialize_progress_storage", lambda engine: None)
+    monkeypatch.setattr(
+        "orchestration.tasks.build_monthly_requests.initialize_progress_storage",
+        lambda engine: None,
+    )
 
 
 def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -> None:
     definitions = []
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        job_tasks, "initialize_pipeline_progress",
+        "orchestration.tasks.build_monthly_requests.initialize_pipeline_progress",
         lambda engine, definition: definitions.append(definition) or 42,
     )
 
@@ -55,17 +64,20 @@ def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -
     )
 
     assert len(jobs) == 1
-    assert jobs[0]["progress_id"] == 42
-    assert jobs[0]["run_mode"] == "manual"
-    assert jobs[0]["request_spec"]["start_date"] == "2024-01-01"
+    first_job = jobs[0]
+    assert first_job["progress_id"] == 42
+    assert first_job["run_mode"] == "manual"
+    first_request_spec = first_job["request_spec"]
+    assert isinstance(first_request_spec, Mapping)
+    assert first_request_spec["start_date"] == "2024-01-01"
     assert definitions[0].expected_partition_count == 1
 
 
 def test_scheduled_terminal_run_maps_no_partitions(monkeypatch) -> None:
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        job_tasks, "select_earliest_incomplete_quarter",
+        "orchestration.tasks.build_monthly_requests.select_earliest_incomplete_quarter",
         lambda engine, claim_owner: None,
     )
     assert job_tasks.prepare_monthly_jobs(
@@ -74,7 +86,7 @@ def test_scheduled_terminal_run_maps_no_partitions(monkeypatch) -> None:
 
 
 def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     year = CAMPAIGN_START_YEAR
     specs = build_historical_request_specs(
@@ -86,7 +98,7 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
         request_specs=tuple(specs),
     )
     monkeypatch.setattr(
-        job_tasks, "select_earliest_incomplete_quarter",
+        "orchestration.tasks.build_monthly_requests.select_earliest_incomplete_quarter",
         lambda engine, claim_owner: selected,
     )
 
@@ -94,16 +106,21 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
     assert len(jobs) == 3
     assert all(job["progress_id"] == 19 for job in jobs)
     assert all(job["run_mode"] == "scheduled" for job in jobs)
-    assert [job["request_spec"]["start_date"] for job in jobs] == [
+    start_dates: list[object] = []
+    for job in jobs:
+        request_spec = job["request_spec"]
+        assert isinstance(request_spec, Mapping)
+        start_dates.append(request_spec["start_date"])
+    assert start_dates == [
         f"{year}-01-01", f"{year}-02-01", f"{year}-03-01"
     ]
 
 
 def test_blocked_scheduled_run_maps_no_partitions(monkeypatch, caplog) -> None:
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     monkeypatch.setattr(
-        job_tasks, "select_earliest_incomplete_quarter",
+        "orchestration.tasks.build_monthly_requests.select_earliest_incomplete_quarter",
         lambda engine, claim_owner: CampaignBlocked(
             CampaignQuarter(CAMPAIGN_START_YEAR, 1),
             19,
@@ -121,7 +138,7 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
     def unexpected():
         raise AssertionError("Database access is not expected.")
 
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", unexpected)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", unexpected)
     with pytest.raises(ValueError, match="require only"):
         job_tasks.prepare_monthly_jobs("manual", {"start_date": "2024-01-01"})
 
@@ -129,13 +146,13 @@ def test_invalid_manual_conf_fails_before_database_access(monkeypatch) -> None:
 def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> None:
     updates = []
     repairs = []
-    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.load.runtime_database_engine", _engine)
     monkeypatch.setattr(
-        load_tasks, "record_progress",
+        "orchestration.tasks.load.record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        load_tasks, "load_partition",
+        "orchestration.tasks.load.load_partition",
         lambda result: {
             "boundary": "load",
             "request_key": "monthly-key",
@@ -144,12 +161,16 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
             "rows_processed": 0,
         },
     )
-    monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
     monkeypatch.setattr(
-        load_tasks, "persisted_row_count", lambda engine, result, path, sha: 15
+        "orchestration.tasks.load.artifact_identity",
+        lambda result: ("path", "sha", 100),
     )
     monkeypatch.setattr(
-        load_tasks, "reconcile_campaign_repair",
+        "orchestration.tasks.load.persisted_row_count",
+        lambda engine, result, path, sha: 15,
+    )
+    monkeypatch.setattr(
+        "orchestration.tasks.load.reconcile_campaign_repair",
         lambda *args, **kwargs: repairs.append((args, kwargs)),
     )
 
@@ -171,19 +192,21 @@ def test_load_records_completion_only_after_persisted_evidence(monkeypatch) -> N
 
 def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
     updates = []
-    monkeypatch.setattr(load_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.load.runtime_database_engine", _engine)
     monkeypatch.setattr(
-        load_tasks, "record_progress",
+        "orchestration.tasks.load.record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        load_tasks, "load_partition",
+        "orchestration.tasks.load.load_partition",
         lambda result: {"request_key": "monthly-key", "artifact_path": "partition"},
     )
-    monkeypatch.setattr(load_tasks, "artifact_identity", lambda result: ("path", "sha", 100))
     monkeypatch.setattr(
-        load_tasks,
-        "record_failure",
+        "orchestration.tasks.load.artifact_identity",
+        lambda result: ("path", "sha", 100),
+    )
+    monkeypatch.setattr(
+        "orchestration.tasks.load.record_failure",
         lambda progress_id, request_key, boundary, error: updates.append(
             {
                 f"{boundary}_status": "failed",
@@ -196,7 +219,7 @@ def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
     def invalid_proof(engine, result, path, checksum):
         raise ValueError("Mismatch")
 
-    monkeypatch.setattr(load_tasks, "persisted_row_count", invalid_proof)
+    monkeypatch.setattr("orchestration.tasks.load.persisted_row_count", invalid_proof)
     with pytest.raises(ValueError, match="Mismatch"):
         load_tasks.load_with_progress({"progress_id": 42, "request_key": "monthly-key"})
     assert updates[-1]["load_status"] == "failed"
@@ -221,7 +244,10 @@ def test_load_proof_failure_preserves_failure_for_retry(monkeypatch) -> None:
         },
     ],
 )
-def test_persisted_load_proof_rejects_missing_or_mismatched_rows(row) -> None:
+def test_persisted_load_proof_rejects_missing_or_mismatched_rows(
+    row: Mapping[str, object] | None,
+    monkeypatch,
+) -> None:
     class Connection:
         def __enter__(self):
             return self
@@ -236,22 +262,26 @@ def test_persisted_load_proof_rejects_missing_or_mismatched_rows(row) -> None:
         def mappings(self):
             return self
 
-        def one_or_none(self):
+        @staticmethod
+        def one_or_none():
             return row
 
-    engine = SimpleNamespace(connect=lambda: Connection())
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    monkeypatch.setattr(engine, "connect", lambda: Connection())
     with pytest.raises(ValueError, match="does not match"):
         persisted_row_count(
             engine, {"daily_climate_id": 7, "request_key": "key"}, "path", "sha"
         )
+    engine.dispose()
 
 
-def test_persisted_load_proof_accepts_matching_rows() -> None:
+def test_persisted_load_proof_accepts_matching_rows(monkeypatch) -> None:
     class Result:
         def mappings(self):
             return self
 
-        def one_or_none(self):
+        @staticmethod
+        def one_or_none():
             return {
                 "request_key": "key",
                 "transformed_artifact_path": "path",
@@ -266,13 +296,16 @@ def test_persisted_load_proof_accepts_matching_rows() -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def execute(self, statement, params):
+        @staticmethod
+        def execute(statement, params):
             return Result()
 
-    engine = SimpleNamespace(connect=lambda: Connection())
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    monkeypatch.setattr(engine, "connect", lambda: Connection())
     assert persisted_row_count(
         engine, {"daily_climate_id": 7, "request_key": "key"}, "path", "sha"
     ) == 2
+    engine.dispose()
 
 
 def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
@@ -283,29 +316,32 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     updates = []
     reconciled = []
     released = []
-    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.campaign.repair.runtime_database_engine", _engine)
     monkeypatch.setattr(
-        campaign_repair, "initialize_pipeline_progress",
+        "orchestration.campaign.repair.initialize_pipeline_progress",
         lambda engine, received: 91 if received == definition else None,
     )
     monkeypatch.setattr(
-        campaign_repair, "raw_artifact_for_request",
+        "orchestration.campaign.repair.raw_artifact_for_request",
         lambda request: SimpleNamespace(
             path=SimpleNamespace(as_posix=lambda: "raw.nc")
         ),
     )
-    monkeypatch.setattr(campaign_repair, "artifact_identity", lambda result: ("raw.nc", "raw-sha", 80))
     monkeypatch.setattr(
-        campaign_repair, "update_pipeline_progress_detail",
+        "orchestration.campaign.repair.artifact_identity",
+        lambda result: ("raw.nc", "raw-sha", 80),
+    )
+    monkeypatch.setattr(
+        "orchestration.campaign.repair.update_pipeline_progress_detail",
         lambda engine, progress_id, request_key, **fields:
             updates.append((progress_id, request_key, fields)),
     )
     monkeypatch.setattr(
-        campaign_repair, "reconcile_pipeline_progress",
+        "orchestration.campaign.repair.reconcile_pipeline_progress",
         lambda engine, progress_id: reconciled.append(progress_id),
     )
     monkeypatch.setattr(
-        campaign_repair, "release_pipeline_progress_claim",
+        "orchestration.campaign.repair.release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
@@ -336,7 +372,7 @@ def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
     def unexpected():
         raise AssertionError("Quarter progress must not be touched.")
 
-    monkeypatch.setattr(campaign_repair, "runtime_database_engine", unexpected)
+    monkeypatch.setattr("orchestration.campaign.repair.runtime_database_engine", unexpected)
     campaign_repair.reconcile_campaign_repair(
         42, partial, "partial-key", "path", "sha", 100, 15,
         manual_repair=True,
@@ -345,13 +381,13 @@ def test_non_campaign_manual_range_does_not_touch_quarter(monkeypatch) -> None:
 
 def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None:
     released = []
-    monkeypatch.setattr(campaign_repair, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.campaign.repair.runtime_database_engine", _engine)
     monkeypatch.setattr(
-        campaign_repair, "initialize_pipeline_progress",
+        "orchestration.campaign.repair.initialize_pipeline_progress",
         lambda engine, definition: 42,
     )
     monkeypatch.setattr(
-        campaign_repair, "release_pipeline_progress_claim",
+        "orchestration.campaign.repair.release_pipeline_progress_claim",
         lambda engine, progress_id, require_complete:
             released.append((progress_id, require_complete)),
     )
@@ -365,11 +401,11 @@ def test_manual_quarter_run_releases_claim_after_valid_load(monkeypatch) -> None
 def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
     updates = []
     monkeypatch.setattr(
-        extract_tasks, "record_progress",
+        "orchestration.tasks.raw_checkpoint.record_progress",
         lambda progress_id, request_key, **fields: updates.append(fields),
     )
     monkeypatch.setattr(
-        extract_tasks, "ensure_raw_checkpoint_partition",
+        "orchestration.tasks.raw_checkpoint.ensure_raw_checkpoint_partition",
         lambda spec, *, paced: (_ for _ in ()).throw(
             SubmissionDeferred(datetime(2026, 9, 26, tzinfo=timezone.utc))
         ),
@@ -384,14 +420,14 @@ def test_pacing_deferral_does_not_mark_extract_failed(monkeypatch) -> None:
 
 
 def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
     year = CAMPAIGN_START_YEAR
     specs = build_historical_request_specs(
         f"{year}-01-01", f"{year}-03-31", current_local_date=date.max
     )
     monkeypatch.setattr(
-        job_tasks, "select_earliest_incomplete_quarter",
+        "orchestration.tasks.build_monthly_requests.select_earliest_incomplete_quarter",
         lambda engine, claim_owner: SimpleNamespace(
             quarter=CampaignQuarter(year, 1), progress_id=19,
             request_specs=tuple(specs),
@@ -408,9 +444,12 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
 
 
 def test_manual_recovery_has_no_scheduled_slot(monkeypatch) -> None:
-    monkeypatch.setattr(job_tasks, "runtime_database_engine", _engine)
+    monkeypatch.setattr("orchestration.tasks.build_monthly_requests.runtime_database_engine", _engine)
     _skip_schema_setup(monkeypatch)
-    monkeypatch.setattr(job_tasks, "initialize_pipeline_progress", lambda engine, definition: 42)
+    monkeypatch.setattr(
+        "orchestration.tasks.build_monthly_requests.initialize_pipeline_progress",
+        lambda engine, definition: 42,
+    )
     jobs = job_tasks.prepare_monthly_jobs(
         "manual", {"start_date": "2024-01-01", "end_date": "2024-01-31"}
     )

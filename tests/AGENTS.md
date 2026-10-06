@@ -2,7 +2,7 @@
 
 This document defines technical testing rules for `tests/` and complements `../AGENTS.md`.
 
-Human-facing testing strategy and commands belong in `README.md`. This file keeps the lower-level invariants and development rules that must remain true when tests are added or changed.
+Human-facing testing strategy and commands belong in `README.md`. This file keeps lower-level invariants and development rules that must remain true when tests are added or changed.
 
 Authoritative references:
 
@@ -13,27 +13,35 @@ Authoritative references:
 
 ## Scope
 
-Tests protect the ERA5-Land ETL pipeline, canonical PostgreSQL persistence, controlled daily-climate read access, and Airflow orchestration policy.
+Tests protect the ERA5-Land ETL pipeline, canonical PostgreSQL persistence, controlled daily-climate read access, Airflow orchestration policy, and guarded operational tooling.
 
 Scientific pipeline behavior must remain testable without Airflow. Routine unit tests must not require live CDS or live PostgreSQL.
 
 ## Test Ownership
 
-Use directory-level ownership:
+Tests are organized by **level first** and **domain second**:
 
 ```text
-tests/unit/
-    fast, deterministic, offline-first pipeline and maintenance behavior
+tests/unit/pipeline/
+    fast/offline scientific ETL, storage, persistence decisions, and data access
 
-tests/airflow_orchestration/
+tests/unit/orchestration/
     Airflow scheduling, mapping, retry/deferral, pacing, progress, reporting,
-    DAG policy, concurrency, pools, and small control-metadata handoff
+    DAG policy, concurrency, pools, and control-metadata behavior
 
-tests/integration/
-    isolated real-PostgreSQL behavior
+tests/unit/operations/
+    reset, cleanup, recreation, and other guarded maintenance behavior
+
+tests/integration/pipeline/
+    isolated real-PostgreSQL climate persistence
+
+tests/integration/orchestration/
+    isolated real-PostgreSQL orchestration coordination
 ```
 
-Do not maintain a complete filename catalog here. Name an individual test module only when it has a uniquely important canonical ownership that would otherwise be ambiguous.
+Do not create an empty domain directory only for symmetry. Do not maintain a complete filename catalog here.
+
+Shared deterministic environment setup belongs in `tests/conftest.py`. Add narrower `conftest.py` files only when fixture scope genuinely requires them.
 
 ## Locked Scientific Contracts
 
@@ -118,16 +126,7 @@ Retry/recovery tests should prove observable outcomes rather than depending unne
 
 ## Daily-Climate Repository Rules
 
-Repository tests must protect:
-
-- explicit source/dataset/period/bbox selection;
-- canonical-table reads;
-- both time columns;
-- missing-value preservation;
-- deterministic ordering;
-- local-day/period bounds;
-- duplicate local-day/grid rejection;
-- read-only behavior.
+Repository tests must protect explicit source/dataset/period/bbox selection, canonical-table reads, both time columns, missing-value preservation, deterministic ordering, local-day/period bounds, duplicate local-day/grid rejection, and read-only behavior.
 
 Do not add wet-day labels, scaling, anomaly features, rolling features, clustering semantics, or other modelling decisions to repository tests.
 
@@ -162,38 +161,31 @@ Provenance tests protect the minimum artifact traceability required by the curre
 
 Do not introduce transform-version or Git-commit provenance tests. RAW checksum/path remain Parquet metadata rather than PostgreSQL columns.
 
-## Test Data and Fixtures
+## Test Data and Paths
 
-Prefer:
-
-- one to three local days;
-- one or a few grid cells;
-- explicit UTC and local timestamps;
-- deterministic numeric values;
-- explicit missing-value cases;
-- temporary directories for generated artifacts.
+Prefer one to three local days, one or a few grid cells, explicit UTC/local timestamps, deterministic numeric values, explicit missing-value cases, and temporary directories for generated artifacts.
 
 Do not write test artifacts into the real project `data/` directory.
+
+Tests that need repository-level paths should use the shared path definition in `tests/_paths.py` rather than deriving the repository root from a fragile number of `Path.parents`.
 
 Mock external systems where possible, but do not mock away the scientific logic that the test is intended to prove.
 
 ## Airflow Testing Rules
 
-Airflow tests should cover orchestration only:
+Airflow tests under `tests/unit/orchestration/` should cover orchestration only: DAG parsing/graph policy, run mode, schedule behavior, mapped-month construction, retry/deferral, campaign selection/reconciliation wiring, submission pacing policy, pools/concurrency/timeouts, reporting/monitoring, and small control metadata.
 
-- DAG parsing and graph policy;
-- run mode and schedule behavior;
-- mapped-month construction;
-- retries and deferral;
-- campaign selection and reconciliation wiring;
-- submission pacing policy;
-- pools/concurrency/timeouts;
-- reporting/monitoring;
-- small XCom/control metadata.
-
-Do not duplicate climate transformation or daily-climate repository tests inside DAG tests.
+Do not duplicate climate transformation or daily-climate repository tests inside orchestration tests.
 
 Scheduled tests should normally set or assume `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` unless schedule behavior itself is under test.
+
+## Operations Testing Rules
+
+Tests under `tests/unit/operations/` protect guarded maintenance commands.
+
+They must verify that destructive actions are denied in inappropriate environments, inspect/dry modes do not mutate state, confirmation/preflight rules are respected, and composed reset operations stop safely after earlier failures.
+
+Operations tests may execute repository scripts in subprocesses when direct-script behavior is part of the contract. Use `tests._paths.REPOSITORY_ROOT` for repository-level paths.
 
 ## Dependency and Warning Policy
 
@@ -214,10 +206,10 @@ Do not silence all `RuntimeWarning` messages or change dependencies solely to hi
 
 When adding or changing behavior:
 
-- update or add focused tests at the lowest appropriate test layer;
+- place the test at the lowest appropriate level and correct domain;
 - include negative cases where failure behavior is part of the contract;
 - use integration coverage when correctness depends on real PostgreSQL behavior;
-- avoid duplicating the same contract across multiple test layers;
+- avoid duplicating the same contract across multiple test levels/domains;
 - update `README.md` when testing strategy or canonical commands change;
 - update this file when a technical testing invariant changes.
 

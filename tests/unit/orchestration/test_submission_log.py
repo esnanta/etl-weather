@@ -7,8 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from config import CDS_DATASET, CDS_VARIABLES
 from orchestration.scheduling import submission_gate as pacing
 from orchestration.scheduling.submission_gate import SubmissionDeferred
+from pipeline.models.weather import DataSource, WeatherRequest
+from pipeline.requests.factory import build_aceh_bbox
 
 
 @pytest.mark.parametrize("granted", [True, False])
@@ -19,14 +22,27 @@ def test_submission_log_fields_use_separate_lines(monkeypatch, caplog, granted):
     def engine():
         yield object()
 
-    monkeypatch.setattr(pacing, "runtime_database_engine", engine)
-    monkeypatch.setattr(pacing, "initialize_pacing_storage", lambda engine: None)
     monkeypatch.setattr(
-        pacing, "reserve_submission",
+        "orchestration.scheduling.submission_gate.runtime_database_engine",
+        engine,
+    )
+    monkeypatch.setattr(
+        "orchestration.scheduling.submission_gate.initialize_pacing_storage",
+        lambda engine: None,
+    )
+    monkeypatch.setattr(
+        "orchestration.scheduling.submission_gate.reserve_submission",
         lambda engine: SimpleNamespace(granted=granted, checked_at=submitted,
                                        next_allowed_at=next_allowed),
     )
-    request = SimpleNamespace(start_date="2016-01-01", end_date="2016-01-31")
+    request = WeatherRequest(
+        source=DataSource.CDS,
+        dataset=CDS_DATASET,
+        start_date="2016-01-01",
+        end_date="2016-01-31",
+        variables=list(CDS_VARIABLES),
+        bbox=build_aceh_bbox(),
+    )
     with caplog.at_level(logging.INFO, logger="orchestration.scheduling.submission_gate"):
         if granted:
             pacing.reserve_or_defer(request)

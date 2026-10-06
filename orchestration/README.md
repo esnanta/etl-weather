@@ -392,17 +392,17 @@ Run orchestration regression tests with scheduling disabled:
 source activate-airflow.sh
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
-python -m pytest tests/unit tests/airflow_orchestration -q
+python -m pytest tests/unit -q
 ```
 
 Run the PostgreSQL integration coverage for persistence, progress, pacing, and database bootstrap with:
 
 ```bash
 python -m pytest \
-  tests/integration/test_postgresql_idempotency.py \
-  tests/integration/test_pipeline_progress_reconciliation.py \
-  tests/integration/test_submission_pacing.py \
-  tests/integration/test_orchestration_database_bootstrap.py \
+  tests/integration/pipeline/test_postgresql_idempotency.py \
+  tests/integration/orchestration/test_pipeline_progress_reconciliation.py \
+  tests/integration/orchestration/test_submission_pacing.py \
+  tests/integration/orchestration/test_orchestration_database_bootstrap.py \
   -q
 ```
 

@@ -13,6 +13,7 @@ from orchestration.scheduling.schedule import (
     ENABLED_ENV,
     campaign_schedule,
 )
+from ..._paths import REPOSITORY_ROOT
 
 
 @pytest.mark.parametrize(
@@ -44,11 +45,10 @@ def test_enabled_dag_preserves_jakarta_and_serial_execution(
 ) -> None:
     pytest.importorskip("airflow")
     from airflow.models import DagBag
-    from pathlib import Path
 
     monkeypatch.setenv(ENABLED_ENV, "true")
     monkeypatch.setenv(CADENCE_ENV, "2h")
-    folder = Path(__file__).resolve().parents[2] / "orchestration" / "dags"
+    folder = REPOSITORY_ROOT / "orchestration" / "dags"
     dag_bag = DagBag(dag_folder=folder)
     assert dag_bag.import_errors == {}
     dag = dag_bag.dags["cds_era5_land_etl"]

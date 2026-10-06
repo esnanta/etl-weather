@@ -76,6 +76,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
         create_pipeline_progress_tables(engine)
         tables_ready = True
         progress_id = initialize_pipeline_progress(engine, definition)
+        assert progress_id is not None
         assert try_claim_pipeline_progress(engine, progress_id, "scheduled__one")
         update_pipeline_progress_detail(
             engine,
@@ -260,11 +261,13 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
         create_pipeline_progress_tables(engine)
         tables_ready = True
         progress_id = initialize_pipeline_progress(engine, definition)
+        assert progress_id is not None
+        claimed_progress_id: int = progress_id
         with ThreadPoolExecutor(max_workers=2) as executor:
             claims = list(
                 executor.map(
                     lambda owner: try_claim_pipeline_progress(
-                        engine, progress_id, owner
+                        engine, claimed_progress_id, owner
                     ),
                     ("scheduled__one", "scheduled__two"),
                 )

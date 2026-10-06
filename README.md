@@ -118,7 +118,7 @@ etl-weather/
 │   ├── transformation/
 │   └── validation/
 ├── scripts/                  # standalone and operational entry points
-├── tests/                    # unit, integration, and orchestration tests
+├── tests/                    # unit/integration tests grouped by pipeline, orchestration, and operations
 ├── env-example               # example environment configuration
 ├── requirements.txt          # single project dependency manifest
 └── README.md
@@ -234,7 +234,7 @@ python -m pytest tests/unit -q
 Run the core isolated PostgreSQL idempotency integration test with:
 
 ```bash
-python -m pytest tests/integration/test_postgresql_idempotency.py -q
+python -m pytest tests/integration/pipeline/test_postgresql_idempotency.py -q
 ```
 
 Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).

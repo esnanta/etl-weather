@@ -26,10 +26,12 @@ from orchestration.repositories.pipeline_progress import (
 class _ScalarResult:
     rowcount = 1
 
-    def scalar_one(self) -> int:
+    @staticmethod
+    def scalar_one() -> int:
         return 42
 
-    def scalar_one_or_none(self) -> int:
+    @staticmethod
+    def scalar_one_or_none() -> int:
         return 42
 
 
@@ -139,11 +141,10 @@ def test_initialize_progress_seeds_parent_and_expected_details() -> None:
     assert (
         f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
     ) in sql
-    detail_params = [
-        params
-        for params in engine.connection.params
-        if params and "request_key" in params
-    ]
+    detail_params: list[dict[str, object]] = []
+    for params in engine.connection.params:
+        if isinstance(params, dict) and "request_key" in params:
+            detail_params.append(params)
     assert [params["request_key"] for params in detail_params] == [
         "jan-key",
         "feb-key",
@@ -170,6 +171,7 @@ def test_detail_update_keeps_status_and_validation_as_columns() -> None:
 
     sql = engine.connection.statements[-1]
     params = engine.connection.params[-1]
+    assert params is not None
     assert "load_status = COALESCE(:load_status, load_status)" in sql
     assert "validation_status = COALESCE(:validation_status, validation_status)" in sql
     assert "transformed_sha256 = COALESCE" in sql
@@ -264,7 +266,7 @@ class _BarrierConnection:
     def __exit__(self, exc_type, exc, tb) -> bool:
         return False
 
-    def execute(self, statement, params):
+    def execute(self, statement, params=None):
         assert params == {"pipeline_progress_id": 42}
         return _BarrierResult(self.row)
 

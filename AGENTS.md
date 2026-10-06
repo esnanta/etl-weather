@@ -234,7 +234,7 @@ pipeline/repositories/daily_climate_reader.py
 Tests:
 
 ```text
-tests/unit/test_daily_climate_repository.py
+tests/unit/pipeline/test_daily_climate_repository.py
 ```
 
 The repository provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.

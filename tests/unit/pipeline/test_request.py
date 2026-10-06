@@ -160,7 +160,9 @@ def test_weather_request_from_spec_rejects_missing_field() -> None:
 
 def test_weather_request_from_spec_rejects_non_numeric_bbox() -> None:
     spec = weather_request_to_spec(_request())
-    spec["bbox"]["north_lat"] = "6.2"
+    bbox = spec["bbox"]
+    assert isinstance(bbox, dict)
+    bbox["north_lat"] = "6.2"
 
     with pytest.raises(ValueError, match="coordinates must be numeric"):
         weather_request_from_spec(spec)

@@ -1,17 +1,17 @@
 """Verify the mapped Airflow DAG graph and execution policy."""
 
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 
-airflow = pytest.importorskip("airflow")
+from ..._paths import REPOSITORY_ROOT
 
+pytest.importorskip("airflow")
 from airflow.models import DagBag
 
 
 DAG_ID = "cds_era5_land_etl"
-DAG_FOLDER = Path(__file__).resolve().parents[2] / "orchestration" / "dags"
+DAG_FOLDER = REPOSITORY_ROOT / "orchestration" / "dags"
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +73,7 @@ def test_etl_dag_boundary_policies(dag) -> None:
 
 
 def test_pipeline_package_does_not_import_airflow() -> None:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = REPOSITORY_ROOT
     for path in (project_root / "pipeline").rglob("*.py"):
         source = path.read_text(encoding="utf-8")
         assert "import airflow" not in source

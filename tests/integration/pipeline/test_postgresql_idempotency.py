@@ -222,7 +222,9 @@ def test_detail_failure_rolls_back_metadata_and_observations(
     with pytest.raises(IntegrityError) as error:
         load_to_postgresql(dataset, artifact, postgres_config)
 
-    assert "daily_climate_detail" in str(error.value)
+    statement = error.value.statement
+    assert statement is not None
+    assert "daily_climate_detail" in statement
 
     engine = create_engine(postgres_config.url, future=True)
     try:

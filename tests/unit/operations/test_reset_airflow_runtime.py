@@ -32,10 +32,12 @@ def test_clear_airflow_runtime_preserves_tracked_config_and_structure(
 
 
 def test_airflow_runtime_reset_prod_is_hard_denied(monkeypatch) -> None:
-    monkeypatch.setattr(reset_airflow_runtime, "resolve_app_environment", lambda: "prod")
     monkeypatch.setattr(
-        reset_airflow_runtime,
-        "clear_airflow_runtime_state",
+        "scripts.reset_airflow_runtime.resolve_app_environment",
+        lambda: "prod",
+    )
+    monkeypatch.setattr(
+        "scripts.reset_airflow_runtime.clear_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("must not delete")),
     )
 
@@ -43,10 +45,12 @@ def test_airflow_runtime_reset_prod_is_hard_denied(monkeypatch) -> None:
 
 
 def test_airflow_runtime_reset_inspect_never_deletes(monkeypatch) -> None:
-    monkeypatch.setattr(reset_airflow_runtime, "resolve_app_environment", lambda: "dev")
     monkeypatch.setattr(
-        reset_airflow_runtime,
-        "clear_airflow_runtime_state",
+        "scripts.reset_airflow_runtime.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        "scripts.reset_airflow_runtime.clear_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("inspect must not delete")),
     )
 
@@ -54,11 +58,13 @@ def test_airflow_runtime_reset_inspect_never_deletes(monkeypatch) -> None:
 
 
 def test_airflow_runtime_reset_no_confirmation_never_deletes(monkeypatch) -> None:
-    monkeypatch.setattr(reset_airflow_runtime, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(reset_airflow_runtime, "_confirmation", lambda: False)
     monkeypatch.setattr(
-        reset_airflow_runtime,
-        "clear_airflow_runtime_state",
+        "scripts.reset_airflow_runtime.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr("scripts.reset_airflow_runtime._confirmation", lambda: False)
+    monkeypatch.setattr(
+        "scripts.reset_airflow_runtime.clear_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("no must not delete")),
     )
 

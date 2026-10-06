@@ -14,6 +14,14 @@ def _specs(start_date: str, end_date: str) -> list[dict[str, object]]:
     )
 
 
+def _spec_with_north_lat(spec: dict[str, object], north_lat: float) -> dict[str, object]:
+    bbox = spec["bbox"]
+    assert isinstance(bbox, dict)
+    updated_bbox = dict(bbox)
+    updated_bbox["north_lat"] = north_lat
+    return {**spec, "bbox": updated_bbox}
+
+
 def test_progress_definition_is_cadence_neutral() -> None:
     one_month = build_pipeline_progress_definition(_specs("2024-01-01", "2024-01-31"))
     two_months = build_pipeline_progress_definition(_specs("2024-01-01", "2024-02-29"))
@@ -36,10 +44,7 @@ def test_progress_identity_is_stable_and_request_sensitive() -> None:
     first = build_pipeline_progress_definition(specs)
     second = build_pipeline_progress_definition(list(reversed(specs)))
 
-    changed = [
-        {**spec, "bbox": {**spec["bbox"], "north_lat": 6.0}}
-        for spec in specs
-    ]
+    changed = [_spec_with_north_lat(spec, 6.0) for spec in specs]
 
     assert first.configuration_identity == second.configuration_identity
     assert first.configuration_identity != build_pipeline_progress_definition(
@@ -73,9 +78,6 @@ def test_progress_definition_rejects_empty_or_mixed_configuration() -> None:
 
     specs = _specs("2024-01-01", "2024-02-29")
     mixed = [dict(spec) for spec in specs]
-    mixed[1] = {
-        **mixed[1],
-        "bbox": {**mixed[1]["bbox"], "north_lat": 6.0},
-    }
+    mixed[1] = _spec_with_north_lat(mixed[1], 6.0)
     with pytest.raises(ValueError, match="same bounding box"):
         build_pipeline_progress_definition(mixed)

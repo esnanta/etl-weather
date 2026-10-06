@@ -1,7 +1,7 @@
 import logging
-from types import SimpleNamespace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +11,7 @@ from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks.raw_checkpoint import ensure_raw_checkpoint_partition
 from orchestration.tasks.load import load_partition
 from orchestration.tasks.transformed_checkpoint import ensure_transformed_checkpoint_partition
+from ..._paths import REPOSITORY_ROOT
 
 
 def test_build_historical_request_specs_requires_explicit_dates() -> None:
@@ -137,8 +138,10 @@ def test_peak_memory_is_logged_when_partition_fails(
 
 
 def test_monitoring_data_path_still_targets_repository_data() -> None:
-    expected = Path(__file__).resolve().parents[2] / "data"
-    resolved = Path(monitoring.__file__).resolve().parents[2] / "data"
+    expected = REPOSITORY_ROOT / "data"
+    module_file = monitoring.__file__
+    assert module_file is not None
+    resolved = Path(module_file).resolve().parents[2] / "data"
     assert resolved == expected
 
 
