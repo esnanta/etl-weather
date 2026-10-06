@@ -53,7 +53,7 @@ def test_reservations_are_durable_and_atomic() -> None:
             connection.execute(
                 text(
                     f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
-                    f"{submission_pacing.PACING_TABLE}"
+                    f"{submission_pacing.PACING_TABLE} WHERE TRUE"
                 )
             )
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -85,7 +85,7 @@ def test_reservations_are_durable_and_atomic() -> None:
                 connection.execute(
                     text(
                         f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
-                        f"{submission_pacing.PACING_TABLE}"
+                        f"{submission_pacing.PACING_TABLE} WHERE TRUE"
                     )
                 )
         engine.dispose()
