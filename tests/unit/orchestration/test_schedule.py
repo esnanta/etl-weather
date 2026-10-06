@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from ..._paths import REPOSITORY_ROOT
-
 from orchestration.scheduling.schedule import (
     CADENCE_ENV,
     ENABLED_ENV,
     campaign_schedule,
 )
+from ..._paths import REPOSITORY_ROOT
 
 
 @pytest.mark.parametrize(
