@@ -5,12 +5,11 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from tests._paths import REPOSITORY_ROOT
+from ..._paths import REPOSITORY_ROOT
 
 from scripts import recreate_postgres_database as maintenance
 
