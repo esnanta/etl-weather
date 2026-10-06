@@ -6,16 +6,16 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
+from pipeline.database import DatabaseConfig
 from scripts import reset_all
 from ..._paths import REPOSITORY_ROOT
 
 
-def _config():
-    return SimpleNamespace(
+def _config() -> DatabaseConfig:
+    return DatabaseConfig(
         host="localhost",
         port=5432,
         database="weather",
