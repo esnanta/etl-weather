@@ -9,9 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ..._paths import REPOSITORY_ROOT
-
 from scripts import recreate_postgres_database as maintenance
+from ..._paths import REPOSITORY_ROOT
 
 
 def _config(database: str = "weather_dev"):
