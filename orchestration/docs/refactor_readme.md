@@ -1080,9 +1080,9 @@ Run tests in this order after relocation:
 - [x] `tests/unit/orchestration`
 - [x] `tests/unit/operations`
 - [x] all `tests/unit`
-- [ ] `tests/integration/pipeline` *(pending isolated `TEST_POSTGRES_*` execution; CI collection succeeded but skipped database tests)*
-- [ ] `tests/integration/orchestration` *(pending isolated `TEST_POSTGRES_*` execution; CI collection succeeded but skipped database tests)*
-- [ ] all `tests/integration` *(pending isolated `TEST_POSTGRES_*` execution)*
+- [x] `tests/integration/pipeline`
+- [x] `tests/integration/orchestration`
+- [x] all `tests/integration`
 - [x] full `python -m pytest -q`
 
 For Airflow-related unit runs, keep `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` unless schedule behavior itself is under test.
@@ -1156,4 +1156,16 @@ source activate-airflow.sh
 python -m pytest tests/integration -q
 ```
 
-Until that external-resource run is completed, Phase 7 implementation is complete but PostgreSQL integration verification remains pending.
+Local isolated PostgreSQL verification is now complete:
+
+```text
+tests/integration:
+6 passed, 1 warning in 1.57s
+
+full pytest:
+293 passed, 1 warning in 8.48s
+```
+
+The remaining warning is the known upstream NetCDF/NumPy runtime warning documented in `tests/AGENTS.md`; it did not fail collection, unit tests, integration tests, or the full regression suite.
+
+Phase 7 is complete.
