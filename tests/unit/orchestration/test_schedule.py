@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests._paths import REPOSITORY_ROOT
+from ..._paths import REPOSITORY_ROOT
 
 from orchestration.scheduling.schedule import (
     CADENCE_ENV,
@@ -46,7 +46,6 @@ def test_enabled_dag_preserves_jakarta_and_serial_execution(
 ) -> None:
     pytest.importorskip("airflow")
     from airflow.models import DagBag
-    from pathlib import Path
 
     monkeypatch.setenv(ENABLED_ENV, "true")
     monkeypatch.setenv(CADENCE_ENV, "2h")
