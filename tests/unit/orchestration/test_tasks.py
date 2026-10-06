@@ -1,8 +1,7 @@
-from tests._paths import REPOSITORY_ROOT
 import logging
-from types import SimpleNamespace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +11,7 @@ from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.tasks.raw_checkpoint import ensure_raw_checkpoint_partition
 from orchestration.tasks.load import load_partition
 from orchestration.tasks.transformed_checkpoint import ensure_transformed_checkpoint_partition
+from ..._paths import REPOSITORY_ROOT
 
 
 def test_build_historical_request_specs_requires_explicit_dates() -> None:
