@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from pipeline.database import DatabaseConfig
 from scripts import recreate_postgres_database as maintenance
 from ..._paths import REPOSITORY_ROOT
 
@@ -25,10 +26,20 @@ def _config(database: str = "weather_dev"):
     )
 
 
+def _database_config(database: str = "weather_dev") -> DatabaseConfig:
+    return DatabaseConfig(
+        host="localhost",
+        port=5432,
+        database=database,
+        user="weather",
+        password="weather",
+        schema="climate_data",
+    )
+
+
 def test_prod_denies_before_database_config_access(monkeypatch) -> None:
     monkeypatch.setattr(
-        maintenance,
-        "resolve_app_environment",
+        "scripts.recreate_postgres_database.resolve_app_environment",
         lambda: "prod",
     )
 
@@ -46,8 +57,7 @@ def test_prod_denies_before_database_config_access(monkeypatch) -> None:
 
 def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
     monkeypatch.setattr(
-        maintenance,
-        "resolve_app_environment",
+        "scripts.recreate_postgres_database.resolve_app_environment",
         lambda: (_ for _ in ()).throw(
             ValueError(
                 "APP_ENV is required. Set APP_ENV=dev or APP_ENV=prod "
@@ -70,8 +80,13 @@ def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
 
 def test_dev_inspect_mode_runs_preflight_but_never_recreates(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(maintenance, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(maintenance.DatabaseConfig, "from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        maintenance.DatabaseConfig, "from_env", lambda: _database_config()
+    )
     monkeypatch.setattr(
         maintenance,
         "_validate_runtime_guards",
@@ -92,31 +107,48 @@ def test_dev_inspect_mode_runs_preflight_but_never_recreates(monkeypatch) -> Non
 @pytest.mark.parametrize("database", ["postgres", "template0", "template1"])
 def test_system_databases_are_rejected(database: str) -> None:
     with pytest.raises(RuntimeError, match="system database"):
-        maintenance._validate_static_guards(_config(database))
+        maintenance._validate_static_guards(_database_config(database))
 
 
 @pytest.mark.parametrize("answer", ["y", "Y", "yes", "YES"])
 def test_confirmation_accepts_yes_variants(answer: str) -> None:
-    assert maintenance._confirmation(_config(), input_fn=lambda prompt: answer) is True
+    assert (
+        maintenance._confirmation(
+            _database_config(),
+            input_fn=lambda prompt: answer,
+        )
+        is True
+    )
 
 
 @pytest.mark.parametrize("answer", ["n", "N", "no", "NO"])
 def test_confirmation_accepts_no_variants(answer: str) -> None:
-    assert maintenance._confirmation(_config(), input_fn=lambda prompt: answer) is False
+    assert (
+        maintenance._confirmation(
+            _database_config(),
+            input_fn=lambda prompt: answer,
+        )
+        is False
+    )
 
 
 def test_confirmation_reprompts_invalid_answer() -> None:
     answers = iter(["maybe", "y"])
 
     assert maintenance._confirmation(
-        _config(),
+        _database_config(),
         input_fn=lambda prompt: next(answers),
     ) is True
 
 
 def test_execute_no_confirmation_never_recreates(monkeypatch) -> None:
-    monkeypatch.setattr(maintenance, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(maintenance.DatabaseConfig, "from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        maintenance.DatabaseConfig, "from_env", lambda: _database_config()
+    )
     monkeypatch.setattr(maintenance, "_validate_runtime_guards", lambda config: None)
     monkeypatch.setattr(maintenance, "_confirmation", lambda config: False)
     monkeypatch.setattr(
@@ -132,8 +164,13 @@ def test_execute_no_confirmation_never_recreates(monkeypatch) -> None:
 
 def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(maintenance, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(maintenance.DatabaseConfig, "from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        maintenance.DatabaseConfig, "from_env", lambda: _database_config()
+    )
     monkeypatch.setattr(
         maintenance,
         "_validate_runtime_guards",
@@ -155,8 +192,13 @@ def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
 
 
 def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
-    monkeypatch.setattr(maintenance, "resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr(maintenance.DatabaseConfig, "from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.resolve_app_environment",
+        lambda: "dev",
+    )
+    monkeypatch.setattr(
+        maintenance.DatabaseConfig, "from_env", lambda: _database_config()
+    )
     monkeypatch.setattr(
         maintenance,
         "_validate_runtime_guards",
@@ -183,13 +225,12 @@ def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
 
 def test_runtime_guard_rejects_enabled_campaign_schedule(monkeypatch) -> None:
     monkeypatch.setattr(
-        maintenance,
-        "campaign_schedule",
+        "scripts.recreate_postgres_database.campaign_schedule",
         lambda: "0 */2 * * *",
     )
 
     with pytest.raises(RuntimeError, match="scheduling is enabled"):
-        maintenance._validate_runtime_guards(_config())
+        maintenance._validate_runtime_guards(_database_config())
 
 
 
