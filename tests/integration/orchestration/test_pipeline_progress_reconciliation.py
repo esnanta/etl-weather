@@ -1,3 +1,11 @@
+"""Verify orchestration progress semantics against isolated PostgreSQL.
+
+These integration tests are authoritative for persisted-evidence reconciliation,
+atomic claims, release behavior, failed-partition recovery, and extraction
+attempt barriers. They use only TEST_POSTGRES_* database settings and production
+progress repository functions.
+"""
+
 from __future__ import annotations
 
 import os
@@ -15,6 +23,7 @@ from orchestration.config import (
 )
 from orchestration.progress.definition import PipelineProgressDefinition, ProgressPartition
 from orchestration.repositories.pipeline_progress import (
+    are_extract_attempts_terminal,
     create_pipeline_progress_tables,
     get_pipeline_progress_by_id,
     initialize_pipeline_progress,
@@ -370,4 +379,89 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
                         ),
                         {"id": progress_id},
                     )
+        engine.dispose()
+
+
+
+def test_extract_attempt_barrier_requires_every_expected_partition_terminal() -> None:
+    load_dotenv()
+    keys = (
+        "TEST_POSTGRES_HOST",
+        "TEST_POSTGRES_PORT",
+        "TEST_POSTGRES_DATABASE",
+        "TEST_POSTGRES_USER",
+        "TEST_POSTGRES_PASSWORD",
+    )
+    if any(not os.getenv(key) for key in keys):
+        pytest.skip("Isolated TEST_POSTGRES_* connection is required.")
+    if "test" not in os.environ["TEST_POSTGRES_DATABASE"].lower():
+        pytest.fail("TEST_POSTGRES_DATABASE must name an isolated test database.")
+
+    config = DatabaseConfig(
+        host=os.environ["TEST_POSTGRES_HOST"],
+        port=int(os.environ["TEST_POSTGRES_PORT"]),
+        database=os.environ["TEST_POSTGRES_DATABASE"],
+        user=os.environ["TEST_POSTGRES_USER"],
+        password=os.environ["TEST_POSTGRES_PASSWORD"],
+        schema="climate_data",
+    )
+    engine = create_engine(config.url, future=True)
+    token = uuid4().hex
+    partitions = (
+        ProgressPartition(f"barrier-{token}-1", "2024-01-01", "2024-01-31"),
+        ProgressPartition(f"barrier-{token}-2", "2024-02-01", "2024-02-29"),
+        ProgressPartition(f"barrier-{token}-3", "2024-03-01", "2024-03-31"),
+    )
+    definition = PipelineProgressDefinition(
+        pipeline_name=f"barrier-test-{token}",
+        source="cds",
+        dataset_name="reanalysis-era5-land",
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+        configuration_identity=token,
+        partitions=partitions,
+    )
+    progress_id = None
+    try:
+        create_pipeline_progress_tables(engine)
+        progress_id = initialize_pipeline_progress(engine, definition)
+
+        assert are_extract_attempts_terminal(engine, progress_id) is False
+
+        update_pipeline_progress_detail(
+            engine,
+            progress_id,
+            partitions[0].request_key,
+            extract_status="complete",
+        )
+        update_pipeline_progress_detail(
+            engine,
+            progress_id,
+            partitions[1].request_key,
+            extract_status="failed",
+            validation_status="failed",
+            last_error="SubmissionError",
+        )
+        assert are_extract_attempts_terminal(engine, progress_id) is False
+
+        update_pipeline_progress_detail(
+            engine,
+            progress_id,
+            partitions[2].request_key,
+            extract_status="complete",
+        )
+        assert are_extract_attempts_terminal(engine, progress_id) is True
+
+        with pytest.raises(ValueError, match="unknown pipeline progress"):
+            are_extract_attempts_terminal(engine, progress_id + 10_000_000)
+    finally:
+        if progress_id is not None:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        f"DELETE FROM {PIPELINE_PROGRESS_SCHEMA}."
+                        f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                    ),
+                    {"id": progress_id},
+                )
         engine.dispose()
