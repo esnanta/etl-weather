@@ -103,13 +103,16 @@ Operational documentation remains in `orchestration/README.md`. Project-wide
 Airflow policy remains under `docs/`; there is no required
 `orchestration/docs/` directory in the current layout.
 
-The active mapped flow is:
+The active mapped flow is depth-first by month:
 
 ```text
 manual dates or scheduled quarter
               |
               v
      build_monthly_requests
+              |
+              v
+     monthly_etl[YYYY-MM]
               |
               v
      attempt_raw_checkpoint
@@ -123,6 +126,9 @@ ensure_transformed_checkpoint
               v
              load
 ```
+
+A RAW-complete month may continue through transformation and load while sibling
+months are still deferred or waiting.
 
 Validation remains inside pipeline runtime boundaries. NetCDF, Parquet, xarray,
 and Pandas objects never cross XCom.
@@ -249,7 +255,7 @@ reviewed explicit range.
       quarter.
 - [x] A terminal failed detail blocks automatic advancement and requires
       diagnosis/manual repair.
-- [x] Scheduled monthly earliest-start lower bounds are +0h, +1h, and +2h.
+- [x] Scheduled monthly earliest-start lower bounds are +0, +15, and +30 minutes.
 - [x] Manual runs do not inherit scheduled monthly offsets.
 - [x] Extraction uses a first pass followed by a durable first-pass barrier
       before retrying a failed month.
@@ -358,7 +364,7 @@ Preconditions:
 Verify during/after the pilot:
 
 - [ ] Three monthly jobs are mapped for one quarter.
-- [ ] Scheduled earliest-start lower bounds are +0h/+1h/+2h.
+- [ ] Scheduled earliest-start lower bounds are +0/+15/+30 minutes.
 - [ ] Provider POST timestamps respect the durable pacing gate.
 - [ ] Context chunks and target chunks resume correctly after deferral.
 - [ ] The first-pass barrier behaves as designed.
