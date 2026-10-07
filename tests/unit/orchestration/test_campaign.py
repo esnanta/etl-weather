@@ -1,12 +1,19 @@
+"""Verify campaign calendar, request mapping, and selection policy.
+
+The tests exercise production CampaignQuarter/CampaignSelection policy and
+production progress models. Progress repository I/O is isolated so these unit
+tests prove campaign decisions without reproducing PostgreSQL behavior, which
+is covered by orchestration integration tests.
+"""
+
 from calendar import monthrange
 from collections.abc import Generator
 from datetime import date
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
+from orchestration.repositories.pipeline_progress import PipelineProgress
 from orchestration.campaign.policy import (
     CAMPAIGN_END_DATE,
     CAMPAIGN_START_DATE,
@@ -142,11 +149,25 @@ def progress_selection(monkeypatch):
     )
     monkeypatch.setattr(
         "orchestration.repositories.pipeline_progress.get_pipeline_progress_by_id",
-        lambda engine, progress_id: SimpleNamespace(
+        lambda engine, progress_id: PipelineProgress(
+            id=progress_id,
+            pipeline_name="cds_era5_land_etl",
+            source="cds",
+            dataset_name="reanalysis-era5-land",
+            start_date=date(CAMPAIGN_START_YEAR, 1, 1),
+            end_date=date(CAMPAIGN_START_YEAR, 3, 31),
+            configuration_identity="test-campaign",
+            expected_partition_count=3,
+            completed_partition_count=(
+                3 if statuses.get(progress_id) == "complete" else 0
+            ),
+            failed_partition_count=(
+                1 if statuses.get(progress_id) == "failed" else 0
+            ),
             execution_status=statuses.get(progress_id, "pending"),
-            validation_status="valid" if statuses.get(progress_id) == "complete"
-            else "pending",
-            failed_partition_count=1 if statuses.get(progress_id) == "failed" else 0,
+            validation_status=(
+                "valid" if statuses.get(progress_id) == "complete" else "pending"
+            ),
         ),
     )
     monkeypatch.setattr(
