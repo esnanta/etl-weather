@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from orchestration.progress.definition import PipelineProgressDefinition
 
-from orchestration.config import (
+from config import (
     AVAILABILITY_LAG_DAYS,
     CAMPAIGN_END_DATE,
     CAMPAIGN_KEY,
