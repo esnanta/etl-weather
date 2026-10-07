@@ -185,6 +185,8 @@ def _validate_runtime_guards(
     config: DatabaseConfig,
     *,
     allow_residual_localexecutor_workers: bool = False,
+    allow_deferred_task_instances: bool = False,
+    allow_running_dagrun_with_only_deferred_tasks: bool = False,
 ) -> None:
     if campaign_schedule() is not None:
         raise RuntimeError(
@@ -197,23 +199,15 @@ def _validate_runtime_guards(
         "Airflow task preflight | %s",
         " | ".join(f"{state}={count}" for state, count in task_counts.items()),
     )
-    blocking_tasks = {state: count for state, count in task_counts.items() if count}
+    blocking_tasks = {
+        state: count
+        for state, count in task_counts.items()
+        if count and not (allow_deferred_task_instances and state == "deferred")
+    }
     if blocking_tasks:
         raise RuntimeError(
             "Airflow task instances can still run or resume: "
             + ", ".join(f"{state}={count}" for state, count in blocking_tasks.items())
-        )
-
-    dag_run_counts = _airflow_dag_run_state_counts(_airflow_metadata_path())
-    logger.info(
-        "Airflow DagRun preflight | %s",
-        " | ".join(f"{state}={count}" for state, count in dag_run_counts.items()),
-    )
-    blocking_runs = {state: count for state, count in dag_run_counts.items() if count}
-    if blocking_runs:
-        raise RuntimeError(
-            "ERA5-Land DagRuns can still run or resume: "
-            + ", ".join(f"{state}={count}" for state, count in blocking_runs.items())
         )
 
     processes = _airflow_processes()
@@ -242,6 +236,26 @@ def _validate_runtime_guards(
         raise RuntimeError(
             "Airflow processes that can resume or schedule work are still running: "
             + rendered
+        )
+
+    dag_run_counts = _airflow_dag_run_state_counts(_airflow_metadata_path())
+    logger.info(
+        "Airflow DagRun preflight | %s",
+        " | ".join(f"{state}={count}" for state, count in dag_run_counts.items()),
+    )
+    blocking_runs = {state: count for state, count in dag_run_counts.items() if count}
+    if (
+        allow_running_dagrun_with_only_deferred_tasks
+        and not blocking_tasks
+        and task_counts.get("deferred", 0) > 0
+        and blocking_runs
+        and set(blocking_runs) == {"running"}
+    ):
+        blocking_runs = {}
+    if blocking_runs:
+        raise RuntimeError(
+            "ERA5-Land DagRuns can still run or resume: "
+            + ", ".join(f"{state}={count}" for state, count in blocking_runs.items())
         )
 
     session_count = _database_session_count(config)
