@@ -145,39 +145,42 @@ airflow dags trigger cds_era5_land_etl \
 
 Manual execution is useful for explicit historical work and for repairing a failed campaign month. A whole-month repair that matches the campaign configuration can reconcile that month back into campaign progress.
 
-## Scheduler Cadence and CDS Submission Pacing
+## Orchestration Timing Policy
 
-These settings control different things.
+Orchestration timing is source-controlled in root `config.py` rather than
+configured through `.env`.
 
-`ERA5_CAMPAIGN_SCHEDULE_CADENCE` controls how often Airflow creates an opportunity for scheduled campaign work. Supported values are:
+The active policy is:
 
 ```text
-30m
-45m
-1h
-2h
+CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10
+QUARTER_COOLDOWN_MINUTES           = 10
+MONTHLY_SLOT_SPACING_MINUTES       = 15
+SUBMISSION_INTERVAL_MINUTES        = 5
 ```
 
-For example:
+These values control different boundaries:
 
-```env
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
-```
+- the campaign schedule interval determines how often Airflow checks for
+  scheduled campaign work;
+- the quarter cooldown delays the next quarter until the previous quarter is
+  complete and valid, then waits an additional 10 minutes;
+- monthly slot spacing gives the three months in one selected quarter
+  earliest-start offsets of +0, +15, and +30 minutes;
+- submission pacing enforces at least five minutes between actual CDS
+  submission POST requests.
 
-The current development pilot example evaluates scheduled campaign work every Jakarta-local hour. It does **not** mean that three months will be downloaded every hour. If the cadence environment value is omitted while scheduling is enabled, root `config.py` retains the code fallback `DEFAULT_CADENCE="2h"`.
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED` remains an environment switch because it
+controls whether scheduled campaign ticks are enabled at all. The timing values
+above are not deployment overrides.
 
-`SUBMISSION_INTERVAL_SECONDS` controls the minimum spacing between actual CDS submission POST requests:
+A monthly partition may require more than one CDS submission because the UTC+7
+daily boundary can require a previous-day context chunk. Pacing therefore
+applies to every actual submission, not only once per mapped month.
 
-```env
-SUBMISSION_INTERVAL_SECONDS=300
-```
-
-The current development example uses 300 seconds. The code fallback remains `DEFAULT_INTERVAL_SECONDS=1800`. Submission pacing is independent from scheduler cadence.
-
-A monthly partition may require more than one CDS submission because the UTC+7 daily boundary can require a previous-day context chunk. Pacing therefore applies to every actual submission, not only once per mapped month.
-
-When the pacing slot is not ready, the extraction operator defers instead of occupying a worker. Completed retrieval chunks are reused when the task wakes again.
+When a pacing or earliest-start boundary is not ready, the extraction operator
+defers instead of occupying a worker. Completed retrieval chunks are reused
+when the task wakes again.
 
 ## Campaign Progress
 
