@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from orchestration.config import PIPELINE_TIMEZONE
+from config import PIPELINE_TIMEZONE
 
 
 def inclusive_local_dates(
