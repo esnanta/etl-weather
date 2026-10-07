@@ -3,6 +3,10 @@
 This module intentionally contains only simple values and pure configuration
 resolvers so pipeline, scripts, and orchestration can depend on it without
 importing Airflow or heavy data libraries.
+
+Application-wide constants are defined eagerly. Campaign settings are resolved
+lazily on first access so standalone pipeline users are not forced to configure
+Airflow campaign variables unless orchestration actually needs them.
 """
 
 from __future__ import annotations
@@ -11,16 +15,17 @@ import logging
 import os
 from collections.abc import Mapping
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
 # Environment variable selecting destructive-maintenance policy.
 APP_ENV_KEY = "APP_ENV"
 
-# Development is the only environment where database recreation may be exposed.
+# Development is the only environment where destructive maintenance may run.
 APP_ENV_DEV = "dev"
 
-# Production disables database recreation completely.
+# Production disables destructive maintenance completely.
 APP_ENV_PROD = "prod"
 
 # PostgreSQL application schema shared by weather and orchestration tables.
@@ -49,6 +54,63 @@ CDS_END_DATE_ENV = "CDS_END_DATE"
 # Active ERA5-Land variables requested from CDS, in stable request order.
 CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
 
+# Local timezone used by campaign eligibility and ETL task adapters.
+CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)
+PIPELINE_TIMEZONE = CAMPAIGN_TIMEZONE
+
+# Environment variable that explicitly enables scheduled campaign ticks.
+ENABLED_ENV = "ERA5_CAMPAIGN_SCHEDULE_ENABLED"
+
+# Environment variable selecting the enabled scheduler cadence.
+CADENCE_ENV = "ERA5_CAMPAIGN_SCHEDULE_CADENCE"
+
+# Default scheduler cadence when scheduling is enabled.
+DEFAULT_CADENCE = "2h"
+
+# Supported scheduler cadences and Jakarta-local cron expressions.
+CADENCE_CRON = {
+    "30m": "*/30 * * * *",
+    "1h": "0 * * * *",
+    "2h": "0 */2 * * *",
+}
+
+# Provider availability lag retained for historical request eligibility.
+AVAILABILITY_LAG_DAYS = 6
+
+# Warning threshold for local artifact and temporary filesystems, in GiB.
+DISK_WARNING_GIB = 5
+
+# Number of bytes in one GiB for disk-space calculations.
+GIB = 1024**3
+
+# Minute spacing between mapped scheduled monthly lower bounds.
+MONTHLY_SLOT_SPACING_MINUTES = 15
+
+# Shared application schema aliases retained for operational table callers.
+PIPELINE_PROGRESS_SCHEMA = APPLICATION_SCHEMA
+PACING_SCHEMA = APPLICATION_SCHEMA
+
+# Operational progress and pacing table names.
+PIPELINE_PROGRESS_TABLE = "pipeline_progress"
+PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
+PACING_TABLE = "submission_pacing"
+
+# Environment variable controlling minimum seconds between CDS submissions.
+INTERVAL_ENV = "SUBMISSION_INTERVAL_SECONDS"
+
+# Default minimum interval between provider submissions, in seconds.
+DEFAULT_INTERVAL_SECONDS = 1800
+
+_CAMPAIGN_ATTRIBUTE_NAMES = frozenset(
+    {
+        "CAMPAIGN_KEY",
+        "CAMPAIGN_START_YEAR",
+        "CAMPAIGN_END_YEAR",
+        "CAMPAIGN_START_DATE",
+        "CAMPAIGN_END_DATE",
+    }
+)
+
 
 def _environment(env: Mapping[str, str] | None) -> Mapping[str, str]:
     """Return the supplied environment or load the project's local .env."""
@@ -56,6 +118,68 @@ def _environment(env: Mapping[str, str] | None) -> Mapping[str, str]:
         load_dotenv()
         return os.environ
     return env
+
+
+def _required_environment(
+    name: str,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Return one required non-blank project environment value."""
+    env_vars = _environment(env)
+    raw_value = env_vars.get(name)
+    if raw_value is None or not raw_value.strip():
+        raise RuntimeError(
+            f"{name} is required. Set it in the project .env before starting Airflow."
+        )
+    return raw_value.strip()
+
+
+def _campaign_year(
+    name: str,
+    env: Mapping[str, str] | None = None,
+) -> int:
+    """Return one required four-digit campaign year from the environment."""
+    value = _required_environment(name, env)
+    if len(value) != 4 or not value.isdigit():
+        raise RuntimeError(f"{name} must be a four-digit year such as 2016.")
+    return int(value)
+
+
+def _validate_campaign_years(start_year: int, end_year: int) -> None:
+    """Validate a scheduled campaign spanning one or more complete years."""
+    if start_year > end_year:
+        raise RuntimeError(
+            "CAMPAIGN_START_YEAR must be less than or equal to CAMPAIGN_END_YEAR."
+        )
+
+
+def _load_campaign_attributes() -> None:
+    """Resolve campaign settings once when orchestration first requests them."""
+    if "CAMPAIGN_KEY" in globals():
+        return
+
+    campaign_key = _required_environment("CAMPAIGN_KEY")
+    start_year = _campaign_year("CAMPAIGN_START_YEAR")
+    end_year = _campaign_year("CAMPAIGN_END_YEAR")
+    _validate_campaign_years(start_year, end_year)
+
+    globals().update(
+        {
+            "CAMPAIGN_KEY": campaign_key,
+            "CAMPAIGN_START_YEAR": start_year,
+            "CAMPAIGN_END_YEAR": end_year,
+            "CAMPAIGN_START_DATE": date(start_year, 1, 1),
+            "CAMPAIGN_END_DATE": date(end_year, 12, 31),
+        }
+    )
+
+
+def __getattr__(name: str) -> object:
+    """Lazily expose required campaign constants without coupling pipeline imports."""
+    if name in _CAMPAIGN_ATTRIBUTE_NAMES:
+        _load_campaign_attributes()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _required_iso_date(
