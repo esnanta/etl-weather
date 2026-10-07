@@ -829,12 +829,123 @@ python -m pytest \
 
 ### T7 — Preserve legitimate external-boundary isolation
 
-- [ ] Keep CDS client/network fakes where they prevent real provider calls while production extraction logic remains under test.
-- [ ] Keep HTTP transport interception where it proves pacing occurs before provider submission.
-- [ ] Keep deterministic clock/time injection where timing is not the subject under test.
-- [ ] Keep temporary filesystem boundaries and failure injection where required to prove atomicity/recovery.
-- [ ] Document why each non-obvious fake/mock is legitimate.
-- [ ] Do not mock away scientific transformation logic in scientific correctness tests.
+- [x] Keep CDS client/network fakes where they prevent real provider calls while production extraction logic remains under test.
+- [x] Keep HTTP transport interception where it proves pacing occurs before provider submission.
+- [x] Keep deterministic clock/time injection where timing is not the subject under test.
+- [x] Keep temporary filesystem boundaries and failure injection where required to prove atomicity/recovery.
+- [x] Document why each non-obvious fake/mock is legitimate.
+- [x] Do not mock away scientific transformation logic in scientific correctness tests.
+
+#### T7 implementation result — 2026-10-07
+
+T7 confirms that the remaining external-boundary isolation is intentional and should **not** be removed merely to reduce the number of monkeypatches/fakes.
+
+##### CDS provider/network boundary
+
+`tests/unit/pipeline/test_extract.py` keeps a fake `cdsapi.Client` because a unit test must not submit live Copernicus requests.
+
+The production behavior that remains under test includes:
+
+- ERA5-Land retrieval-context construction;
+- normalized request identity;
+- CDS payload generation;
+- variable selection;
+- provider-name normalization;
+- temporary NetCDF handling;
+- extraction logging.
+
+The fake provider only supplies a deterministic network response artifact.
+
+A module-level docstring was added to state this boundary explicitly.
+
+##### CDS pacing / HTTP transport boundary
+
+`tests/unit/pipeline/test_cds_pacing_chunks.py` keeps HTTP interception and provider fakes.
+
+These are required to prove that:
+
+- completed retrieval chunks are reused after a pacing deferral;
+- corrupt cached chunk identity fails closed;
+- the submission reservation occurs before an actual provider POST;
+- internal provider retry attempts must acquire a new pacing slot;
+- the pinned `cdsapi` retry path is intercepted before a second provider POST.
+
+The production paced-session, chunk-cache, request-identity, and deferral logic remain under test.
+
+The module-level docstring was expanded to explain this explicitly.
+
+##### Clock and deterministic time inputs
+
+Fixed datetimes in pacing, campaign, and task tests remain appropriate where elapsed wall-clock time is not itself the subject under test.
+
+No test was found where replacing real wall-clock time hides the production timing policy being asserted.
+
+##### Filesystem boundary and failure injection
+
+`tests/unit/pipeline/test_storage.py` continues to use `tmp_path` and a redirected `DATA_DIRECTORY`.
+
+This is legitimate because the production storage functions still perform real:
+
+- NetCDF writes/reads;
+- Parquet writes/reads;
+- artifact path generation;
+- provenance handling;
+- SHA-256 calculation;
+- atomic replacement/cleanup.
+
+Injected write failures are retained because they prove that failed writes do not leave partial artifacts.
+
+A module-level docstring was added to distinguish filesystem isolation from fake storage behavior.
+
+Operations reset tests also retain temporary filesystem roots and destructive-operation guards because the production cleanup functions execute against real temporary directories while environment/confirmation boundaries are isolated.
+
+##### Airflow/runtime/OS boundaries
+
+`tests/unit/orchestration/test_raw_checkpoint_operator.py` continues to isolate the runtime extraction function while exercising the production Airflow operator deferral/resume behavior.
+
+`tests/unit/orchestration/test_tasks.py` continues to replace pipeline runtime calls only for wrapper observability/failure tests and replaces `shutil.disk_usage` only as an operating-system measurement boundary.
+
+The `SimpleNamespace(free=...)` object is therefore retained: it represents an external OS result, not a production domain model.
+
+A module-level docstring was added to `test_tasks.py` to document this boundary.
+
+##### Scientific transformation boundary
+
+No mock/fake was found inside the scientific correctness path in `tests/unit/pipeline/test_transform.py`.
+
+The tests call production `transform_data()` directly with deterministic hourly source datasets. Expected daily totals, means, timestamps, units, missing-value behavior, and multi-grid independence are asserted independently.
+
+Therefore T7 makes **no change** to scientific transformation logic or its tests. Scientific independence receives its dedicated review in T8.
+
+##### Files changed in T7
+
+- `tests/unit/pipeline/test_extract.py` — module-level boundary-isolation docstring added.
+- `tests/unit/pipeline/test_cds_pacing_chunks.py` — module-level docstring expanded.
+- `tests/unit/pipeline/test_storage.py` — module-level filesystem-isolation docstring added.
+- `tests/unit/orchestration/test_tasks.py` — module-level runtime/OS-boundary docstring added.
+
+No production code and no test assertions were changed.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/pipeline/test_extract.py \
+  tests/unit/pipeline/test_cds_pacing_chunks.py \
+  tests/unit/pipeline/test_storage.py \
+  tests/unit/orchestration/test_raw_checkpoint_operator.py \
+  tests/unit/orchestration/test_tasks.py \
+  tests/unit/operations/test_reset_airflow_logs.py \
+  tests/unit/operations/test_reset_airflow_runtime.py \
+  tests/unit/operations/test_reset_data.py \
+  tests/unit/operations/test_reset_all.py \
+  -q
+```
+
+**T7 is implementation-complete pending focused local pytest confirmation.**
 
 ### T8 — Verify scientific tests independently
 
