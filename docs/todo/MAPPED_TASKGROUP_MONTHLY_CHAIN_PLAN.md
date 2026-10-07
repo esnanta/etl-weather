@@ -263,15 +263,21 @@ month 3 -> +2h
 This TaskGroup refactor and the earliest-start policy are related but distinct
 changes.
 
-For the first implementation:
+The TaskGroup graph was first implemented and verified independently. After
+observing approximately 11 minutes for one monthly RAW retrieval and a 300-second
+provider submission interval, monthly spacing is now treated as a separate
+reviewed optimization.
 
-- [ ] Do not silently change `MONTHLY_SLOT_SPACING_HOURS` in the same patch
-      unless tests show the TaskGroup design cannot be evaluated otherwise.
-- [ ] First prove depth-first monthly transform/load behavior with the current
-      spacing.
-- [ ] Measure idle time after the new graph works.
-- [ ] Evaluate smaller monthly spacing as a separate reviewed optimization.
-- [ ] Keep `SUBMISSION_INTERVAL_SECONDS` independent from monthly start slots.
+- [x] Keep the TaskGroup refactor independent from the initial spacing change.
+- [x] Use the observed monthly retrieval duration as evidence for reducing idle
+      time.
+- [x] Replace hour-based spacing with explicit minute-based configuration.
+- [x] Set scheduled monthly lower bounds to +0, +15, and +30 minutes.
+- [x] Keep `SUBMISSION_INTERVAL_SECONDS` independent from monthly start slots.
+- [ ] Verify the 15-minute slot policy with unit tests.
+- [ ] Measure quarter elapsed time and deferral behavior during the clean pilot.
+- [ ] Revisit the 15-minute value only after pilot evidence shows it is too
+      conservative or too aggressive.
 
 This separation makes it possible to determine whether elapsed-time improvement
 comes from dependency restructuring or from a pacing/configuration change.
@@ -445,8 +451,8 @@ Use this sequence and mark each item as it is completed:
 - [ ] Start a clean scheduled-quarter pilot under one unchanged DAG version.
 - [ ] Verify depth-first January transform/load while later months wait.
 - [ ] Record elapsed-time and resource observations.
-- [ ] Only after the graph is proven, review monthly start spacing as a separate
-      optimization.
+- [x] Review monthly start spacing as a separate optimization after unit and
+      integration graph gates passed; adopt +0/+15/+30 minutes for the pilot.
 - [ ] Continue to the one-year/four-quarter pilot only after this gate passes.
 
 ---
