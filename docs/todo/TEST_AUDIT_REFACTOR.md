@@ -227,14 +227,159 @@ The inventory is sufficient to begin T2 traceability work. T2 must determine whe
 
 ### T2 — Build the traceability matrix
 
-- [ ] Map every relevant test to its production subject.
-- [ ] Record which production models are actually instantiated.
-- [ ] Record every mocked boundary and its justification.
-- [ ] Record the observable behavior/assertion being proven.
-- [ ] Classify each test/group as VALID, WEAK, SELF-FULFILLING, or REDUNDANT.
-- [ ] Identify behavioral contracts with no direct production-backed test.
+- [x] Map every relevant test to its production subject.
+- [x] Record which production models are actually instantiated.
+- [x] Record every mocked boundary and its justification.
+- [x] Record the observable behavior/assertion being proven.
+- [x] Classify each test/group as VALID, WEAK, SELF-FULFILLING, or REDUNDANT.
+- [x] Identify behavioral contracts with no direct production-backed test.
 
-**Gate:** no broad test rewrite begins until T1 and T2 provide enough evidence to distinguish legitimate isolation from self-fulfilling tests.
+#### T2 traceability result — 2026-10-07
+
+Classification below is at **file / closely related behavior-group level**. A file marked WEAK can still contain individually valid tests; the classification means that at least one material claim in that file is supported by test-side behavior or implementation-detail coupling that should be improved.
+
+##### Pipeline unit tests
+
+| Test file | Production subject and production objects | Mocked / fake boundary | Observable behavior asserted | Classification | Proposed action |
+| --- | --- | --- | --- | --- | --- |
+| `test_cds_pacing_chunks.py` | `pipeline.extraction.cds_era5_land`, `pipeline.providers.cds_client`; real `WeatherRequest`, `BoundingBox`, `SubmissionDeferred` | HTTP transport, `cdsapi` client/module, submission callback, one internal downloader replacement | chunk cache reuse after deferral; corrupt cache identity fails; reservation precedes POST; every retry requires a new slot | **VALID** | Keep external-boundary fakes. During revision, add docstring detail explaining why private pacing/session APIs are intentionally tested; reconsider private API exposure only if production design changes. |
+| `test_config_requests.py` | production config resolvers and `build_cds_request`; real `WeatherRequest` and `DataSource` | environment and dotenv only | required API key, canonical dataset/variables/bbox, explicit period, APP_ENV and CDS period validation | **VALID** | Keep; add module docstring when revised. |
+| `test_daily_climate_repository.py` | `DailyClimateSelection`, selection/dataframe validators, repository loader, private statement builder | query execution replaced; SQLite engine only carries call boundary | canonical SQL filters, input validation, schema/order/missing-value preservation, query params | **WEAK** | Keep pure validators. Replace or supplement loader/query behavior with a real PostgreSQL repository integration test; private SQL-string assertions should not be sole proof of repository correctness. |
+| `test_database.py` | production `create_schema`, `create_daily_climate_table`, `create_daily_climate_detail_table`, real `DatabaseConfig` | custom `_Engine/_Connection/_BeginContext` implements SQLAlchemy surface | emitted DDL contains expected schema/table/constraint definitions | **WEAK** | Retain only if treated explicitly as SQL-construction contract; rely on real PostgreSQL bootstrap integration for actual DDL correctness. Simplify fake engine if possible. |
+| `test_extract.py` | `CdsEra5LandExtractor`, CDS payload builder and normalization; real request/data models | fake `cdsapi.Client`, environment, temporary NetCDF | retrieval context, payload, normalization, variable selection, log periods, no live CDS | **VALID** | Keep fake provider boundary. Review private context-format helpers separately; public extractor behavior remains valid. |
+| `test_extract_cds_normalization.py` | production CDS normalization helpers/functions | none material | source variable/time normalization | **VALID** | Keep. |
+| `test_load.py` | production PostgreSQL loader functions, real `TransformedWeatherDataset`, `DatasetArtifact`, `DatabaseConfig` | extensive SQLAlchemy-like result/connection/engine classes; provenance/hash collaborators | generated metadata/upsert SQL, unchanged-partition decision, observation conflict key, skip path | **WEAK** | Keep pure dataframe preparation and small deterministic parameter/SQL construction tests. Consolidate idempotency, unchanged-partition persistence, conflicts, and transactions into real PostgreSQL integration coverage; reduce custom SQLAlchemy machinery. |
+| `test_logging.py` | private production logging formatters | none | key/value formatting and dataframe preview logging | **VALID** | Behavior is real but private. Keep if log format is an intentional contract; otherwise migrate toward public logging behavior. |
+| `test_request.py` | request validation/serialization/key/signature/month split; real `WeatherRequest`, `BoundingBox`, enums | none | identity, normalization, splitting, validation | **VALID** | Keep. |
+| `test_runtime.py` | real `WeatherPipeline`, request/dataset/artifact models and ETL interfaces | complete custom implementations of extractor, storage, transformer, loader; validators replaced | runtime call order, checkpoint branch selection, delegation, resume behavior | **WEAK** | Keep as narrow orchestration tests only. Rename/describe scope clearly in module docstring. Ensure concrete extractor/storage/transformer/loader behavior remains covered elsewhere; reduce collaborator code where simpler spies suffice. |
+| `test_storage.py` | production artifact storage, NetCDF/Parquet provenance and checkpoint functions; real request/data/artifact models | temporary data root, failure injection | round-trip storage, provenance, overwrite refusal, atomic write cleanup, missing artifact | **VALID** | Keep temporary filesystem isolation. |
+| `test_transform.py` | production `transform_data`; real `LoadedWeatherDataset`, request/bbox models | none | UTC+7 daily boundary, accumulated totals, means, unit conversion, multi-grid independence, missing/null/negative handling | **VALID** | Keep. `_era5_land_cumulative_value` is an input generator, not the production daily-total algorithm; nevertheless document the source-series construction clearly so expected outputs remain independently understandable. |
+| `test_validation.py` | production raw/transformed validators; real raw/transformed dataset models | none | temporal continuity, grid resolution/membership, UTC+7 relation, duplicate/off-grid/value constraints, missing-value allowance | **VALID** | Keep. |
+
+##### Pipeline integration tests
+
+| Test file | Production subject and production objects | Boundary | Observable behavior asserted | Classification | Proposed action |
+| --- | --- | --- | --- | --- | --- |
+| `integration/pipeline/test_postgresql_idempotency.py` | real storage functions + `load_to_postgresql` + PostgreSQL; real models/artifacts | isolated `TEST_POSTGRES_*`; temporary artifact root; controlled invalid detail | repeated partition load creates no duplicate rows; failed detail insert rolls back metadata and details | **VALID** | Keep as authoritative persistence proof. Expand here if unit loader tests are reduced. |
+
+##### Orchestration unit tests
+
+| Test file | Production subject and production objects | Mocked / fake boundary | Observable behavior asserted | Classification | Proposed action |
+| --- | --- | --- | --- | --- | --- |
+| `test_campaign.py` | production `CampaignQuarter`, `CampaignSelection`, `CampaignBlocked`, campaign builders/selector | progress repository replaced; returned progress is `SimpleNamespace`; SQLite dummy engine | quarter boundaries, monthly mapping, initialization, earliest incomplete selection, blocking, matching manual repair | **WEAK** | Calendar and pure campaign tests are valid. Replace progress look-alike with production `PipelineProgress` where feasible; keep repository calls isolated for policy tests. |
+| `test_campaign_config.py` | production orchestration config module | environment | required campaign key/year parsing/range | **VALID** | Keep; private helpers are acceptable only if intentionally treated as config contract. |
+| `test_dag.py` | actual Airflow `DagBag` and production DAG | none beyond local DAG parse | DAG graph, task IDs, pools/retries/timeouts/mapping, no Airflow import from pipeline | **VALID** | Keep. |
+| `test_database.py` | production orchestration DB lifecycle/bootstrap functions | engine/config creation and bootstrap child functions replaced; `SimpleNamespace` URL/engine | engine disposal and initialization ordering | **VALID** | Replacement is collaborator-level and assertions target composition/order. Prefer real `DatabaseConfig` over look-alike where easy; integration bootstrap remains authoritative for actual DDL. |
+| `test_mode.py` | production `RunMode` and `resolve_run_mode` | local Enum only as input-shape compatibility | scheduled/manual resolution and invalid-input rejection | **VALID** | Keep. |
+| `test_pipeline_progress.py` | production progress repository functions and real `PipelineProgressDefinition/ProgressPartition` | extensive custom SQLAlchemy execution/result hierarchy | emitted DDL/SQL, status parameter validation, reconciliation query shape, claim/release SQL, barrier interpretation | **WEAK** | Keep pure validation and possibly SQL-construction checks, but actual progress semantics must be owned by PostgreSQL integration tests. Reduce fake database surface substantially. |
+| `test_progress.py` | production progress-definition construction and request identity | none material | cadence-neutral identity/partitions/configuration identity | **VALID** | Keep. |
+| `test_progress_wiring.py` | production task/progress/repair functions and some production request builders | many runtime/repository/artifact collaborators replaced; some local connection/result objects; `SimpleNamespace` artifact look-alike | progress status transitions around raw/transform/load, failure recording, persisted-load evidence, manual repair, slot metadata | **WEAK** | Split by responsibility. Use production domain objects (`PipelineProgress`, real artifact/request models) where available; retain side-effect isolation but avoid reproducing persistence proof in local fake connections when integration tests exist. |
+| `test_raw_checkpoint_operator.py` | production Airflow raw checkpoint operator/task behavior | runtime/progress collaborators and deferral timing isolated | first attempt / defer / retry-pass behavior and metadata handoff | **VALID** | Keep; mocks isolate Airflow/runtime boundaries rather than replace operator policy. |
+| `test_reporting.py` | production campaign reporting/query functions | database query surface only as needed | campaign status/report aggregation and presentation contract | **VALID** | Keep if SQL result shaping is small; integration coverage is not required for formatting-only behavior. |
+| `test_schedule.py` | production schedule/config resolution | environment/config monkeypatch | disabled/enabled schedule interpretation | **VALID** | Keep. |
+| `test_scheduled_selection_pilot.py` | production `prepare_monthly_jobs`, campaign selector/policy code | local dictionaries implement progress status + claim persistence; `SimpleNamespace` progress; CDS hard-fail guard | scheduled Q1→Q2→Q3 movement, competing claim block, failed-quarter block, terminal no-op | **WEAK** | Retain offline end-to-end policy shape, but replace progress look-alike with `PipelineProgress`; avoid making local claim state the only proof of concurrency/atomicity because PostgreSQL integration already tests real claims. |
+| `test_submission_log.py` | production `reserve_or_defer`, `WeatherRequest` | pacing repository and engine isolated; `SimpleNamespace` mimics decision | granted/deferred log fields and exception behavior | **WEAK** | Replace look-alike with production `SubmissionDecision`. The rest of the isolation is legitimate. |
+| `test_submission_pacing.py` | production pacing interval/config functions | environment/time/config collaborators | interval validation and pacing policy edge cases | **VALID** | Keep; real atomic reservation is covered by integration. |
+| `test_tasks.py` | production request builders and task wrappers around pipeline/runtime/monitoring | runtime ETL functions and disk-usage OS call isolated; task boundary dicts as inputs | request splitting, task boundary validation, memory logging, failure logging, disk warnings | **VALID** | Keep. `SimpleNamespace` for `shutil.disk_usage` result is an external OS-result substitute, not a domain look-alike. |
+
+##### Orchestration integration tests
+
+| Test file | Production subject | Boundary | Observable behavior asserted | Classification | Proposed action |
+| --- | --- | --- | --- | --- | --- |
+| `integration/orchestration/test_orchestration_database_bootstrap.py` | production application storage bootstrap against PostgreSQL | isolated `TEST_POSTGRES_*` | all required tables are created and repeated bootstrap is idempotent | **VALID** | Keep as authoritative DDL/bootstrap proof. |
+| `integration/orchestration/test_pipeline_progress_reconciliation.py` | production progress repository + canonical climate tables against PostgreSQL | isolated `TEST_POSTGRES_*`; unique test identities | completion requires matching persisted evidence; claim exclusivity; failure block; manual repair completes only with all partitions; checksum/row-count mismatch reopens progress | **VALID** | Keep as authoritative progress/reconciliation proof. Consider factoring fixture setup later for readability only, not changing behavior. |
+| `integration/orchestration/test_submission_pacing.py` | production `reserve_submission` against PostgreSQL | isolated `TEST_POSTGRES_*` and two threads | durable atomic global reservation and persistence across calls | **VALID** | Keep as authoritative pacing/locking proof. |
+
+##### Operations unit tests
+
+| Test file | Production subject | Mocked / fake boundary | Observable behavior asserted | Classification | Proposed action |
+| --- | --- | --- | --- | --- | --- |
+| `test_recreate_postgres_database.py` | production maintenance script guards/main/confirmation | DB recreation and environment/preflight side effects isolated; one `SimpleNamespace` config helper plus real `DatabaseConfig` elsewhere | prod denial, missing env, inspect safety, system DB guard, confirmation loop, preflight ordering, direct-script import behavior | **VALID** | Prefer real `DatabaseConfig` consistently and remove unused/look-alike config helper if possible. Private guard testing is justified for destructive safety code. |
+| `test_reset_airflow_logs.py` | production log cleanup/main | environment and destructive call isolated for guard tests; real temp filesystem for cleanup | root preserved, children removed, prod/inspect safe | **VALID** | Keep. |
+| `test_reset_airflow_runtime.py` | production runtime-state cleanup/main | environment/confirmation/destructive call isolated; real temp filesystem | tracked config/DAGs preserved, generated state removed, prod/inspect/no-confirm safety | **VALID** | Keep. |
+| `test_reset_all.py` | production composed reset/main | individual destructive components and preflight/confirmation isolated | safe ordering, fail-stop behavior, prod/inspect/confirmation guards, direct script behavior | **VALID** | Keep; composition mocks are appropriate because component behavior is tested separately. |
+| `test_reset_data.py` | production data cleanup/main | environment/confirmation isolated; real temp filesystem | generated contents and symlink removed without deleting target; guard behavior | **VALID** | Keep. |
+
+#### T2 classification summary
+
+At current file/group granularity:
+
+- **VALID:** 29 modules;
+- **WEAK:** 8 modules;
+- **SELF-FULFILLING:** 0 modules conclusively classified;
+- **REDUNDANT:** 0 modules conclusively classified.
+
+The absence of a SELF-FULFILLING classification is intentional. T1 identified several suspicious test doubles, but T2 found that production functions are still executed in those files. The main problem is **weak evidence and overbuilt collaborator fakes**, not tests that completely bypass production code.
+
+The eight WEAK modules are:
+
+1. `tests/unit/pipeline/test_daily_climate_repository.py`
+2. `tests/unit/pipeline/test_database.py`
+3. `tests/unit/pipeline/test_load.py`
+4. `tests/unit/pipeline/test_runtime.py`
+5. `tests/unit/orchestration/test_campaign.py`
+6. `tests/unit/orchestration/test_pipeline_progress.py`
+7. `tests/unit/orchestration/test_progress_wiring.py`
+8. `tests/unit/orchestration/test_scheduled_selection_pilot.py`
+9. `tests/unit/orchestration/test_submission_log.py`
+
+This list contains **9** WEAK modules; therefore the numeric summary above is corrected to:
+
+- **VALID:** 28 modules;
+- **WEAK:** 9 modules;
+- **SELF-FULFILLING:** 0 modules;
+- **REDUNDANT:** 0 modules.
+
+##### Behavioral contracts currently stronger at integration level than unit level
+
+The audit confirms that these behaviors should not be judged primarily from fake database unit tests because real PostgreSQL coverage already exists:
+
+- repeated daily-climate partition idempotency;
+- transaction rollback when detail persistence fails;
+- orchestration database bootstrap / DDL execution;
+- progress reconciliation against canonical persisted climate evidence;
+- atomic progress claim behavior;
+- durable global submission pacing / locking.
+
+Unit tests around these areas should therefore focus on pure validation, deterministic input transformation, SQL/parameter construction where valuable, and composition—not attempt to recreate PostgreSQL semantics.
+
+##### Behavioral gaps / under-proven boundaries identified by T2
+
+No critical production behavior was found to be completely untested, but several boundaries are under-proven or only indirectly proven:
+
+- `WeatherPipeline` has good orchestration tests, while concrete extractor/storage/transformer/loader behavior is tested in separate modules rather than through one concrete offline pipeline composition. This is acceptable architecture, but the runtime test docstring must not imply concrete-component integration coverage.
+- daily-climate read repository behavior is validated heavily at unit level, but the actual PostgreSQL SELECT path is not covered by a dedicated repository integration test. If this repository is considered a stable public data-access boundary, add one focused integration test rather than expanding fake SQL execution.
+- some private helpers are directly asserted as if they were stable contracts. T3/T6 should decide case by case whether the behavior should be exercised through a public boundary or the helper is intentionally testable private implementation.
+- scheduled selection policy is well covered offline, and real progress claim atomicity is covered in PostgreSQL integration, but there is no need to reproduce database claim semantics inside the offline pilot.
+
+##### Domain-object replacement candidates confirmed by production code
+
+Production models exist and should replace look-alikes when affected files are revised:
+
+- `orchestration.repositories.submission_pacing.SubmissionDecision` should replace the `SimpleNamespace(granted, checked_at, next_allowed_at)` in `test_submission_log.py`.
+- `orchestration.repositories.pipeline_progress.PipelineProgress` should replace progress-shaped `SimpleNamespace` objects in campaign/scheduled-selection tests where only persisted progress state is being represented.
+- real `DatabaseConfig`, `WeatherRequest`, `DatasetArtifact`, and campaign dataclasses should remain preferred over ad-hoc objects.
+
+##### Scientific independence conclusion
+
+`test_transform.py::_era5_land_cumulative_value()` is **not classified as a reimplementation of the daily transformation algorithm**. It constructs deterministic cumulative hourly source values. The assertions independently expect daily totals, means, timestamps, and unit conversions from production `transform_data`. It should remain, but its future module docstring should explain that it is a source-fixture generator.
+
+Likewise, `test_campaign.py::_month_end()` computes independent expected calendar boundaries and is acceptable as expected-value construction, not a substitute for campaign selection logic.
+
+##### T2 gate result
+
+**T2 is complete. No test or production code was changed.**
+
+The audit now distinguishes legitimate boundary isolation from weak test-side implementations. The next phase may begin with T3, but revisions should be incremental and should start with the lowest-risk confirmed domain look-alikes before touching database-heavy test architecture.
+
+Recommended T3 starting order:
+
+1. `test_submission_log.py` — replace `SimpleNamespace` with production `SubmissionDecision` and add the required top-level docstring/update existing docstring as needed;
+2. `test_campaign.py` and `test_scheduled_selection_pilot.py` — replace progress-shaped `SimpleNamespace` with production `PipelineProgress`;
+3. then reassess `test_progress_wiring.py`;
+4. leave `test_load.py`, `test_pipeline_progress.py`, `test_database.py`, and `test_runtime.py` for their dedicated T4/T5/T6 work rather than doing broad rewrites in T3.
+
+**Gate:** T1 and T2 are now complete. Broad test rewrites remain prohibited; subsequent changes should follow the staged T3–T9 checklist and preserve production behavior.
 
 ### T3 — Replace test-created domain look-alikes
 
