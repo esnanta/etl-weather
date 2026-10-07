@@ -31,6 +31,14 @@ def first_pass_barrier_complete(progress_id: int) -> bool:
 class RawCheckpointOperator(BaseOperator):
     """Ensure a RAW checkpoint while deferring provider-pacing waits."""
 
+    template_fields = (
+        "request_spec",
+        "progress_id",
+        "run_mode",
+        "earliest_start_at",
+        "first_result",
+    )
+
     def __init__(
         self,
         *,
@@ -43,22 +51,37 @@ class RawCheckpointOperator(BaseOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+        # Mapped TaskGroup inputs are references at DAG-parse time. Airflow
+        # resolves these template fields for the concrete mapped task instance
+        # before execute(), so request validation belongs at runtime.
         self.request_spec = request_spec
-        start_date = request_spec.get("start_date")
+        self.progress_id = progress_id
+        self.run_mode = run_mode
+        self.earliest_start_at = earliest_start_at
+        self.first_result = first_result
+        self.first_pass = first_pass
+        self.month_label: str | None = None
+
+    def _resolve_month_label(self) -> str:
+        if not isinstance(self.request_spec, dict):
+            raise ValueError("Mapped RAW checkpoint requires resolved request_spec metadata.")
+        start_date = self.request_spec.get("start_date")
         if not isinstance(start_date, str) or len(start_date) < 7:
             raise ValueError(
                 "Mapped RAW checkpoint requires request_spec.start_date "
                 "in YYYY-MM-DD format."
             )
         self.month_label = start_date[:7]
-        self.progress_id = progress_id
-        self.run_mode = run_mode
-        self.earliest_start_at = earliest_start_at
-        self.first_result = first_result
-        self.first_pass = first_pass
+        return self.month_label
 
     def execute(self, context: Context) -> dict[str, object]:
+        month_label = self._resolve_month_label()
+
         if self.first_result is not None:
+            if not isinstance(self.first_result, dict):
+                raise ValueError(
+                    "RAW resolver requires resolved first-attempt control metadata."
+                )
             if not self.first_result.get("first_attempt_failed"):
                 return self.first_result
             if not first_pass_barrier_complete(self.progress_id):
@@ -68,7 +91,7 @@ class RawCheckpointOperator(BaseOperator):
                 self.log.info(
                     "RAW retry waiting for first-pass barrier; month=%s; "
                     "next_check_at=%s",
-                    self.month_label,
+                    month_label,
                     next_check.isoformat(),
                 )
                 self.defer(
@@ -76,6 +99,7 @@ class RawCheckpointOperator(BaseOperator):
                     method_name="execute_complete",
                 )
                 raise AssertionError("Airflow defer unexpectedly returned.")
+
         if self.earliest_start_at is not None:
             earliest = datetime.fromisoformat(self.earliest_start_at)
             if earliest.tzinfo is None:
@@ -86,6 +110,7 @@ class RawCheckpointOperator(BaseOperator):
                     method_name="execute_complete",
                 )
                 raise AssertionError("Airflow defer unexpectedly returned.")
+
         try:
             return ensure_raw_checkpoint_with_progress(
                 self.request_spec, self.progress_id, self.run_mode, paced=True
@@ -118,4 +143,3 @@ class RawCheckpointOperator(BaseOperator):
     ) -> dict[str, object]:
         """Recheck the database clock and resume saved chunks after wakeup."""
         return self.execute(context)
-
