@@ -383,12 +383,64 @@ Recommended T3 starting order:
 
 ### T3 — Replace test-created domain look-alikes
 
-- [ ] Prefer production domain models over `SimpleNamespace` or ad-hoc dictionaries where an appropriate production type exists.
-- [ ] Replace fake submission-decision objects with the production submission-decision model where applicable.
-- [ ] Replace campaign/progress look-alikes with production campaign/progress objects where practical.
-- [ ] Preserve small deterministic input builders when they construct real production types.
-- [ ] Do not create a new test-only domain model merely to make assertions easier.
-- [ ] Add/update the required module-level docstring in every revised test file.
+- [x] Prefer production domain models over `SimpleNamespace` or ad-hoc dictionaries where an appropriate production type exists.
+- [x] Replace fake submission-decision objects with the production submission-decision model where applicable.
+- [x] Replace campaign/progress look-alikes with production campaign/progress objects where practical.
+- [x] Preserve small deterministic input builders when they construct real production types.
+- [x] Do not create a new test-only domain model merely to make assertions easier.
+- [x] Add/update the required module-level docstring in every revised test file.
+
+#### T3 implementation result — 2026-10-07
+
+T3 was intentionally limited to confirmed **domain look-alikes**. Database-heavy test doubles remain assigned to T4/T5/T6 rather than being rewritten opportunistically.
+
+Changed files:
+
+- `tests/unit/orchestration/test_submission_log.py`
+  - replaced `SimpleNamespace(granted, checked_at, next_allowed_at)` with the production `SubmissionDecision`;
+  - kept database-engine and pacing-repository monkeypatches because the test verifies submission-gate/log behavior, not PostgreSQL locking;
+  - expanded the module-level docstring to name the production subject and integration boundary.
+
+- `tests/unit/orchestration/test_campaign.py`
+  - replaced progress-shaped `SimpleNamespace` with production `PipelineProgress`;
+  - kept repository functions isolated so campaign policy remains a focused unit test;
+  - added a module-level docstring explaining that PostgreSQL progress semantics are covered by integration tests.
+
+- `tests/unit/orchestration/test_scheduled_selection_pilot.py`
+  - replaced progress-shaped `SimpleNamespace` with production `PipelineProgress`;
+  - retained the local `statuses` and `claims` dictionaries only as deterministic offline repository state;
+  - explicitly kept real claim atomicity out of this unit test because PostgreSQL integration tests already prove it;
+  - revised the module-level docstring accordingly.
+
+- `tests/unit/orchestration/test_progress_wiring.py`
+  - replaced selected-quarter `SimpleNamespace` objects with production `CampaignSelection`;
+  - replaced the nested raw-artifact look-alike with production `DatasetArtifact` + `DataLayer.RAW`;
+  - retained task/repository monkeypatches that isolate side effects;
+  - revised the module-level docstring to state production subjects and integration ownership.
+
+Not changed during T3:
+
+- `tests/unit/orchestration/test_database.py` still uses `SimpleNamespace` for a disposable engine/config collaborator. This is not a persisted domain-state look-alike and was classified VALID in T2.
+- `tests/unit/orchestration/test_tasks.py` still uses `SimpleNamespace(free=...)` as an OS `shutil.disk_usage` result substitute. This is an external-system result, not a production domain model.
+- SQLAlchemy/database result/connection doubles in `test_load.py`, `test_pipeline_progress.py`, and related files remain untouched for their dedicated later phases.
+
+T3 does not change production code or intended behavior.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/orchestration/test_submission_log.py \
+  tests/unit/orchestration/test_campaign.py \
+  tests/unit/orchestration/test_scheduled_selection_pilot.py \
+  tests/unit/orchestration/test_progress_wiring.py \
+  -q
+```
+
+**T3 is implementation-complete pending local pytest confirmation.**
 
 ### T4 — Review pipeline runtime tests
 
