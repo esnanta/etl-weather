@@ -1,3 +1,12 @@
+"""Verify canonical daily-climate persistence against isolated PostgreSQL.
+
+These integration tests exercise the production storage artifacts and
+load_to_postgresql() path with a real PostgreSQL database selected only through
+TEST_POSTGRES_* settings. They are the authoritative proof for idempotent
+repeated loads, transaction rollback, provenance/count mismatch recovery, and
+observation UPSERT behavior.
+"""
+
 from __future__ import annotations
 
 import os
@@ -20,7 +29,11 @@ from pipeline.models.weather import (
     TransformedWeatherDataset,
     WeatherRequest,
 )
-from pipeline.storage import save_raw_netcdf, save_transformed_parquet
+from pipeline.storage import (
+    calculate_file_sha256,
+    save_raw_netcdf,
+    save_transformed_parquet,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -246,3 +259,126 @@ def test_detail_failure_rolls_back_metadata_and_observations(
 
     assert metadata_count == 0
     assert detail_count == 0
+
+
+
+def test_missing_observation_forces_rewrite_and_restores_row_count(
+    postgres_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    dataset, artifact = _save_test_partition(tmp_path, monkeypatch)
+    daily_climate_id, first_rows = load_to_postgresql(
+        dataset,
+        artifact,
+        postgres_config,
+    )
+    assert first_rows == 2
+
+    engine = create_engine(postgres_config.url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"DELETE FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_detail_table} "
+                    "WHERE daily_climate_id = :daily_climate_id "
+                    "AND latitude = :latitude"
+                ),
+                {"daily_climate_id": daily_climate_id, "latitude": 4.6},
+            )
+
+        repeated_id, rewritten_rows = load_to_postgresql(
+            dataset,
+            artifact,
+            postgres_config,
+        )
+
+        with engine.connect() as connection:
+            detail_count = connection.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_detail_table} "
+                    "WHERE daily_climate_id = :daily_climate_id"
+                ),
+                {"daily_climate_id": daily_climate_id},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert repeated_id == daily_climate_id
+    assert rewritten_rows == 2
+    assert detail_count == 2
+
+
+def test_provenance_mismatch_forces_upsert_and_restores_canonical_values(
+    postgres_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    dataset, artifact = _save_test_partition(tmp_path, monkeypatch)
+    daily_climate_id, first_rows = load_to_postgresql(
+        dataset,
+        artifact,
+        postgres_config,
+    )
+    assert first_rows == 2
+
+    engine = create_engine(postgres_config.url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"UPDATE {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_table} "
+                    "SET transformed_artifact_path = 'stale/path.parquet', "
+                    "transformed_sha256 = 'stale-sha' "
+                    "WHERE id = :daily_climate_id"
+                ),
+                {"daily_climate_id": daily_climate_id},
+            )
+            connection.execute(
+                text(
+                    f"UPDATE {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_detail_table} "
+                    "SET tp_daily_total_mm = -999 "
+                    "WHERE daily_climate_id = :daily_climate_id"
+                ),
+                {"daily_climate_id": daily_climate_id},
+            )
+
+        repeated_id, rewritten_rows = load_to_postgresql(
+            dataset,
+            artifact,
+            postgres_config,
+        )
+
+        with engine.connect() as connection:
+            metadata = connection.execute(
+                text(
+                    f"SELECT transformed_artifact_path, transformed_sha256 "
+                    f"FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_table} "
+                    "WHERE id = :daily_climate_id"
+                ),
+                {"daily_climate_id": daily_climate_id},
+            ).one()
+            precipitation = connection.execute(
+                text(
+                    f"SELECT tp_daily_total_mm "
+                    f"FROM {postgres_config.schema}."
+                    f"{postgres_config.daily_climate_detail_table} "
+                    "WHERE daily_climate_id = :daily_climate_id "
+                    "ORDER BY latitude"
+                ),
+                {"daily_climate_id": daily_climate_id},
+            ).scalars().all()
+    finally:
+        engine.dispose()
+
+    assert repeated_id == daily_climate_id
+    assert rewritten_rows == 2
+    assert metadata[0].endswith(".parquet")
+    assert metadata[0] != "stale/path.parquet"
+    assert metadata[1] == calculate_file_sha256(artifact.path)
+    assert precipitation == [10.0, 11.0]
