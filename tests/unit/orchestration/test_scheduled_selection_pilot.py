@@ -1,7 +1,9 @@
-"""Pilot scheduled quarter selection without database writes or CDS requests.
+"""Verify offline scheduled quarter selection through production policy objects.
 
-This exercises the actual mode, selector, and monthly mapping boundary against
- the isolated progress state before a real scheduled DagRun can submit campaign data.
+The test exercises prepare_monthly_jobs() and campaign selection without live
+CDS or database writes. Repository calls are isolated, but persisted progress
+state is represented by the production PipelineProgress model. PostgreSQL claim
+atomicity is verified separately by orchestration integration tests.
 """
 
 from __future__ import annotations
@@ -9,14 +11,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import date
-from types import SimpleNamespace
-
 from orchestration.campaign import policy as campaign
 from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 from orchestration.repositories import pipeline_progress as repository
+from orchestration.repositories.pipeline_progress import PipelineProgress
 from orchestration.tasks import build_monthly_requests as job_tasks
 
 
@@ -53,10 +54,19 @@ def test_scheduled_selection_recovery_and_terminal_noop(
 
     def get_progress(unused_engine, progress_id):
         status = statuses.get(progress_id, "pending")
-        return SimpleNamespace(
+        return PipelineProgress(
+            id=progress_id,
+            pipeline_name="cds_era5_land_etl",
+            source="cds",
+            dataset_name="reanalysis-era5-land",
+            start_date=date(CAMPAIGN_START_YEAR, 1, 1),
+            end_date=date(CAMPAIGN_START_YEAR, 3, 31),
+            configuration_identity="test-campaign",
+            expected_partition_count=3,
+            completed_partition_count=3 if status == "complete" else 0,
+            failed_partition_count=int(status == "failed"),
             execution_status=status,
             validation_status="valid" if status == "complete" else "pending",
-            failed_partition_count=int(status == "failed"),
         )
 
     def claim(unused_engine, progress_id, owner):
