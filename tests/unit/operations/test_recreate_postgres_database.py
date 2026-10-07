@@ -269,7 +269,7 @@ def _patch_idle_runtime(monkeypatch) -> None:
         "_airflow_dag_run_state_counts",
         lambda path: {state: 0 for state in maintenance.BLOCKING_DAGRUN_STATES},
     )
-    monkeypatch.setattr(maintenance, "_airflow_processes", lambda: [])
+    monkeypatch.setattr(maintenance, "list_airflow_processes", lambda: [])
     monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
 
 
