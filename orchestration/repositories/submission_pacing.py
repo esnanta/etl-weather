@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from orchestration.config import (
+from config import (
     DEFAULT_INTERVAL_SECONDS,
     INTERVAL_ENV,
     PACING_SCHEMA,
