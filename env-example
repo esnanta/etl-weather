@@ -55,7 +55,7 @@ CAMPAIGN_END_YEAR=2016
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
 
 # Scheduler tick cadence, used only when scheduling is enabled.
-# Allowed values: 30m, 1h, 2h.
+# Allowed values: 30m, 45m, 1h, 2h.
 # Example: 1h means Airflow gets one scheduled campaign-selection opportunity
 # every Jakarta-local hour. It does not mean one month must finish every hour.
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
