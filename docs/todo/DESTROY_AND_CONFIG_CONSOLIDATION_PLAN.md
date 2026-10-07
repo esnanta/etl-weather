@@ -714,11 +714,18 @@ Use this order so each change has one clear purpose.
 
 ### D6 — Update `env-example`
 
-- [ ] Reconcile environment documentation with the single root config.
-- [ ] Add destroy policy explanation under `APP_ENV`.
-- [ ] Preserve placeholder-only secrets.
-- [ ] Confirm every required environment key used by root config is represented.
-- [ ] Do not add unnecessary environment knobs.
+- [x] Reconcile environment documentation with the single root `config.py`.
+- [x] Add destroy policy explanation under `APP_ENV`; `destroy_all.py` is
+      available only when `APP_ENV=dev`.
+- [x] Preserve placeholder-only secrets and keep the Airflow JWT secret outside
+      `.env`.
+- [x] Confirm every required environment key used by root config/scheduler/pacing
+      is represented.
+- [x] Use `ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h` as the current development pilot
+      example while documenting that the code fallback remains `2h`.
+- [x] Document `MONTHLY_SLOT_SPACING_MINUTES=15` as a root-config code constant,
+      not a new environment variable.
+- [x] Do not add unnecessary environment knobs.
 
 ### D7 — Full verification and docs
 
