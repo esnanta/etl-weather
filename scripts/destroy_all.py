@@ -93,7 +93,7 @@ def _display_targets(
 def _confirmation(input_fn: Callable[[str], str] = input) -> bool:
     answer = input_fn(
         "Type DESTROY to delete all local development runtime and data state: "
-    ).strip()
+    )
     return answer == "DESTROY"
 
 
