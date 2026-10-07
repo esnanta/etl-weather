@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from orchestration.config import DISK_WARNING_GIB, GIB
+from config import DISK_WARNING_GIB, GIB
 
 # Preserve the historical task logger identity after moving monitoring helpers.
 logger = logging.getLogger("orchestration.tasks.era5_land")
