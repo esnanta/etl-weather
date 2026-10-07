@@ -25,6 +25,7 @@ from config import APP_ENV_DEV, resolve_app_environment
 from orchestration.repositories.database import initialize_application_storage
 from orchestration.scheduling.schedule import campaign_schedule
 from pipeline.database import DatabaseConfig
+from scripts.airflow_processes import list_airflow_processes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,17 +51,6 @@ BLOCKING_TASK_STATES = (
 
 # Airflow DagRun states that may still produce or resume task work.
 BLOCKING_DAGRUN_STATES = ("queued", "running")
-
-# Airflow service/process markers that can schedule, resume, or execute task work.
-AIRFLOW_PROCESS_MARKERS = (
-    b"airflow api-server",
-    b"airflow scheduler",
-    b"airflow triggerer",
-    b"airflow dag-processor",
-    b"airflow worker",
-    b"airflow celery worker",
-)
-
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -129,22 +119,6 @@ def _airflow_dag_run_state_counts(path: Path) -> dict[str, int]:
         ) from error
 
 
-def _airflow_processes(proc_root: Path = Path("/proc")) -> list[tuple[int, str]]:
-    processes: list[tuple[int, str]] = []
-    if not proc_root.is_dir():
-        raise RuntimeError(f"Unable to inspect process table at {proc_root}.")
-    for entry in proc_root.iterdir():
-        if not entry.name.isdecimal():
-            continue
-        try:
-            raw = (entry / "cmdline").read_bytes().replace(b"\0", b" ").strip()
-        except OSError:
-            continue
-        lowered = raw.lower()
-        if any(marker in lowered for marker in AIRFLOW_PROCESS_MARKERS):
-            processes.append((int(entry.name), raw.decode(errors="replace")))
-    return processes
-
 
 def _database_session_count(config: DatabaseConfig) -> int:
     with connect(
@@ -212,7 +186,7 @@ def _validate_runtime_guards(config: DatabaseConfig) -> None:
             + ", ".join(f"{state}={count}" for state, count in blocking_runs.items())
         )
 
-    processes = _airflow_processes()
+    processes = list_airflow_processes()
     logger.info("Airflow process preflight | blocking_processes=%d", len(processes))
     if processes:
         rendered = "; ".join(f"pid={pid} cmd={command}" for pid, command in processes)
