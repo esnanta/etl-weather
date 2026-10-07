@@ -1,3 +1,12 @@
+"""Verify local RAW/Parquet storage with real temporary filesystem artifacts.
+
+The tests execute production storage, provenance, checksum, checkpoint, and
+atomic-write behavior against pytest temporary directories. DATA_DIRECTORY is
+redirected only to keep tests isolated from repository data, and write failures
+are injected only to prove cleanup/recovery behavior. Storage logic itself is
+never replaced by a fake implementation.
+"""
+
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
