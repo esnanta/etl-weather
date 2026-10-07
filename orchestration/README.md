@@ -153,6 +153,7 @@ These settings control different things.
 
 ```text
 30m
+45m
 1h
 2h
 ```
