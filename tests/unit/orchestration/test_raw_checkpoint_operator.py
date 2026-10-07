@@ -218,3 +218,62 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     assert operator.retries == 1
     with pytest.raises(RuntimeError, match="terminal"):
         operator.execute({})
+
+
+
+def test_earliest_start_defer_logs_human_readable_wait(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    earliest = datetime.now(timezone.utc) + timedelta(minutes=15)
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="earliest_log",
+        request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
+        progress_id=42,
+        run_mode="scheduled",
+        earliest_start_at=earliest.isoformat(),
+    )
+
+    with caplog.at_level("INFO"), pytest.raises(TaskDeferred):
+        operator.execute({})
+
+    assert any(
+        "RAW earliest-start deferred" in record.message
+        and "month=2016-02" in record.message
+        and "wait=" in record.message
+        and "resume_at_local=" in record.message
+        for record in caplog.records
+    )
+
+
+def test_submission_pacing_defer_logs_human_readable_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    next_allowed_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    def defer_submission(spec, progress_id, mode, *, paced):
+        raise SubmissionDeferred(next_allowed_at)
+
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        defer_submission,
+    )
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="pacing_log",
+        request_spec={"start_date": "2016-01-01"},
+        month_label="2016-01",
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
+    with caplog.at_level("INFO"), pytest.raises(TaskDeferred):
+        operator.execute({})
+
+    assert any(
+        "RAW CDS pacing deferred" in record.message
+        and "month=2016-01" in record.message
+        and "wait=" in record.message
+        and "next_allowed_at_local=" in record.message
+        for record in caplog.records
+    )
