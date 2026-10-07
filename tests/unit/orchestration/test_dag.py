@@ -80,9 +80,9 @@ def test_etl_dag_boundary_policies(dag) -> None:
     assert attempt_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
     assert resolve_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
     assert ensure_transformed_checkpoint_task.map_index_template == (
-        "{{ task.op_kwargs['month_label'] }}"
+        "{{ mapped_month_label }}"
     )
-    assert load_task.map_index_template == "{{ task.op_kwargs['month_label'] }}"
+    assert load_task.map_index_template == "{{ mapped_month_label }}"
 
     assert attempt_raw_checkpoint_task.pool == "cds_api"
     assert attempt_raw_checkpoint_task.retries == 0
