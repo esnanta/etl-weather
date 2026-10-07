@@ -7,7 +7,6 @@ the same checkpoint-backed monthly partition when PostgreSQL denies a slot.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from math import ceil
 from typing import Any
 
 from airflow.providers.standard.triggers.temporal import DateTimeTrigger
@@ -15,6 +14,7 @@ from airflow.sdk import BaseOperator, Context
 
 from config import PIPELINE_TIMEZONE
 from orchestration.repositories.database import runtime_database_engine
+from orchestration.scheduling.time_utils import format_wait_duration, local_iso
 from orchestration.repositories.pipeline_progress import are_extract_attempts_terminal
 from orchestration.tasks.raw_checkpoint import ensure_raw_checkpoint_with_progress
 from orchestration.scheduling.submission_gate import SubmissionDeferred
@@ -22,26 +22,6 @@ from orchestration.scheduling.submission_gate import SubmissionDeferred
 
 # Failed first-pass resolvers poll the durable barrier without occupying a worker.
 FIRST_PASS_BARRIER_POLL_SECONDS = 30
-
-
-def format_wait_duration(seconds: float) -> str:
-    """Render a non-negative wait as compact hours, minutes, and seconds."""
-    total_seconds = max(0, ceil(seconds))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    parts: list[str] = []
-    if hours:
-        parts.append(f"{hours}h")
-    if minutes or hours:
-        parts.append(f"{minutes}m")
-    parts.append(f"{seconds}s")
-    return " ".join(parts)
-
-
-def _local_iso(moment: datetime) -> str:
-    """Render one timezone-aware timestamp in the project local timezone."""
-    return moment.astimezone(PIPELINE_TIMEZONE).isoformat()
 
 
 def first_pass_barrier_complete(progress_id: int) -> bool:
@@ -122,7 +102,7 @@ class RawCheckpointOperator(BaseOperator):
                     "resume_at_local=%s",
                     month_label,
                     format_wait_duration(FIRST_PASS_BARRIER_POLL_SECONDS),
-                    _local_iso(next_check),
+                    local_iso(next_check, PIPELINE_TIMEZONE),
                 )
                 self.defer(
                     trigger=DateTimeTrigger(moment=next_check),
@@ -142,7 +122,7 @@ class RawCheckpointOperator(BaseOperator):
                     "resume_at_local=%s",
                     month_label,
                     format_wait_duration(wait_seconds),
-                    _local_iso(earliest),
+                    local_iso(earliest, PIPELINE_TIMEZONE),
                 )
                 self.defer(
                     trigger=DateTimeTrigger(moment=earliest.astimezone(timezone.utc)),
@@ -162,7 +142,7 @@ class RawCheckpointOperator(BaseOperator):
                 "next_allowed_at_local=%s",
                 month_label,
                 format_wait_duration(wait_seconds),
-                _local_iso(deferred.next_allowed_at),
+                local_iso(deferred.next_allowed_at, PIPELINE_TIMEZONE),
             )
             self.defer(
                 trigger=DateTimeTrigger(
