@@ -25,24 +25,38 @@ def test_operator_exposes_month_label_after_runtime_resolution(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="label_test",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
     )
 
-    assert operator.month_label is None
-    operator.execute({})
     assert operator.month_label == "2016-02"
+    operator.execute({})
 
 
 def test_operator_rejects_missing_month_label_source_at_runtime() -> None:
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="invalid_label",
         request_spec={},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
     )
 
     with pytest.raises(ValueError, match="request_spec.start_date"):
+        operator.execute({})
+
+
+def test_operator_rejects_mismatched_explicit_month_label() -> None:
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="invalid_label_mismatch",
+        request_spec={"start_date": "2016-02-01"},
+        month_label="2016-03",
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
+    with pytest.raises(ValueError, match="month_label"):
         operator.execute({})
 
 
@@ -61,7 +75,7 @@ def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatc
     )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="paced_test", request_spec={"start_date": "2024-01-01"},
-        progress_id=42, run_mode="manual",
+        month_label="2024-01", progress_id=42, run_mode="manual",
     )
     with pytest.raises(TaskDeferred) as deferred:
         operator.execute({})
@@ -91,6 +105,7 @@ def test_successful_first_result_passes_through_without_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_success",
         request_spec={"start_date": "2016-01-01"},
+        month_label="2016-01",
         progress_id=42,
         run_mode="scheduled",
         first_result=first_result,
@@ -115,6 +130,7 @@ def test_failed_first_result_defers_until_first_pass_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_failed_waiting",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
         first_result={"first_attempt_failed": True},
@@ -178,7 +194,8 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="terminal", request_spec={"start_date": "2016-01-01"},
-        progress_id=42, run_mode="scheduled", first_result={"first_attempt_failed": True},
+        month_label="2016-01", progress_id=42, run_mode="scheduled",
+        first_result={"first_attempt_failed": True},
         retries=1,
     )
     assert operator.retries == 1
