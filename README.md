@@ -175,13 +175,13 @@ CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2016
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
-SUBMISSION_INTERVAL_SECONDS=1800
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
+SUBMISSION_INTERVAL_SECONDS=300
 ```
 
 `APP_ENV` selects the application environment. `CDS_START_DATE` and `CDS_END_DATE` provide the default inclusive period for standalone pipeline execution. `POSTGRES_*` configures the canonical application database, while `TEST_POSTGRES_*` identifies the isolated PostgreSQL database used by integration tests.
 
-The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, and recovery semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
+The root `config.py` is the single lightweight configuration module shared by pipeline, scripts, and orchestration. There is no separate `orchestration/config.py`. The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, maintenance, reset, and clean-slate destroy semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
 
 Never commit real CDS or PostgreSQL credentials.
 
