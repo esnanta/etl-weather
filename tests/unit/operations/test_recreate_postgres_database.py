@@ -309,7 +309,7 @@ def test_runtime_guard_rejects_residual_localexecutor_worker(monkeypatch) -> Non
     _patch_idle_runtime(monkeypatch)
     monkeypatch.setattr(
         maintenance,
-        "_airflow_processes",
+        "list_airflow_processes",
         lambda: [(501, "airflow worker -- LocalExecutor: <idle>")],
     )
 
@@ -321,7 +321,7 @@ def test_runtime_guard_rejects_main_airflow_service(monkeypatch) -> None:
     _patch_idle_runtime(monkeypatch)
     monkeypatch.setattr(
         maintenance,
-        "_airflow_processes",
+        "list_airflow_processes",
         lambda: [(502, "airflow scheduler")],
     )
 
