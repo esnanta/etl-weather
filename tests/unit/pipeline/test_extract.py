@@ -1,3 +1,12 @@
+"""Verify ERA5-Land extraction while isolating the external CDS provider boundary.
+
+The tests exercise production request construction, retrieval-context logic,
+payload generation, normalization, variable selection, and CdsEra5LandExtractor.
+A fake cdsapi client is used only to prevent live provider requests and to write
+a deterministic temporary NetCDF response. Provider/network isolation must not
+replace extraction or normalization logic owned by production code.
+"""
+
 from __future__ import annotations
 
 import logging
