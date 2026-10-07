@@ -1102,12 +1102,143 @@ python -m pytest \
 
 ### T9 — Remove redundant or misleading tests
 
-- [ ] Identify duplicate contract coverage across unit and integration levels.
-- [ ] Prefer the lowest test level that can genuinely prove the behavior.
-- [ ] Prefer integration coverage when correctness fundamentally depends on PostgreSQL behavior.
-- [ ] Remove tests that only prove a fake/stub implementation after stronger coverage exists.
-- [ ] Remove assertions tied only to incidental implementation details when an observable contract can be asserted instead.
-- [ ] Do not use total test count as the success criterion.
+- [x] Identify duplicate contract coverage across unit and integration levels.
+- [x] Prefer the lowest test level that can genuinely prove the behavior.
+- [x] Prefer integration coverage when correctness fundamentally depends on PostgreSQL behavior.
+- [x] Remove tests that only prove a fake/stub implementation after stronger coverage exists.
+- [x] Remove assertions tied only to incidental implementation details when an observable contract can be asserted instead.
+- [x] Do not use total test count as the success criterion.
+
+#### T9 implementation result — 2026-10-07
+
+T9 was intentionally conservative. The goal was not to reduce test count, but to remove coverage that had become misleading after T3–T8 and to retain tests that still prove a distinct contract.
+
+##### Removed direct private repository test
+
+`tests/unit/pipeline/test_daily_climate_repository.py` previously accessed
+`_build_modelling_statement()` directly through `getattr()`.
+
+That test was removed because the same SQL statement is constructed by the
+public `load_daily_climate_for_modelling()` path. The canonical-table/filter
+assertions were moved into the public loader test by capturing the statement
+passed to the isolated query-execution boundary.
+
+This preserves the useful contract while removing direct coupling to an
+incidental private helper.
+
+The repository test now proves through the public production path:
+
+- canonical metadata/detail table selection;
+- join through `daily_climate_id`;
+- source and dataset filters;
+- inclusive-start/exclusive-end local-time bounds;
+- bbox/query parameters;
+- deterministic ordering;
+- missing-value preservation;
+- returned dataframe validation.
+
+The module-level docstring was added to make the public subject and isolated
+database boundary explicit.
+
+##### Fixture cleanup while revising repository tests
+
+The repository selection fixture used the deprecated historical project bbox
+`N5.2/W96.1/S3.4/E97.6` even though production configuration was not under
+test.
+
+It now uses the explicit minimal fixture:
+
+```text
+north = 4.6
+south = 4.5
+west  = 96.8
+east  = 96.9
+```
+
+This matches the test data and follows the testing rule established before T8:
+production configuration is used when configuration is the subject; otherwise
+logic tests use explicit minimal fixtures.
+
+##### Duplicate persistence proof
+
+No additional fake-database persistence tests remain that should be deleted in
+T9.
+
+T5 already removed unit tests that attempted to prove:
+
+- unchanged-partition/idempotency behavior through fake SQLAlchemy state;
+- row-count mismatch behavior through fake database responses.
+
+Those contracts now belong to real PostgreSQL integration tests.
+
+T6 similarly removed fake progress claim/release/barrier semantics and moved the
+authoritative behavioral proof to PostgreSQL integration tests.
+
+Therefore deleting additional SQL-construction tests now would lose useful
+low-level contract coverage rather than remove misleading persistence proof.
+
+##### Private helper review
+
+Remaining direct private-helper tests were reviewed rather than deleted
+mechanically:
+
+- `test_extract.py` private retrieval/context helpers remain because they
+  encode the observable ERA5-Land retrieval-period/context contract and are not
+  substitutes for provider/network behavior;
+- `test_load.py::_prepare_observation_dataframe` remains because it is a pure
+  deterministic dataframe-to-database-shape transformation; PostgreSQL
+  semantics are not claimed by those tests;
+- `test_logging.py` private formatting helpers remain because exact
+  human-readable log structure is an intentional operational contract.
+
+These may be promoted to public APIs in a future production refactor if their
+contract becomes formally public, but deleting the tests in the current code
+would reduce useful evidence.
+
+##### Unit versus integration overlap retained intentionally
+
+Some contract overlap is intentional and not redundant:
+
+- schema/DDL unit tests verify generated SQL structure, while bootstrap
+  integration tests verify that PostgreSQL accepts and repeatedly initializes
+  it;
+- loader unit tests verify deterministic SQL/parameter construction, while
+  PostgreSQL integration verifies conflict, transaction, and persistence
+  semantics;
+- campaign policy unit tests verify selection policy independently of
+  PostgreSQL, while integration tests verify atomic claim/reconciliation state;
+- pacing unit tests verify configuration/decision wiring, while integration
+  tests verify durable locking.
+
+These layers answer different questions and are retained.
+
+##### Test-count policy
+
+T9 does not use a target test count. One direct private-helper test was removed,
+but its useful assertions were preserved through the public production path.
+
+No production code was changed.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/unit/pipeline/test_daily_climate_repository.py \
+  tests/unit/pipeline/test_load.py \
+  tests/unit/pipeline/test_database.py \
+  -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/orchestration/test_pipeline_progress.py \
+  tests/unit/orchestration/test_campaign.py \
+  tests/unit/orchestration/test_submission_pacing.py \
+  -q
+```
+
+**T9 is implementation-complete pending focused local pytest confirmation.**
 
 ### T10 — Update testing rules and documentation
 
