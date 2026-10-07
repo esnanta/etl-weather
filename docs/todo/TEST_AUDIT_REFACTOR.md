@@ -1083,7 +1083,22 @@ python -m pytest \
   -q
 ```
 
-**T8 is implementation-complete pending focused local pytest confirmation.**
+**T8 is complete.** Local focused regression on 2026-10-07:
+
+```text
+30 passed in 1.36s
+```
+
+Command used:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/unit/pipeline/test_transform.py \
+  tests/unit/pipeline/test_validation.py \
+  -q
+```
 
 ### T9 — Remove redundant or misleading tests
 
