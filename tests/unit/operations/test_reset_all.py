@@ -134,10 +134,6 @@ def test_confirmation_reprompts_invalid_answer() -> None:
 def test_execute_reset_uses_verified_components_in_safe_order(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
-        "scripts.reset_all.reset_airflow_runtime.stop_local_executor_workers",
-        lambda: calls.append("workers") or [101, 102],
-    )
-    monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._recreate_database",
         lambda config: calls.append("database"),
     )
@@ -156,9 +152,8 @@ def test_execute_reset_uses_verified_components_in_safe_order(monkeypatch) -> No
 
     result = reset_all.execute_reset(_config())
 
-    assert calls == ["workers", "database", "data", "logs", "runtime"]
+    assert calls == ["database", "data", "logs", "runtime"]
     assert result == {
-        "stopped_localexecutor_workers": 2,
         "data_entries_removed": 2,
         "airflow_log_entries_removed": 3,
         "airflow_runtime_files_removed": 2,
@@ -166,46 +161,41 @@ def test_execute_reset_uses_verified_components_in_safe_order(monkeypatch) -> No
 
 
 
-def test_preflight_allows_reset_cleanup_candidates(
-    monkeypatch,
-) -> None:
-    calls: list[tuple[bool, bool, bool, str]] = []
+
+def test_preflight_uses_strict_runtime_guard(monkeypatch) -> None:
+    calls: list[str] = []
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._validate_static_guards",
-        lambda config: None,
+        lambda config: calls.append("static"),
     )
-
-    def runtime_guard(
-        config,
-        *,
-        allow_residual_localexecutor_workers=False,
-        allow_deferred_task_instances=False,
-        allow_running_dagrun_with_only_deferred_tasks=False,
-    ):
-        calls.append(
-            (
-                allow_residual_localexecutor_workers,
-                allow_deferred_task_instances,
-                allow_running_dagrun_with_only_deferred_tasks,
-                config.database,
-            )
-        )
-
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._validate_runtime_guards",
-        runtime_guard,
+        lambda config: calls.append("runtime"),
     )
 
     reset_all._run_preflight(_config())
 
-    assert calls == [(True, True, True, "weather")]
+    assert calls == ["static", "runtime"]
+
+
+def test_preflight_propagates_deferred_task_block(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_runtime_guards",
+        lambda config: (_ for _ in ()).throw(
+            RuntimeError("Airflow task instances can still run or resume: deferred=2")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="deferred=2"):
+        reset_all._run_preflight(_config())
+
 
 
 def test_database_failure_prevents_local_cleanup(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "scripts.reset_all.reset_airflow_runtime.stop_local_executor_workers",
-        lambda: [],
-    )
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._recreate_database",
         lambda config: (_ for _ in ()).throw(RuntimeError("database failed")),
@@ -248,7 +238,6 @@ def test_execute_yes_runs_preflight_then_single_reset(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.reset_all.execute_reset",
         lambda config: calls.append("reset") or {
-            "stopped_localexecutor_workers": 0,
             "data_entries_removed": 0,
             "airflow_log_entries_removed": 0,
             "airflow_runtime_files_removed": 0,
