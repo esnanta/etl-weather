@@ -21,7 +21,7 @@ from orchestration.campaign.policy import (
     CampaignQuarter,
     CampaignSelection,
 )
-from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.scheduling.submission_gate import SubmissionDeferred
