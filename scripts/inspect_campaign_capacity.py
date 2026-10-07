@@ -95,7 +95,7 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
 def _postgres() -> dict[str, object]:
     try:
         from sqlalchemy import create_engine, text
-        from orchestration.config import (
+        from config import (
             PACING_SCHEMA,
             PACING_TABLE,
             PIPELINE_PROGRESS_DETAIL_TABLE,
