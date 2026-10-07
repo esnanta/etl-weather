@@ -663,13 +663,21 @@ Use this order so each change has one clear purpose.
 - [x] Decide final residual-worker behavior for conservative reset: any active
       LocalExecutor worker blocks `reset_all.py`.
 - [x] Update/reset maintenance tests.
-- [ ] Run focused operations tests.
+- [x] User verification: 54 focused operations tests passed in 2.15s and the
+      full unit suite passed 291 tests in 6.84s on 2026-10-07.
 
 ### D3 — Shared Airflow process primitives
 
-- [ ] Extract/refine narrow reusable process helpers only if needed.
-- [ ] Keep reset and destroy policy explicit in separate commands.
-- [ ] Run process-helper/reset tests.
+- [x] Add `scripts/airflow_processes.py` as the shared process-table mechanism.
+- [x] Centralize recognized Airflow service/worker markers and process discovery.
+- [x] Centralize explicit-PID SIGTERM -> recheck -> SIGKILL mechanics.
+- [x] Move guarded runtime reset and PostgreSQL reset preflight onto the shared
+      discovery primitives without changing their policies.
+- [x] Keep reset policy local: `reset_all.py` still kills no processes, while
+      `reset_airflow_runtime.py` may stop only residual LocalExecutor workers
+      after main services are absent.
+- [x] Add dedicated unit coverage for process discovery and termination.
+- [ ] Run the full unit gate after D3 implementation.
 
 ### D4 — Implement destroy
 
