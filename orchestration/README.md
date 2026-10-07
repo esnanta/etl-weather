@@ -223,12 +223,12 @@ python scripts/report_campaign_progress.py
 
 ## Monthly Start Slots and Retry Behavior
 
-For a scheduled quarter, the three monthly extraction maps receive earliest-start lower bounds separated by one hour:
+For a scheduled quarter, the three monthly TaskGroups receive earliest-start lower bounds separated by 15 minutes:
 
 ```text
 month 1 → selection time
-month 2 → selection time + 1 hour
-month 3 → selection time + 2 hours
+month 2 → selection time + 15 minutes
+month 3 → selection time + 30 minutes
 ```
 
 These are earliest-start limits, not promises that tasks will begin or finish at those times. Worker availability, CDS pacing, provider queueing, and retries may delay actual execution.
@@ -241,12 +241,14 @@ A terminal failed monthly detail blocks automatic advancement to later campaign 
 
 ## Task Flow
 
-The active DAG uses this monthly flow:
+The active DAG uses one depth-first mapped TaskGroup per month:
 
 ```text
 manual dates or selected scheduled quarter
                  ↓
        build_monthly_requests
+                 ↓
+       monthly_etl[YYYY-MM]
                  ↓
       attempt_raw_checkpoint
                  ↓
@@ -257,7 +259,9 @@ manual dates or selected scheduled quarter
                 load
 ```
 
-Mapped task instances use the month as the Airflow display label, for example `2016-01`. The display label is only for observability; it does not change request identity or artifact paths.
+A month may transform and load as soon as its RAW checkpoint is ready, even
+while sibling months are still deferred or waiting. Mapped task instances use
+the month as the Airflow display label, for example `2016-01`. The display label is only for observability; it does not change request identity or artifact paths.
 
 Airflow exchanges small metadata between tasks. NetCDF, Parquet, xarray, and Pandas payloads remain in shared storage rather than XCom.
 
@@ -293,7 +297,7 @@ airflow dags trigger cds_era5_land_etl \
 
 ### Normal scheduled quarter
 
-A scheduled run selects the earliest eligible incomplete quarter. Its three months are mapped with one-hour earliest-start spacing. Existing valid artifacts are resumed; missing artifacts are retrieved and processed.
+A scheduled run selects the earliest eligible incomplete quarter. Its three monthly TaskGroups use +0, +15, and +30 minute earliest-start lower bounds. Existing valid artifacts are resumed; missing artifacts are retrieved and processed depth-first per month.
 
 ### One month fails
 
