@@ -1,7 +1,10 @@
-"""Prove that a deferred monthly extraction resumes its completed CDS chunks.
+"""Verify chunk resume and provider pacing without making live HTTP/CDS calls.
 
-The first chunk must remain reusable when the second submission is postponed,
-so pacing does not cause duplicate provider requests or mutate final RAW data.
+The tests execute production chunk-cache and paced-session logic. HTTP transport
+and cdsapi provider calls are intercepted only at the external network boundary,
+allowing assertions that a durable reservation happens before each provider POST
+and that completed retrieval chunks are reused after deferral. Production cache,
+request identity, and pacing decisions remain under test.
 """
 
 from __future__ import annotations
