@@ -285,13 +285,17 @@ failed month/reason when applicable
 
 Checklist:
 
-- [ ] Confirm whether the existing Airflow/task logs plus
-      `scripts/report_campaign_progress.py` are already sufficient for the
-      one-year pilot.
-- [ ] If not sufficient, add only a small completion-summary log at the
-      orchestration boundary. Do not duplicate the campaign report in every
-      mapped task and do not put the full report in XCom.
-- [ ] Add/adjust focused offline log assertions only if logging behavior changes.
+- [x] Confirm the existing Airflow/task logs, DagRun metadata, and
+      `scripts/report_campaign_progress.py` are sufficient for the one-year
+      pilot. Quarter/month/mode selection comes from the request-building log;
+      CDS pacing decisions and timestamps come from submission-gate logs;
+      completed/remaining/failed campaign state and bounded failure reasons come
+      from the campaign report; DagRun start/end timestamps provide elapsed time.
+- [x] Do not add a completion-summary task/log before the pilot. The existing
+      operational surfaces provide the required evidence without duplicating the
+      campaign report or increasing XCom/log volume.
+- [x] No additional log assertions are required because logging behavior is not
+      being changed for this gate.
 
 This observability review must not delay the pilot unless a missing signal would
 prevent us from deciding whether a quarter safely completed.
@@ -531,7 +535,7 @@ The current work order is intentionally short:
 
 ```text
 1. reconcile this implementation plan              DONE
-2. review only the small observability gap          NEXT
+2. review only the small observability gap          DONE
 3. run one clean current-graph scheduled quarter    NEXT
 4. run the 2016 one-year / four-quarter pilot       NEXT
 5. evaluate cadence from four-quarter evidence
