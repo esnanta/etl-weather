@@ -17,7 +17,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from orchestration.config import (
+from config import (
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
