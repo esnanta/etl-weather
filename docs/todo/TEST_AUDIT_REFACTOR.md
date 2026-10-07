@@ -1,5 +1,14 @@
 # Test Audit and Refactor TODO
 
+References:
+
+- [Root AGENTS.md](../../AGENTS.md)
+- [Root README.md](../../README.md)
+- [Orchestration README.md](../README.md)
+- [Airflow best practices](../../docs/AIRFLOW_BEST_PRACTICE.md)
+- [Airflow coding guidelines](../../docs/AIRFLOW_CODING_GUIDELINES.md)
+- [Testing rules](../../tests/AGENTS.md)
+
 ## Purpose
 
 This document tracks the audit and refactor of the test suite under `tests/`.
