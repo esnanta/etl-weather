@@ -1,12 +1,14 @@
-"""Protect durable campaign state as mapped ETL boundaries run or defer.
+"""Verify progress wiring around mapped ETL boundaries and campaign repair.
 
-Pacing waits must leave monthly progress pending while real errors preserve
-the failure gate that requires explicit recovery.
+The tests exercise production task, campaign, and load-evidence functions while
+isolating database/runtime side effects. Production CampaignSelection and
+DatasetArtifact models are used instead of look-alike objects. Real PostgreSQL
+reconciliation and locking semantics are covered by integration tests.
 """
 
 from contextlib import contextmanager
+from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
-from types import SimpleNamespace
 from collections.abc import Generator, Mapping
 
 import pytest
@@ -14,7 +16,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from orchestration.campaign import repair as campaign_repair
-from orchestration.campaign.policy import CampaignBlocked, CampaignQuarter
+from orchestration.campaign.policy import (
+    CampaignBlocked,
+    CampaignQuarter,
+    CampaignSelection,
+)
 from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.scheduling.requests import build_historical_request_specs
@@ -22,6 +28,7 @@ from orchestration.scheduling.submission_gate import SubmissionDeferred
 from orchestration.tasks import build_monthly_requests as job_tasks
 from orchestration.tasks import load as load_tasks
 from orchestration.tasks import raw_checkpoint as extract_tasks
+from pipeline.models.weather import DataLayer, DatasetArtifact
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
@@ -92,7 +99,7 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
     specs = build_historical_request_specs(
         f"{year}-01-01", f"{year}-03-31", current_local_date=date.max
     )
-    selected = SimpleNamespace(
+    selected = CampaignSelection(
         quarter=CampaignQuarter(year, 1),
         progress_id=19,
         request_specs=tuple(specs),
@@ -323,8 +330,10 @@ def test_manual_month_reconciles_its_campaign_detail(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "orchestration.campaign.repair.raw_artifact_for_request",
-        lambda request: SimpleNamespace(
-            path=SimpleNamespace(as_posix=lambda: "raw.nc")
+        lambda request: DatasetArtifact(
+            layer=DataLayer.RAW,
+            created_at=datetime(2026, 9, 27, tzinfo=timezone.utc),
+            path=Path("raw.nc"),
         ),
     )
     monkeypatch.setattr(
@@ -428,8 +437,9 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "orchestration.tasks.build_monthly_requests.select_earliest_incomplete_quarter",
-        lambda engine, claim_owner: SimpleNamespace(
-            quarter=CampaignQuarter(year, 1), progress_id=19,
+        lambda engine, claim_owner: CampaignSelection(
+            quarter=CampaignQuarter(year, 1),
+            progress_id=19,
             request_specs=tuple(specs),
         ),
     )
