@@ -448,7 +448,8 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
         "scheduled", {}, "scheduled__one", slot_anchor=anchor
     )
     assert [job["earliest_start_at"] for job in jobs] == [
-        (anchor + timedelta(hours=offset)).isoformat() for offset in range(3)
+        (anchor + timedelta(minutes=15 * offset)).isoformat()
+        for offset in range(3)
     ]
     assert len({job["progress_id"] for job in jobs}) == 1
 
