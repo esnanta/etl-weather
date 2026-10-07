@@ -315,3 +315,89 @@ def test_runtime_guard_still_blocks_main_airflow_service_when_workers_allowed(
             _database_config(),
             allow_residual_localexecutor_workers=True,
         )
+
+
+def test_runtime_guard_allows_deferred_only_running_dagrun_for_reset_all(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    task_counts = {state: 0 for state in maintenance.BLOCKING_TASK_STATES}
+    task_counts["deferred"] = 2
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: task_counts,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {"queued": 0, "running": 1},
+    )
+    monkeypatch.setattr(maintenance, "_airflow_processes", lambda: [])
+    monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
+
+    maintenance._validate_runtime_guards(
+        _database_config(),
+        allow_residual_localexecutor_workers=True,
+        allow_deferred_task_instances=True,
+        allow_running_dagrun_with_only_deferred_tasks=True,
+    )
+
+
+def test_runtime_guard_does_not_allow_running_task_in_reset_all_mode(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    task_counts = {state: 0 for state in maintenance.BLOCKING_TASK_STATES}
+    task_counts["deferred"] = 2
+    task_counts["running"] = 1
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: task_counts,
+    )
+
+    with pytest.raises(RuntimeError, match="running=1"):
+        maintenance._validate_runtime_guards(
+            _database_config(),
+            allow_residual_localexecutor_workers=True,
+            allow_deferred_task_instances=True,
+            allow_running_dagrun_with_only_deferred_tasks=True,
+        )
+
+
+def test_runtime_guard_does_not_allow_queued_dagrun_in_reset_all_mode(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    task_counts = {state: 0 for state in maintenance.BLOCKING_TASK_STATES}
+    task_counts["deferred"] = 2
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: task_counts,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {"queued": 1, "running": 1},
+    )
+    monkeypatch.setattr(maintenance, "_airflow_processes", lambda: [])
+    monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
+
+    with pytest.raises(RuntimeError, match="queued=1"):
+        maintenance._validate_runtime_guards(
+            _database_config(),
+            allow_residual_localexecutor_workers=True,
+            allow_deferred_task_instances=True,
+            allow_running_dagrun_with_only_deferred_tasks=True,
+        )
