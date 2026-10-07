@@ -26,7 +26,7 @@ LOCAL_EXECUTOR_WORKER_MARKER = b"airflow worker -- localexecutor"
 
 AIRFLOW_PROCESS_MARKERS = (
     *AIRFLOW_SERVICE_MARKERS,
-    LOCAL_EXECUTOR_WORKER_MARKER,
+    b"airflow worker",
     b"airflow celery worker",
 )
 
@@ -94,22 +94,24 @@ def terminate_processes(
     *,
     remaining_processes_fn: Callable[[], list[ProcessInfo]],
     grace_seconds: float = 2.0,
-    sleep_fn: Callable[[float], None] = time.sleep,
-    kill_fn: Callable[[int, int], None] = os.kill,
+    sleep_fn: Callable[[float], None] | None = None,
+    kill_fn: Callable[[int, int], None] | None = None,
 ) -> list[int]:
     """Terminate explicitly selected PIDs, escalating only those still present."""
+    sleeper = sleep_fn or time.sleep
+    killer = kill_fn or os.kill
     selected = {pid: command for pid, command in processes}
     if not selected:
         return []
 
     for pid in selected:
         try:
-            kill_fn(pid, signal.SIGTERM)
+            killer(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
 
     if grace_seconds > 0:
-        sleep_fn(grace_seconds)
+        sleeper(grace_seconds)
 
     remaining = {
         pid
@@ -118,7 +120,7 @@ def terminate_processes(
     }
     for pid in sorted(remaining):
         try:
-            kill_fn(pid, signal.SIGKILL)
+            killer(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
 
