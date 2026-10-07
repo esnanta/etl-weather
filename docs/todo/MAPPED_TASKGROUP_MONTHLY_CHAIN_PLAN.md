@@ -369,7 +369,7 @@ python -m pytest tests/unit -q
 and the isolated PostgreSQL orchestration/persistence integration set documented
 in `orchestration/README.md`.
 
-- [x] Unit suite passes: 278 passed.
+- [x] Unit suite passes after runtime-reset enhancement: 283 passed.
 - [x] PostgreSQL integration suite passes: 9 passed.
 - [ ] No new unexpected warnings.
 - [ ] Core pipeline tests still run without importing Airflow.
@@ -400,9 +400,9 @@ Do not deploy this graph into an active DagRun.
 
 Before pilot:
 
-- [ ] All previous DagRuns are terminal.
-- [ ] Unit and integration gates pass.
-- [ ] Campaign/progress/pacing state is inspected.
+- [x] All previous DagRuns are terminal; reset preflight reported queued=0 and running=0.
+- [x] Unit and integration gates pass: 283 unit tests and 9 selected PostgreSQL integration tests.
+- [x] Campaign/progress/pacing state was inspected before reset; clean reset then recreated PostgreSQL and cleared data/log/runtime state.
 - [ ] DAG version is frozen for the pilot.
 
 During one scheduled quarter:
