@@ -362,7 +362,7 @@ python -m pytest tests/unit -q
 and the isolated PostgreSQL orchestration/persistence integration set documented
 in `orchestration/README.md`.
 
-- [ ] Unit suite passes.
+- [x] Unit suite passes: 278 passed.
 - [ ] PostgreSQL integration suite passes.
 - [ ] No new unexpected warnings.
 - [ ] Core pipeline tests still run without importing Airflow.
@@ -437,8 +437,8 @@ Use this sequence and mark each item as it is completed:
 - [x] Make only the minimum wrapper/helper changes required: RAW mapped inputs
       are resolved/validated at task runtime so TaskGroup references remain
       parse-safe.
-- [ ] Run focused orchestration tests.
-- [ ] Run the full unit regression gate.
+- [x] Run focused orchestration tests: 13 passed.
+- [x] Run the full unit regression gate: 278 passed.
 - [ ] Run selected PostgreSQL integration tests.
 - [ ] Review diff for accidental pipeline/scientific changes.
 - [ ] Update Airflow operational/policy documentation.
