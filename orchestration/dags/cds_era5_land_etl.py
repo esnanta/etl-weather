@@ -70,7 +70,7 @@ with DAG(
 
     @task(
         task_id="ensure_transformed_checkpoint",
-        map_index_template="{{ task.op_kwargs['month_label'] }}",
+        map_index_template="{{ mapped_month_label }}",
         retries=0,
         execution_timeout=timedelta(hours=2),
     )
@@ -92,11 +92,13 @@ with DAG(
             raise ValueError(
                 "Mapped transformation month_label must match request.start_date."
             )
+        context = get_current_context()
+        context["mapped_month_label"] = month_label
         return ensure_transformed_checkpoint_with_progress(raw_checkpoint_result)
 
     @task(
         task_id="load",
-        map_index_template="{{ task.op_kwargs['month_label'] }}",
+        map_index_template="{{ mapped_month_label }}",
         retries=1,
         retry_delay=timedelta(minutes=5),
         retry_exponential_backoff=True,
@@ -121,6 +123,8 @@ with DAG(
             raise ValueError(
                 "Mapped load month_label must match request.start_date."
             )
+        context = get_current_context()
+        context["mapped_month_label"] = month_label
         return load_with_progress(transformed_checkpoint_result)
 
     @task_group(group_id="monthly_etl")
