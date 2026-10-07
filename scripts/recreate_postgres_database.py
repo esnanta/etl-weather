@@ -181,7 +181,11 @@ def _validate_static_guards(config: DatabaseConfig) -> None:
         )
 
 
-def _validate_runtime_guards(config: DatabaseConfig) -> None:
+def _validate_runtime_guards(
+    config: DatabaseConfig,
+    *,
+    allow_residual_localexecutor_workers: bool = False,
+) -> None:
     if campaign_schedule() is not None:
         raise RuntimeError(
             "ERA5 campaign scheduling is enabled. Set "
@@ -213,9 +217,28 @@ def _validate_runtime_guards(config: DatabaseConfig) -> None:
         )
 
     processes = _airflow_processes()
-    logger.info("Airflow process preflight | blocking_processes=%d", len(processes))
-    if processes:
-        rendered = "; ".join(f"pid={pid} cmd={command}" for pid, command in processes)
+    if allow_residual_localexecutor_workers:
+        localexecutor_marker = b"airflow worker -- localexecutor"
+        blocking_processes = [
+            (pid, command)
+            for pid, command in processes
+            if localexecutor_marker not in command.lower().encode()
+        ]
+        residual_workers = len(processes) - len(blocking_processes)
+    else:
+        blocking_processes = processes
+        residual_workers = 0
+
+    logger.info(
+        "Airflow process preflight | blocking_processes=%d | "
+        "residual_localexecutor_workers=%d",
+        len(blocking_processes),
+        residual_workers,
+    )
+    if blocking_processes:
+        rendered = "; ".join(
+            f"pid={pid} cmd={command}" for pid, command in blocking_processes
+        )
         raise RuntimeError(
             "Airflow processes that can resume or schedule work are still running: "
             + rendered
