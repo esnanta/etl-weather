@@ -696,14 +696,20 @@ Use this order so each change has one clear purpose.
 
 ### D5 — Consolidate config
 
-- [ ] Move orchestration-owned configuration into root `config.py`.
-- [ ] Preserve existing root config definitions when concepts overlap.
-- [ ] Update all runtime callers.
-- [ ] Update unit/integration test imports.
-- [ ] Exact-search for remaining `orchestration.config` imports.
-- [ ] Delete `orchestration/config.py`.
-- [ ] Verify root config remains Airflow-neutral/lightweight.
-- [ ] Run focused config/orchestration tests.
+- [x] Move orchestration-owned configuration into root `config.py`.
+- [x] Preserve existing root config definitions when concepts overlap:
+      `APPLICATION_SCHEMA` and `APPLICATION_TIMEZONE_NAME` remain canonical.
+- [x] Keep campaign environment settings lazy in root config so standalone
+      pipeline imports do not require `CAMPAIGN_*` unless orchestration uses them.
+- [x] Update all audited runtime callers to import from root `config.py`.
+- [x] Update unit/integration test imports.
+- [x] Audit the current `dev` tree rather than relying on stale default-branch
+      code-search results.
+- [x] Delete `orchestration/config.py` with no compatibility wrapper.
+- [x] Root config remains Airflow-neutral/lightweight: standard library,
+      `python-dotenv`, constants, and pure configuration resolvers only.
+- [x] Add coverage that root config can import without campaign environment keys.
+- [ ] Run focused config/orchestration tests and full unit regression.
 
 ### D6 — Update `env-example`
 
