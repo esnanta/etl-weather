@@ -58,6 +58,8 @@ def test_etl_dag_monthly_chain_is_depth_first(dag) -> None:
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
         ATTEMPT_TASK_ID,
         RESOLVE_TASK_ID,
+        TRANSFORM_TASK_ID,
+        LOAD_TASK_ID,
     }
     assert dag.get_task(ATTEMPT_TASK_ID).downstream_task_ids == {
         RESOLVE_TASK_ID
