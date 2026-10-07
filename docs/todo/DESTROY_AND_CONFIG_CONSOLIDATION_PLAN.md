@@ -729,8 +729,10 @@ Use this order so each change has one clear purpose.
 
 ### D7 — Full verification and docs
 
-- [ ] Run full unit regression.
-- [ ] Run isolated PostgreSQL integration gate.
+- [x] User verification on 2026-10-07: full unit regression passed 319 tests
+      in 8.99s.
+- [x] User verification on 2026-10-07: isolated PostgreSQL integration gate
+      passed 9 tests in 1.58s.
 - [ ] Update operational documentation.
 - [ ] Review diff for accidental `pipeline/` or scientific changes.
 - [ ] Commit/freeze one DAG version before the next clean scheduled pilot.
