@@ -1321,15 +1321,15 @@ No production code or test behavior was changed in T10.
 ### T11 — Regression verification
 
 - [x] Run focused tests after each coherent refactor.
-- [ ] Run all pipeline unit tests.
-- [ ] Run all orchestration unit tests with campaign scheduling disabled unless schedule behavior is under test.
-- [ ] Run all operations unit tests.
-- [ ] Run the complete unit suite.
-- [ ] Run PostgreSQL pipeline integration tests.
-- [ ] Run PostgreSQL orchestration integration tests.
-- [ ] Run the complete integration suite.
+- [x] Run all pipeline unit tests.
+- [x] Run all orchestration unit tests with campaign scheduling disabled unless schedule behavior is under test.
+- [x] Run all operations unit tests.
+- [x] Run the complete unit suite.
+- [x] Run PostgreSQL pipeline integration tests.
+- [x] Run PostgreSQL orchestration integration tests.
+- [x] Run the complete integration suite.
 - [x] Investigate any test that passes only after weakening an assertion.
-- [ ] Record final pass results in this document when the work is complete.
+- [x] Record final pass results in this document when the work is complete.
 
 #### T11 verification plan — 2026-10-07
 
@@ -1348,6 +1348,59 @@ The remaining T11 work is a full local regression in this order:
 Run the domain suites before the aggregate suites so any failure can be localized without rerunning the entire matrix first.
 
 No production or test changes should be made between these commands unless one of the regression suites exposes a genuine issue.
+
+#### T11 final verification result — 2026-10-07
+
+All regression domains and aggregate suites passed locally.
+
+```text
+pipeline unit
+118 passed in 2.44s
+
+orchestration unit
+110 passed in 4.46s
+
+operations unit
+49 passed in 2.28s
+
+complete unit suite
+277 passed in 6.89s
+
+pipeline PostgreSQL integration
+4 passed in 1.20s
+
+orchestration PostgreSQL integration
+5 passed in 0.93s
+
+complete integration suite
+9 passed in 1.47s
+```
+
+Canonical commands:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest tests/unit/pipeline -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit/orchestration -q
+
+python -m pytest tests/unit/operations -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest tests/unit -q
+
+python -m pytest tests/integration/pipeline -q
+
+python -m pytest tests/integration/orchestration -q
+
+python -m pytest tests/integration -q
+```
+
+No regression failure required weakening an assertion, altering a production contract, or modifying production code.
+
+**T11 is complete. Test Audit & Refactor T1–T11 is complete.**
 
 ## Regression Commands
 
