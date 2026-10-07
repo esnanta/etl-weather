@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from orchestration.config import CADENCE_CRON, CADENCE_ENV, DEFAULT_CADENCE, ENABLED_ENV
+from config import CADENCE_CRON, CADENCE_ENV, DEFAULT_CADENCE, ENABLED_ENV
 
 
 def campaign_schedule(environ: Mapping[str, str] | None = None) -> str | None:
