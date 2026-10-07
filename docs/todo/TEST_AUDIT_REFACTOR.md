@@ -92,16 +92,138 @@ The purpose is to make it possible to answer: **what production behavior would f
 
 ### T1 — Complete inventory
 
-- [ ] Inventory every file under `tests/unit/pipeline/`.
-- [ ] Inventory every file under `tests/unit/orchestration/`.
-- [ ] Inventory every file under `tests/unit/operations/`.
-- [ ] Inventory every file under `tests/integration/pipeline/`.
-- [ ] Inventory every file under `tests/integration/orchestration/`.
-- [ ] Locate custom fake/stub/dummy classes and helper implementations.
-- [ ] Locate `SimpleNamespace`, `Mock`, `MagicMock`, monkeypatching, and replacement functions.
-- [ ] Locate tests calling private production functions and record whether the private API is genuinely the intended contract.
-- [ ] Locate test-side SQL/database implementations.
-- [ ] Locate duplicated calculations, algorithms, or policy logic that may reproduce production behavior.
+- [x] Inventory every file under `tests/unit/pipeline/`.
+- [x] Inventory every file under `tests/unit/orchestration/`.
+- [x] Inventory every file under `tests/unit/operations/`.
+- [x] Inventory every file under `tests/integration/pipeline/`.
+- [x] Inventory every file under `tests/integration/orchestration/`.
+- [x] Locate custom fake/stub/dummy classes and helper implementations.
+- [x] Locate `SimpleNamespace`, `Mock`, `MagicMock`, monkeypatching, and replacement functions.
+- [x] Locate tests calling private production functions and record whether the private API is genuinely the intended contract.
+- [x] Locate test-side SQL/database implementations.
+- [x] Locate duplicated calculations, algorithms, or policy logic that may reproduce production behavior.
+
+#### T1 inventory result — 2026-10-07
+
+Audit scope: branch `dev`, repository tree under `tests/`.
+
+Python inventory:
+
+- 48 Python files total under `tests/`, including package `__init__.py` files and shared support files;
+- 37 executable `test_*.py` modules;
+- 13 pipeline unit-test modules;
+- 15 orchestration unit-test modules;
+- 5 operations unit-test modules;
+- 1 pipeline PostgreSQL integration-test module;
+- 3 orchestration PostgreSQL integration-test modules;
+- shared support is provided by `tests/conftest.py` and `tests/_paths.py`.
+
+No `Mock` or `MagicMock` usage was found in the current test modules. Isolation is implemented primarily through pytest `monkeypatch`, local replacement functions, `SimpleNamespace`, custom test-double classes, SQLite/in-memory engines, and real isolated PostgreSQL integration fixtures.
+
+##### Pipeline unit-test inventory
+
+| File | Inventory markers requiring T2 review |
+| --- | --- |
+| `test_cds_pacing_chunks.py` | monkeypatch; `SimpleNamespace`; HTTP/CDS boundary replacement; direct private production calls `_download_cds_period`, `_download_cds`, and `_PacedSubmissionSession` |
+| `test_config_requests.py` | monkeypatch; otherwise production request/config objects |
+| `test_daily_climate_repository.py` | replacement function `fake_execute_modelling_query`; SQLite engine; private `_build_modelling_statement` accessed through `getattr` |
+| `test_database.py` | custom `_Connection`, `_BeginContext`, and `_Engine` implementing a test-side database execution surface |
+| `test_extract.py` | `FakeCdsClient`; `SimpleNamespace`; monkeypatch of external CDS module; private retrieval/context helpers accessed directly |
+| `test_extract_cds_normalization.py` | no fake/mock markers detected; production normalization behavior is called directly |
+| `test_load.py` | custom SQLAlchemy-like `_ScalarResult`, `_MappingResult`, `_CountResult`, `_PartitionLookupConnection`, `_BeginContext`, `_Engine`, and `_UpsertConnection`; monkeypatch of provenance/filesystem collaborators |
+| `test_logging.py` | direct testing of private `_build_key_value_block` and `_log_dataframe_preview` |
+| `test_request.py` | deterministic production-model fixture helpers; no mock/fake marker detected |
+| `test_runtime.py` | custom `_Extractor`, `_Storage`, `_Transformer`, and `_Loader` implementations; validation monkeypatches |
+| `test_storage.py` | filesystem/data-directory monkeypatching and deterministic artifact helper functions |
+| `test_transform.py` | direct production `transform_data`; helper `_era5_land_cumulative_value` reconstructs ERA5-Land cumulative source values and therefore requires T2 independence review |
+| `test_validation.py` | production validators with deterministic test datasets; no mock/fake marker detected |
+
+##### Orchestration unit-test inventory
+
+| File | Inventory markers requiring T2 review |
+| --- | --- |
+| `test_campaign.py` | `SimpleNamespace`; monkeypatched progress repository functions; SQLite dummy engine; helper `_month_end` independently computes expected calendar month end |
+| `test_campaign_config.py` | monkeypatch; direct calls to private configuration validation helpers |
+| `test_dag.py` | DAG production object inspection; no fake/mock marker detected |
+| `test_database.py` | `SimpleNamespace`; monkeypatch of engine/config creation; database lifecycle surface |
+| `test_mode.py` | local `RunType` enum used as input compatibility case; no monkeypatch/fake marker detected |
+| `test_pipeline_progress.py` | substantial custom database result/connection/context/engine hierarchy, plus a second custom barrier result/connection/engine hierarchy |
+| `test_progress.py` | deterministic production progress-definition helpers; no mock/fake marker detected |
+| `test_progress_wiring.py` | extensive monkeypatching of task/repository collaborators; `SimpleNamespace`; local connection/result replacements in persisted-load proof tests |
+| `test_raw_checkpoint_operator.py` | monkeypatch of Airflow/runtime collaborators; database engine involved |
+| `test_reporting.py` | SQL/database-facing reporting tests; no general mock framework |
+| `test_schedule.py` | monkeypatch of scheduling configuration/environment |
+| `test_scheduled_selection_pilot.py` | in-memory dictionaries reproduce progress/claim state; `SimpleNamespace` progress object; repository methods monkeypatched; CDS download explicitly replaced with failure guard |
+| `test_submission_log.py` | `SimpleNamespace` used as submission-decision look-alike; pacing repository and runtime engine monkeypatched |
+| `test_submission_pacing.py` | monkeypatch around pacing configuration/collaborators |
+| `test_tasks.py` | task/runtime monkeypatches; `SimpleNamespace` used for disk-usage result; task boundary dictionaries used as deterministic inputs |
+
+##### Operations unit-test inventory
+
+| File | Inventory markers requiring T2 review |
+| --- | --- |
+| `test_recreate_postgres_database.py` | `SimpleNamespace` configuration object; monkeypatch; direct private guard/confirmation helper calls |
+| `test_reset_airflow_logs.py` | monkeypatch around filesystem/process operational boundaries |
+| `test_reset_airflow_runtime.py` | monkeypatch around filesystem/process operational boundaries |
+| `test_reset_all.py` | monkeypatch; direct private confirmation helper call |
+| `test_reset_data.py` | monkeypatch around destructive filesystem boundary |
+
+##### Integration-test inventory
+
+| File | Inventory markers requiring T2 review |
+| --- | --- |
+| `integration/pipeline/test_postgresql_idempotency.py` | real isolated PostgreSQL behavior; monkeypatch used for controlled failure injection; no test-side SQL engine implementation |
+| `integration/orchestration/test_orchestration_database_bootstrap.py` | real isolated PostgreSQL bootstrap/database behavior |
+| `integration/orchestration/test_pipeline_progress_reconciliation.py` | real isolated PostgreSQL progress/reconciliation behavior |
+| `integration/orchestration/test_submission_pacing.py` | real isolated PostgreSQL pacing/locking behavior |
+
+##### Custom test-double and replacement hotspots
+
+The strongest test-side implementation hotspots found during T1 are:
+
+1. `tests/unit/pipeline/test_load.py` — recreates a meaningful subset of SQLAlchemy connection/result behavior.
+2. `tests/unit/orchestration/test_pipeline_progress.py` — recreates database execution/result behavior for progress SQL and barrier queries.
+3. `tests/unit/pipeline/test_runtime.py` — supplies complete test implementations of all four `WeatherPipeline` collaborators.
+4. `tests/unit/pipeline/test_database.py` — supplies test-side engine/transaction/connection behavior.
+5. `tests/unit/orchestration/test_progress_wiring.py` — extensive replacement of task/repository boundaries, including local persisted-load connection/result objects.
+6. `tests/unit/orchestration/test_scheduled_selection_pilot.py` — implements progress status and claim state with local dictionaries and replacement functions.
+7. `tests/unit/orchestration/test_submission_log.py` — returns a `SimpleNamespace` with the same field shape as a production submission decision.
+8. `tests/unit/pipeline/test_extract.py` and `test_cds_pacing_chunks.py` — contain CDS/HTTP fakes, currently recorded as external-boundary candidates rather than defects.
+
+##### Private production API access
+
+Direct/private production API access found during T1 includes:
+
+- `test_extract.py`: `_build_era5_land_retrieval_request`, `_format_context_period`, and `_retrieval_chunk_purpose`;
+- `test_cds_pacing_chunks.py`: `_download_cds_period`, `_download_cds`, and `_PacedSubmissionSession`;
+- `test_daily_climate_repository.py`: `_build_modelling_statement`;
+- `test_logging.py`: `_build_key_value_block` and `_log_dataframe_preview`;
+- `test_campaign_config.py`: private campaign/environment validation helpers;
+- `test_recreate_postgres_database.py`: private static/runtime guard and confirmation helpers;
+- `test_reset_all.py`: private confirmation helper.
+
+T1 does not decide whether these private APIs should be public or whether their tests should be removed. That decision belongs to T2/T3 after the intended production contract is mapped.
+
+##### Potential duplicated calculation/policy candidates
+
+The following helpers or test-local state machines require explicit T2 review because they may reproduce part of the production rule being asserted:
+
+- `test_transform.py::_era5_land_cumulative_value()` — reproduces the ERA5-Land cumulative value shape used as scientific source input;
+- `test_campaign.py::_month_end()` — independently calculates calendar month end used in expected request periods;
+- `test_scheduled_selection_pilot.py` local `statuses`, `claims`, `get_progress()`, and `claim()` — reproduce enough progress/claim state behavior to drive scheduled selection;
+- custom SQLAlchemy result/connection objects in `test_load.py`, `test_pipeline_progress.py`, and `test_database.py` — reproduce database API behavior and route responses according to SQL text.
+
+These are inventory candidates only. They are not yet classified as VALID, WEAK, SELF-FULFILLING, or REDUNDANT.
+
+##### Module-level docstring baseline
+
+Because the new rule applies whenever a test file is created or revised, T1 also recorded the current baseline. Several existing test modules already contain module docstrings, but many older modules do not. Missing module docstrings are **not changed during T1**; each file revised in later phases must receive the required top-level explanatory docstring as part of that same revision.
+
+##### T1 gate result
+
+**T1 is complete. No test or production code was changed.**
+
+The inventory is sufficient to begin T2 traceability work. T2 must determine whether each recorded test double is a legitimate collaborator/external-boundary substitute or whether it replaces the production behavior the test claims to prove. No broad test rewrite is authorized by T1 alone.
 
 ### T2 — Build the traceability matrix
 
