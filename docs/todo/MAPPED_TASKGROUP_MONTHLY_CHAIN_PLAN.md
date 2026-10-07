@@ -252,12 +252,12 @@ Checklist:
 
 ## 7. Monthly Earliest-Start Policy
 
-The current scheduled policy assigns approximately:
+The current scheduled policy assigns:
 
 ```text
-month 1 -> +0h
-month 2 -> +1h
-month 3 -> +2h
+month 1 -> +0 minutes
+month 2 -> +15 minutes
+month 3 -> +30 minutes
 ```
 
 This TaskGroup refactor and the earliest-start policy are related but distinct
@@ -274,7 +274,8 @@ reviewed optimization.
 - [x] Replace hour-based spacing with explicit minute-based configuration.
 - [x] Set scheduled monthly lower bounds to +0, +15, and +30 minutes.
 - [x] Keep `SUBMISSION_INTERVAL_SECONDS` independent from monthly start slots.
-- [ ] Verify the 15-minute slot policy with unit tests.
+- [x] Verify the 15-minute slot policy with unit tests: 31 focused tests and
+      278 full unit tests passed.
 - [ ] Measure quarter elapsed time and deferral behavior during the clean pilot.
 - [ ] Revisit the 15-minute value only after pilot evidence shows it is too
       conservative or too aggressive.
@@ -382,14 +383,14 @@ Do not treat a successful live Airflow run as a substitute for these tests.
 The current Airflow policy documentation describes the stage-mapped linear
 graph. After the implementation and tests pass:
 
-- [ ] Update `docs/AIRFLOW_BEST_PRACTICE.md` to describe the monthly
+- [x] Update `docs/AIRFLOW_BEST_PRACTICE.md` to describe the monthly
       depth-first TaskGroup while retaining the same runtime boundaries.
-- [ ] Update `docs/AIRFLOW_CODING_GUIDELINES.md` only where the graph/task
-      naming or mapping guidance is now stale.
-- [ ] Update `orchestration/README.md` task-flow and operational examples.
-- [ ] Update `docs/todo/IMPLEMENTATION_PLAN.md` so Stage 8A acceptance criteria
+- [x] Update `docs/AIRFLOW_CODING_GUIDELINES.md` only where the graph/task
+      naming or mapping guidance was stale.
+- [x] Update `orchestration/README.md` task-flow and operational examples.
+- [x] Update `docs/todo/IMPLEMENTATION_PLAN.md` so Stage 8A acceptance criteria
       match the new graph.
-- [ ] Do not duplicate scientific contracts into Airflow documentation.
+- [x] Do not duplicate scientific contracts into Airflow documentation.
 
 ---
 
@@ -446,8 +447,9 @@ Use this sequence and mark each item as it is completed:
 - [x] Run focused orchestration tests: 13 passed.
 - [x] Run the full unit regression gate: 278 passed.
 - [x] Run selected PostgreSQL integration tests: 9 passed.
-- [ ] Review diff for accidental pipeline/scientific changes.
-- [ ] Update Airflow operational/policy documentation.
+- [x] Review diff for accidental pipeline/scientific changes; no `pipeline/`
+      or scientific-contract files changed.
+- [x] Update Airflow operational/policy documentation.
 - [ ] Start a clean scheduled-quarter pilot under one unchanged DAG version.
 - [ ] Verify depth-first January transform/load while later months wait.
 - [ ] Record elapsed-time and resource observations.
