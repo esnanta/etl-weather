@@ -54,21 +54,12 @@ CAMPAIGN_END_YEAR=2016
 # true: enable the bounded historical campaign schedule.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
 
-# Scheduler tick cadence, used only when scheduling is enabled.
-# Allowed values: 30m, 45m, 1h, 2h.
-# Example: 1h means Airflow gets one scheduled campaign-selection opportunity
-# every Jakarta-local hour. It does not mean one month must finish every hour.
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
-
-# Minimum interval between provider submission POST requests, in seconds.
-# Example: 300 means at least 5 minutes between actual CDS submission POSTs.
-# This pacing applies to each provider submission, including context chunks,
-# and is independent from the scheduler cadence above.
-SUBMISSION_INTERVAL_SECONDS=300
-
-# Scheduled mapped-month earliest-start spacing is intentionally a code constant:
-# MONTHLY_SLOT_SPACING_MINUTES=15 in root config.py.
-# Do not add an environment variable for it unless configuration policy changes.
+# Orchestration timing policy is source-controlled in root config.py:
+# - CAMPAIGN_SCHEDULE_INTERVAL_MINUTES=10
+# - QUARTER_COOLDOWN_MINUTES=10
+# - MONTHLY_SLOT_SPACING_MINUTES=15
+# - SUBMISSION_INTERVAL_MINUTES=5
+# Keep timing values out of .env unless configuration policy changes.
 
 # Shared Airflow JWT secret is managed outside .env.
 # Keep using the existing airflow-jwt-key.txt setup documented in
