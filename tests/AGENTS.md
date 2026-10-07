@@ -187,6 +187,17 @@ Examples:
 
 Mocks, fakes, stubs, and monkeypatches belong at justified external or collaborator boundaries. They may isolate CDS/network calls, PostgreSQL when database semantics are not the subject, Airflow runtime context, OS measurements, clocks, or failure injection. They must not mock away the scientific, persistence, scheduling, or policy logic being claimed by the test.
 
+## Test File Documentation
+
+Every new test module, and every existing test module materially revised during a test-quality refactor, must have a module-level docstring that states:
+
+1. the production behavior or contract being tested;
+2. the production object, function, class, or module under test;
+3. any mocked, stubbed, monkeypatched, or otherwise isolated boundary and why that isolation is legitimate;
+4. where stronger integration coverage owns behavior that the unit test intentionally does not prove.
+
+Keep this docstring concise and specific to the file. Do not use it as a duplicate copy of `README.md` or this AGENTS file.
+
 ## Test Data and Paths
 
 Prefer one to three local days, one or a few grid cells, explicit UTC/local timestamps, deterministic numeric values, explicit missing-value cases, and temporary directories for generated artifacts.
@@ -236,6 +247,9 @@ When adding or changing behavior:
 - include negative cases where failure behavior is part of the contract;
 - use integration coverage when correctness depends on real PostgreSQL behavior;
 - avoid duplicating the same contract across multiple test levels/domains;
+- keep unit assertions focused on behavior that the unit level can genuinely prove;
+- prefer PostgreSQL integration coverage when transaction, locking, conflict, or persisted-state semantics are the contract;
+- keep or add the required module-level test docstring when a test module is materially revised;
 - update `README.md` when testing strategy or canonical commands change;
 - update this file when a technical testing invariant changes.
 
