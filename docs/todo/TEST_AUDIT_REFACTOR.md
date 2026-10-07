@@ -945,19 +945,145 @@ python -m pytest \
   -q
 ```
 
-**T7 is implementation-complete pending focused local pytest confirmation.**
+**T7 is complete.** Local focused regression on 2026-10-07:
+
+```text
+80 passed in 5.03s
+```
+
+The user command included the intended T7 files and completed successfully.
 
 ### T8 — Verify scientific tests independently
 
-- [ ] Confirm transformation tests call production transformation functions/classes.
-- [ ] Confirm expected values are derived from explicit scientific contracts rather than by calling/reimplementing the production algorithm.
-- [ ] Protect UTC and UTC+7 timestamp semantics.
-- [ ] Protect accumulation versus mean behavior.
-- [ ] Protect unit conversions.
-- [ ] Protect grid-point behavior.
-- [ ] Protect missing values as missing values, not zero.
-- [ ] Use small deterministic datasets with independently understandable expected results.
-- [ ] Add/update module-level docstrings where files are revised.
+- [x] Confirm transformation tests call production transformation functions/classes.
+- [x] Confirm expected values are derived from explicit scientific contracts rather than by calling/reimplementing the production algorithm.
+- [x] Protect UTC and UTC+7 timestamp semantics.
+- [x] Protect accumulation versus mean behavior.
+- [x] Protect unit conversions.
+- [x] Protect grid-point behavior.
+- [x] Protect missing values as missing values, not zero.
+- [x] Use small deterministic datasets with independently understandable expected results.
+- [x] Add/update module-level docstrings where files are revised.
+
+#### T8 implementation result — 2026-10-07
+
+The scientific transformation and validation tests were reviewed directly against the production transformation/validation modules and the ERA5-Land scientific contracts.
+
+##### Production subject under test
+
+`tests/unit/pipeline/test_transform.py` calls production `transform_data()` directly.
+
+`tests/unit/pipeline/test_validation.py` calls production `validate_raw_dataset()` and `validate_transformed_dataset()` directly.
+
+No scientific correctness assertion is satisfied by a fake transformer or fake validator.
+
+##### Independent expected values
+
+The transformation tests use explicit expected outputs that are understandable without calling production helpers:
+
+- local day midnight 2022-01-01 maps to `valid_time=2021-12-31 17:00:00` and `valid_time_local=2022-01-01 00:00:00`;
+- 24 hourly precipitation increments of 0.001 m produce 24.0 mm/day;
+- the deterministic SSRD source profile produces 86,400 J/m²/day;
+- Celsius conversion is asserted explicitly as 300 K -> 26.85 °C and 295 K -> 21.85 °C;
+- a 0..23 °C local-hour profile has an independently obvious arithmetic mean of 11.5 °C;
+- the two-grid case has explicitly different totals/means per grid point;
+- missing accumulated boundary input remains missing rather than becoming zero;
+- negative accumulated output remains negative and emits the required warning.
+
+##### Cumulative source fixture review
+
+`_era5_land_cumulative_value()` is retained.
+
+It is **not** the implementation-under-test. It generates a deterministic ERA5-Land-style accumulated source series that resets on the UTC day boundary. The production function still has to combine UTC-midnight and local-midnight boundaries to derive a UTC+7 local-day total.
+
+A detailed docstring was added to this helper so its role cannot be confused with a copied daily-aggregation algorithm.
+
+The SSRD expected assertion was changed from the expression `24 * 3600.0` to the explicit independently readable value `86_400.0`.
+
+##### Fixture ownership and deprecated bbox cleanup
+
+`test_transform.py` previously used the historical/deprecated project bbox `N5.2/W96.1/S3.4/E97.6` even though production configuration was not under test.
+
+That bbox was replaced with an explicit minimal scientific fixture:
+
+```text
+north = 4.6
+south = 4.5
+west  = 96.8
+east  = 96.9
+```
+
+This fixture directly contains the one/two grid points used by the scientific tests and makes the test independent from deployment configuration.
+
+`test_validation.py` already used explicit minimal point/two-by-two grid fixtures, which is appropriate because validator logic—not the configured Aceh extent—is the subject under test.
+
+##### UTC and local-day semantics
+
+Scientific tests explicitly protect both required timestamps:
+
+- `valid_time` remains the UTC instant corresponding to the local-day boundary;
+- `valid_time_local` remains UTC+7 local midnight.
+
+Tests also reject incomplete local days and the first ERA5-Land local day when the required previous UTC context would predate dataset availability.
+
+##### Accumulation versus state/mean behavior
+
+The suite distinguishes:
+
+- accumulated variables: `tp`, `ssrd`;
+- daily mean/state variables: `t2m`, `d2m`, `swvl1`.
+
+Accumulated totals and daily means are asserted separately and are also verified across multiple grid points.
+
+##### Units
+
+The suite explicitly protects:
+
+- `tp` -> mm/day;
+- `t2m`, `d2m` -> °C;
+- `swvl1` -> m³/m³;
+- `ssrd` -> J/m²/day.
+
+##### Grid behavior
+
+The multi-grid transformation test proves that two grid points with different source profiles retain independent daily totals/means.
+
+Validation tests independently protect regular 0.1° grid spacing, stable grid membership, rejection of off-grid coordinates, and duplicate grid/time observations.
+
+##### Missing values
+
+Scientific tests retain missing observations as missing values:
+
+- null accumulated boundary -> missing daily accumulation;
+- missing state sample invalidates a supposedly complete daily mean;
+- transformed validation allows missing climate values where the contract permits them;
+- missing values are never replaced with zero.
+
+##### Files changed in T8
+
+- `tests/unit/pipeline/test_transform.py`
+  - added module-level scientific-independence docstring;
+  - replaced deprecated project bbox with an explicit minimal scientific fixture;
+  - documented the cumulative source-fixture helper;
+  - made the SSRD expected total explicit.
+
+- `tests/unit/pipeline/test_validation.py`
+  - added module-level docstring explaining minimal fixture ownership and direct production validation.
+
+No production scientific code was changed.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/unit/pipeline/test_transform.py \
+  tests/unit/pipeline/test_validation.py \
+  -q
+```
+
+**T8 is implementation-complete pending focused local pytest confirmation.**
 
 ### T9 — Remove redundant or misleading tests
 
