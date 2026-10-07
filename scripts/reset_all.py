@@ -71,7 +71,10 @@ def _display_targets(config: DatabaseConfig) -> None:
 
 def _run_preflight(config: DatabaseConfig) -> None:
     recreate_postgres_database._validate_static_guards(config)
-    recreate_postgres_database._validate_runtime_guards(config)
+    recreate_postgres_database._validate_runtime_guards(
+        config,
+        allow_residual_localexecutor_workers=True,
+    )
 
 
 def _confirmation(
@@ -93,11 +96,13 @@ def _confirmation(
 
 def execute_reset(config: DatabaseConfig) -> dict[str, int]:
     """Execute verified reset components in failure-safe order."""
+    stopped_workers = reset_airflow_runtime.stop_local_executor_workers()
     recreate_postgres_database._recreate_database(config)
     data_removed = reset_data.clear_data_contents()
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()
     runtime_files_removed = len(reset_airflow_runtime.clear_airflow_runtime_state())
     return {
+        "stopped_localexecutor_workers": len(stopped_workers),
         "data_entries_removed": data_removed,
         "airflow_log_entries_removed": log_entries_removed,
         "airflow_runtime_files_removed": runtime_files_removed,
@@ -145,8 +150,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     result = execute_reset(config)
     logger.info(
-        "Reset-all complete | data_entries_removed=%d | "
-        "airflow_log_entries_removed=%d | airflow_runtime_files_removed=%d",
+        "Reset-all complete | stopped_localexecutor_workers=%d | "
+        "data_entries_removed=%d | airflow_log_entries_removed=%d | "
+        "airflow_runtime_files_removed=%d",
+        result["stopped_localexecutor_workers"],
         result["data_entries_removed"],
         result["airflow_log_entries_removed"],
         result["airflow_runtime_files_removed"],
