@@ -1320,7 +1320,7 @@ No production code or test behavior was changed in T10.
 
 ### T11 — Regression verification
 
-- [ ] Run focused tests after each coherent refactor.
+- [x] Run focused tests after each coherent refactor.
 - [ ] Run all pipeline unit tests.
 - [ ] Run all orchestration unit tests with campaign scheduling disabled unless schedule behavior is under test.
 - [ ] Run all operations unit tests.
@@ -1328,8 +1328,26 @@ No production code or test behavior was changed in T10.
 - [ ] Run PostgreSQL pipeline integration tests.
 - [ ] Run PostgreSQL orchestration integration tests.
 - [ ] Run the complete integration suite.
-- [ ] Investigate any test that passes only after weakening an assertion.
+- [x] Investigate any test that passes only after weakening an assertion.
 - [ ] Record final pass results in this document when the work is complete.
+
+#### T11 verification plan — 2026-10-07
+
+Focused regressions were executed throughout T3–T10 and remained green after each coherent refactor. No test was made green by weakening a production contract; where tests were removed or narrowed, stronger production-path or PostgreSQL integration coverage was established first.
+
+The remaining T11 work is a full local regression in this order:
+
+1. pipeline unit domain;
+2. orchestration unit domain with campaign scheduling disabled;
+3. operations unit domain;
+4. complete unit suite;
+5. pipeline PostgreSQL integration domain;
+6. orchestration PostgreSQL integration domain;
+7. complete integration suite.
+
+Run the domain suites before the aggregate suites so any failure can be localized without rerunning the entire matrix first.
+
+No production or test changes should be made between these commands unless one of the regression suites exposes a genuine issue.
 
 ## Regression Commands
 
