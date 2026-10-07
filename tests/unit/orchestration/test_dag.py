@@ -51,12 +51,13 @@ def test_etl_dag_uses_one_mapped_monthly_task_group(dag) -> None:
 
     task_group = dag.task_group.children.get("monthly_etl")
     assert task_group is not None
-    assert task_group.is_mapped is True
+    assert type(task_group).__name__ == "MappedTaskGroup"
 
 
 def test_etl_dag_monthly_chain_is_depth_first(dag) -> None:
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
-        ATTEMPT_TASK_ID
+        ATTEMPT_TASK_ID,
+        RESOLVE_TASK_ID,
     }
     assert dag.get_task(ATTEMPT_TASK_ID).downstream_task_ids == {
         RESOLVE_TASK_ID
