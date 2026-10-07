@@ -1,10 +1,18 @@
+"""Verify daily-climate modelling reads through the public repository boundary.
+
+The tests exercise production selection validation, returned-data validation,
+and load_daily_climate_for_modelling(). Query execution is isolated so unit
+coverage can assert the generated canonical-table statement and parameters
+without pretending to execute PostgreSQL. Actual database persistence behavior
+belongs to PostgreSQL integration tests.
+"""
+
 from datetime import date
 
 import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 
-import pipeline.repositories.daily_climate_reader as daily_climate_repository
 from pipeline.database import DatabaseConfig
 from pipeline.models.weather import BoundingBox, DataSource
 from pipeline.repositories.daily_climate_reader import (
@@ -12,11 +20,6 @@ from pipeline.repositories.daily_climate_reader import (
     load_daily_climate_for_modelling,
     validate_daily_climate_selection,
     validate_modelling_dataframe,
-)
-
-build_modelling_statement = getattr(
-    daily_climate_repository,
-    "_build_modelling_statement",
 )
 
 
@@ -37,10 +40,10 @@ def _selection() -> DailyClimateSelection:
         start_date=date(2022, 1, 1),
         end_date=date(2022, 1, 2),
         bbox=BoundingBox(
-            north_lat=5.2,
-            west_lon=96.1,
-            south_lat=3.4,
-            east_lon=97.6,
+            north_lat=4.6,
+            west_lon=96.8,
+            south_lat=4.5,
+            east_lon=96.9,
         ),
     )
 
@@ -66,18 +69,6 @@ def _dataframe() -> pd.DataFrame:
             "ssrd_daily_total_j_m2": [12_000_000.0, 13_000_000.0],
         }
     )
-
-
-def test_build_modelling_statement_uses_canonical_tables_and_filters() -> None:
-    sql = str(build_modelling_statement(_config()))
-
-    assert "climate_data.daily_climate AS dc" in sql
-    assert "climate_data.daily_climate_detail AS dcd" in sql
-    assert "dcd.daily_climate_id = dc.id" in sql
-    assert "CAST(dc.source AS TEXT) = :source" in sql
-    assert "dc.dataset_name = :dataset_name" in sql
-    assert "dcd.valid_time_local >= :start_time" in sql
-    assert "dcd.valid_time_local < :end_time_exclusive" in sql
 
 
 def test_validate_daily_climate_selection_rejects_reversed_period() -> None:
@@ -219,13 +210,23 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
         pd.Timestamp("2022-01-02 00:00:00"),
     ]
     assert pd.isna(result.loc[1, "tp_daily_total_mm"])
+
+    statement_text = str(captured["sql"])
+    assert "climate_data.daily_climate AS dc" in statement_text
+    assert "climate_data.daily_climate_detail AS dcd" in statement_text
+    assert "dcd.daily_climate_id = dc.id" in statement_text
+    assert "CAST(dc.source AS TEXT) = :source" in statement_text
+    assert "dc.dataset_name = :dataset_name" in statement_text
+    assert "dcd.valid_time_local >= :start_time" in statement_text
+    assert "dcd.valid_time_local < :end_time_exclusive" in statement_text
+
     assert captured["params"] == {
         "source": "cds",
         "dataset_name": "reanalysis-era5-land",
-        "north_lat": 5.2,
-        "south_lat": 3.4,
-        "east_lon": 97.6,
-        "west_lon": 96.1,
+        "north_lat": 4.6,
+        "south_lat": 4.5,
+        "east_lon": 96.9,
+        "west_lon": 96.8,
         "start_time": pd.Timestamp("2022-01-01 00:00:00").to_pydatetime(),
         "end_time_exclusive": pd.Timestamp("2022-01-03 00:00:00").to_pydatetime(),
     }
