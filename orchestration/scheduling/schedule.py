@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from datetime import timedelta
 
 from config import CADENCE_CRON, CADENCE_ENV, DEFAULT_CADENCE, ENABLED_ENV
 
 
-def campaign_schedule(environ: Mapping[str, str] | None = None) -> str | None:
+def campaign_schedule(
+    environ: Mapping[str, str] | None = None,
+) -> str | timedelta | None:
     """Return a Jakarta-local cron tick only when explicitly enabled."""
     values = os.environ if environ is None else environ
     enabled = values.get(ENABLED_ENV, "false").strip().lower()
