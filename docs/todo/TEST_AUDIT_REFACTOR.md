@@ -793,7 +793,39 @@ python -m pytest \
   -q
 ```
 
-**T6 is implementation-complete pending focused unit and PostgreSQL integration confirmation.**
+**T6 is complete.** Local verification on 2026-10-07:
+
+```text
+focused orchestration unit suite
+69 passed in 4.34s
+
+orchestration PostgreSQL integration suite
+5 passed in 0.92s
+```
+
+Commands used:
+
+```bash
+source activate-airflow.sh -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/orchestration/test_campaign.py \
+  tests/unit/orchestration/test_pipeline_progress.py \
+  tests/unit/orchestration/test_progress_wiring.py \
+  tests/unit/orchestration/test_raw_checkpoint_operator.py \
+  tests/unit/orchestration/test_scheduled_selection_pilot.py \
+  tests/unit/orchestration/test_submission_log.py \
+  tests/unit/orchestration/test_submission_pacing.py \
+  tests/unit/orchestration/test_tasks.py \
+  -q
+
+python -m pytest \
+  tests/integration/orchestration/test_orchestration_database_bootstrap.py \
+  tests/integration/orchestration/test_pipeline_progress_reconciliation.py \
+  tests/integration/orchestration/test_submission_pacing.py \
+  -q
+```
 
 ### T7 — Preserve legitimate external-boundary isolation
 
