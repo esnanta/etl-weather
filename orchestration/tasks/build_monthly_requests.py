@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from orchestration.campaign.policy import CampaignBlocked, select_earliest_incomplete_quarter
-from orchestration.config import MONTHLY_SLOT_SPACING_MINUTES
+from config import MONTHLY_SLOT_SPACING_MINUTES
 from orchestration.repositories.database import initialize_progress_storage, runtime_database_engine
 from orchestration.scheduling.run_mode import resolve_run_mode
 from orchestration.progress.definition import build_pipeline_progress_definition
