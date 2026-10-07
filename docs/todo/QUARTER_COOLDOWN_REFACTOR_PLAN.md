@@ -73,13 +73,13 @@ These three clocks are independent today.
 Keep the three existing timing responsibilities separate and add a fourth,
 quarter-level eligibility rule.
 
-Recommended pilot policy:
+Approved pilot policy:
 
 ```text
-SUBMISSION_INTERVAL_SECONDS      = 300 seconds
-MONTHLY_SLOT_SPACING_MINUTES     = 15 minutes
-QUARTER_COOLDOWN_MINUTES         = 10 minutes
-scheduler eligibility check      = every 10 or 15 minutes
+CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10 minutes
+QUARTER_COOLDOWN_MINUTES           = 10 minutes
+MONTHLY_SLOT_SPACING_MINUTES       = 15 minutes
+SUBMISSION_INTERVAL_MINUTES        = 5 minutes
 ```
 
 Interpretation:
@@ -176,56 +176,31 @@ PostgreSQL campaign progress remains the durable campaign truth.
 
 ## 6. Configuration Design
 
-### 6.1 Quarter cooldown
+### 6.1 Source-controlled timing policy
 
-Add a root-config code constant:
+All duration/interval policy is owned by root `config.py`:
 
 ```python
+CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10
 QUARTER_COOLDOWN_MINUTES = 10
+MONTHLY_SLOT_SPACING_MINUTES = 15
+SUBMISSION_INTERVAL_MINUTES = 5
 ```
 
-Initial recommendation: keep this as a code constant, like
-`MONTHLY_SLOT_SPACING_MINUTES`, rather than adding another environment
-variable.
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED` remains an environment switch because it
+controls whether scheduled mode is enabled, not how long a timing interval is.
 
-- [ ] Add `QUARTER_COOLDOWN_MINUTES = 10` to root `config.py`.
-- [ ] Validate/document that it is non-negative.
-- [ ] Do not add `QUARTER_COOLDOWN_MINUTES` to `.env` unless configuration
-      policy is separately changed.
-
-### 6.2 Scheduler cadence
-
-The scheduler cadence remains a runtime/deployment setting because it controls
-how often Airflow checks campaign eligibility.
-
-Current supported values include:
-
-```text
-30m
-45m
-1h
-2h
-```
-
-For cooldown-driven selection, shorter checks are more useful.
-
-- [ ] Decide the clean-pilot scheduler cadence before implementation:
-      recommended `10m`; acceptable alternative `15m`.
-- [ ] Add `10m` and/or `15m` to the supported cadence mapping after the
-      exact pilot value is approved.
-- [ ] Keep scheduler cadence separate from quarter cooldown.
-- [ ] Keep scheduler cadence separate from monthly slot spacing.
-- [ ] Keep scheduler cadence separate from CDS submission pacing.
-
-Recommended interpretation if `10m` is approved:
-
-```text
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=10m
-QUARTER_COOLDOWN_MINUTES=10
-```
+- [x] Set `CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10`.
+- [x] Set `QUARTER_COOLDOWN_MINUTES = 10`.
+- [x] Keep `MONTHLY_SLOT_SPACING_MINUTES = 15`.
+- [x] Set `SUBMISSION_INTERVAL_MINUTES = 5`.
+- [x] Remove scheduler cadence and provider pacing duration overrides from
+      `env-example`.
+- [x] Keep timing policy source-controlled unless configuration policy is
+      separately changed.
 
 A quarter completing at 21:47 becomes eligible at 21:57 and will normally be
-picked by the first scheduler tick at or after 21:57.
+picked by the first 10-minute scheduler tick at or after 21:57.
 
 ---
 
@@ -420,12 +395,17 @@ CDS submission pacing
 - [ ] Record current DAG blob/reference for comparison.
 - [ ] Run focused baseline scheduler/campaign tests.
 
-### C2 — Add cooldown configuration
+### C2 — Centralize timing configuration
 
-- [ ] Add `QUARTER_COOLDOWN_MINUTES=10` to root `config.py`.
-- [ ] Add the approved short scheduler cadence (`10m` or `15m`).
-- [ ] Add/update configuration tests.
-- [ ] Do not modify monthly spacing or provider pacing.
+- [x] Add `CAMPAIGN_SCHEDULE_INTERVAL_MINUTES=10` to root `config.py`.
+- [x] Add `QUARTER_COOLDOWN_MINUTES=10` to root `config.py`.
+- [x] Keep `MONTHLY_SLOT_SPACING_MINUTES=15`.
+- [x] Replace the environment pacing value with
+      `SUBMISSION_INTERVAL_MINUTES=5`.
+- [x] Remove scheduler cadence/provider pacing duration knobs from
+      `env-example` and activation logging.
+- [x] Update focused schedule/pacing tests for fixed source-controlled timing.
+- [ ] User verifies the focused timing tests locally.
 
 ### C3 — Add pure cooldown eligibility helper
 
@@ -520,7 +500,7 @@ Assume:
 
 ```text
 campaign                    = 2016 only
-scheduler cadence           = 10m
+scheduler interval          = 10m
 quarter cooldown            = 10m
 monthly slot spacing        = 15m
 CDS submission pacing       = 5m
