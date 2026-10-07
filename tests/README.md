@@ -139,7 +139,7 @@ If a valid RAW or transformed artifact already exists, tests verify that the pip
 Activate the project environment first:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 ```
 
 Run all unit tests:
@@ -181,6 +181,8 @@ The README intentionally does not keep a permanent numeric pass-count baseline b
 
 - Use `pytest`.
 - Prefer small, deterministic fixtures.
+- Use production configuration when configuration itself is under test; use explicit minimal fixtures when testing logic or algorithms.
+- Test data may be constructed, but do not recreate the implementation being tested.
 - Keep routine unit tests offline.
 - Mock external systems rather than internal scientific logic.
 - Use explicit expected values for climate formulas, units, and timestamps.
