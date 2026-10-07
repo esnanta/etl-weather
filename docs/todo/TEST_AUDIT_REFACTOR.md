@@ -440,17 +440,96 @@ python -m pytest \
   -q
 ```
 
-**T3 is implementation-complete pending local pytest confirmation.**
+**T3 is complete.** Local focused regression on 2026-10-07:
+
+```text
+36 passed in 1.11s
+```
+
+Command used:
+
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/orchestration/test_submission_log.py \
+  tests/unit/orchestration/test_campaign.py \
+  tests/unit/orchestration/test_scheduled_selection_pilot.py \
+  tests/unit/orchestration/test_progress_wiring.py \
+  -q
+```
 
 ### T4 — Review pipeline runtime tests
 
-- [ ] Review `tests/unit/pipeline/test_runtime.py` test by test.
-- [ ] State explicitly which tests are only proving `WeatherPipeline` orchestration.
-- [ ] Reduce collaborator implementations where simpler boundary doubles provide the same isolation.
-- [ ] Use concrete production implementations where the claimed behavior requires concrete integration.
-- [ ] Ensure runtime tests do not imply concrete extractor/storage/transformer/loader coverage that they do not provide.
-- [ ] Confirm corresponding concrete-component tests exist.
-- [ ] Add/update the required module-level docstring.
+- [x] Review `tests/unit/pipeline/test_runtime.py` test by test.
+- [x] State explicitly which tests are only proving `WeatherPipeline` orchestration.
+- [x] Reduce collaborator implementations where simpler boundary doubles provide the same isolation.
+- [x] Use concrete production implementations where the claimed behavior requires concrete integration.
+- [x] Ensure runtime tests do not imply concrete extractor/storage/transformer/loader coverage that they do not provide.
+- [x] Confirm corresponding concrete-component tests exist.
+- [x] Add/update the required module-level docstring.
+
+#### T4 review result — 2026-10-07
+
+The runtime tests were reviewed against `pipeline/runtime.py`, the production ETL interfaces, and the dedicated concrete-component test modules.
+
+Decision: **retain the injected recording collaborators in `test_runtime.py`.**
+
+This is intentional rather than a failure to eliminate test doubles. `WeatherPipeline` is itself an orchestration/composition object whose constructor accepts `WeatherExtractor`, `DataStorage`, `DataTransformer`, and `DataLoader`. The unit-test responsibility is therefore to prove which collaborator is invoked, when checkpoint branches are selected, and whether validation/delegation happen at the correct boundary. Replacing those collaborators with concrete CDS/storage/transform/PostgreSQL implementations would change the test level and duplicate dedicated component coverage.
+
+Test-by-test scope:
+
+- `test_ensure_raw_checkpoint_creates_raw_checkpoint_when_missing`
+  - proves only WeatherPipeline orchestration: missing RAW checkpoint -> extractor -> save -> validate -> dataframe conversion;
+  - does not prove CDS retrieval or NetCDF storage correctness.
+
+- `test_ensure_raw_checkpoint_uses_and_validates_existing_raw_checkpoint`
+  - proves resume branch selection and RAW validation;
+  - does not prove concrete checkpoint deserialization.
+
+- `test_ensure_transformed_checkpoint_uses_and_validates_existing_checkpoint`
+  - proves transformed-checkpoint resume path and that transformation is skipped;
+  - does not prove Parquet/provenance rehydration.
+
+- `test_ensure_transformed_checkpoint_validates_before_saving_new_checkpoint`
+  - proves transform -> validate -> save ordering at the WeatherPipeline boundary;
+  - does not prove the scientific transformation formula.
+
+- `test_load_delegates_dataset_and_artifact_to_idempotent_loader`
+  - proves delegation of the exact transformed dataset/artifact to the loader;
+  - does not prove PostgreSQL idempotency.
+
+- `test_transform_from_checkpoint_rehydrates_and_validates_raw`
+  - proves RAW rehydration is validated before transformation and extraction is not repeated;
+  - concrete RAW storage behavior remains owned by storage tests.
+
+- `test_load_from_checkpoint_rehydrates_and_validates_transformed`
+  - proves transformed checkpoint rehydration is validated before loader delegation;
+  - concrete persistence remains owned by loader/integration tests.
+
+Concrete-component coverage confirmed:
+
+- CDS extraction/provider behavior -> `tests/unit/pipeline/test_extract.py` and `test_cds_pacing_chunks.py`;
+- local RAW/Parquet storage, checkpoint/provenance, atomic writes -> `tests/unit/pipeline/test_storage.py`;
+- ERA5-Land daily scientific transformation -> `tests/unit/pipeline/test_transform.py`;
+- raw/transformed validation -> `tests/unit/pipeline/test_validation.py`;
+- PostgreSQL loader construction/decision behavior -> `tests/unit/pipeline/test_load.py`;
+- actual PostgreSQL idempotency and rollback -> `tests/integration/pipeline/test_postgresql_idempotency.py`.
+
+The current collaborator classes are larger than trivial mocks because `DataStorage` exposes several coordinated methods and the tests need observable call state across checkpoint branches. Replacing them with many independent monkeypatch lambdas would make the tests less readable and less faithful to the injected interface contract. Therefore no structural rewrite was made.
+
+The required top-level module docstring was added to `test_runtime.py`. It now explicitly states that the file verifies WeatherPipeline orchestration through production interfaces and does **not** claim concrete CDS/storage/scientific/PostgreSQL integration coverage.
+
+No production code was changed.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh
+
+python -m pytest tests/unit/pipeline/test_runtime.py -q
+```
+
+**T4 is implementation-complete pending local pytest confirmation.**
 
 ### T5 — Review persistence unit tests
 
