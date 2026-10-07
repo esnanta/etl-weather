@@ -1238,17 +1238,85 @@ python -m pytest \
   -q
 ```
 
-**T9 is implementation-complete pending focused local pytest confirmation.**
+**T9 is complete.** Local focused regression on 2026-10-07:
+
+```text
+pipeline-focused suite
+18 passed in 0.68s
+
+orchestration-focused suite
+27 passed in 0.67s
+```
 
 ### T10 — Update testing rules and documentation
 
-- [ ] Update `tests/AGENTS.md` after the audit conclusions are confirmed.
-- [ ] Add the explicit rule: test data may be constructed, but production behavior must not be reimplemented in tests.
-- [ ] Add the rule: prefer production domain objects over test-created look-alikes.
-- [ ] Add the rule: mocks/fakes belong at justified external or collaborator boundaries.
-- [ ] Add the module-level docstring requirement for new or revised test files.
-- [ ] Update `tests/README.md` only if the human-facing testing strategy or commands change.
-- [ ] Avoid duplicating detailed developer rules between `tests/README.md` and `tests/AGENTS.md`.
+- [x] Update `tests/AGENTS.md` after the audit conclusions are confirmed.
+- [x] Add the explicit rule: test data may be constructed, but production behavior must not be reimplemented in tests.
+- [x] Add the rule: prefer production domain objects over test-created look-alikes.
+- [x] Add the rule: mocks/fakes belong at justified external or collaborator boundaries.
+- [x] Add the module-level docstring requirement for new or revised test files.
+- [x] Update `tests/README.md` only if the human-facing testing strategy or commands change.
+- [x] Avoid duplicating detailed developer rules between `tests/README.md` and `tests/AGENTS.md`.
+
+#### T10 implementation result — 2026-10-07
+
+T10 performs the final documentation consistency pass after the conclusions from T1–T9 were confirmed.
+
+##### tests/AGENTS.md
+
+The technical testing rules now explicitly require:
+
+- **Test boleh membuat data, tetapi jangan membuat ulang implementation-under-test.**
+- production configuration when configuration itself is the subject under test;
+- explicit minimal fixtures when logic, algorithms, validation, storage, or edge cases are the subject under test;
+- production domain objects instead of test-created look-alikes when an appropriate production type exists;
+- mocks/fakes/stubs/monkeypatches only at justified external or collaborator boundaries;
+- real PostgreSQL integration tests when transaction, conflict, locking, or persisted-state semantics are the contract;
+- the lowest test level that can genuinely prove the intended behavior;
+- avoidance of duplicate contract coverage across test levels.
+
+A dedicated **Test File Documentation** section was added.
+
+Every new test module, and every existing test module materially revised during a test-quality refactor, must now have a concise module-level docstring stating:
+
+1. the production behavior/contract being tested;
+2. the production object/function/class/module under test;
+3. the mocked/stubbed/monkeypatched/isolated boundary and why it is legitimate;
+4. where stronger integration coverage owns behavior that the unit test intentionally does not prove.
+
+The Change Rules section was also aligned with the audit conclusions so persistence semantics are not accidentally moved back into fake database unit tests.
+
+##### tests/README.md
+
+The README remains human-facing.
+
+It keeps:
+
+- test organization;
+- scope of unit versus integration suites;
+- canonical commands;
+- high-level testing style;
+- definition of done.
+
+It now explicitly points readers to `tests/AGENTS.md` for detailed rules about production-object use, fixture ownership, mocking boundaries, and test-module documentation.
+
+Detailed developer invariants are intentionally **not** duplicated in README.
+
+The canonical environment command remains:
+
+```bash
+source activate-airflow.sh -q
+```
+
+##### Documentation ownership after T10
+
+- `tests/README.md` = human-facing strategy, structure, and commands.
+- `tests/AGENTS.md` = technical invariants and developer rules.
+- `docs/todo/TEST_AUDIT_REFACTOR.md` = historical audit decisions, implementation record, and verification evidence.
+
+No production code or test behavior was changed in T10.
+
+**T10 is complete.**
 
 ### T11 — Regression verification
 
