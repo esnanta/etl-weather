@@ -1,3 +1,13 @@
+"""Verify pipeline-progress SQL construction and input validation.
+
+These unit tests exercise the production progress repository with real
+PipelineProgressDefinition/ProgressPartition models and a minimal recording
+engine. They assert DDL, seeded identities, update parameters, and reconciliation
+SQL construction only. PostgreSQL state transitions, atomic claims, release
+semantics, persisted-evidence reconciliation, and extraction-attempt barriers
+are authoritative in orchestration integration tests.
+"""
+
 from typing import cast
 
 import pytest
@@ -13,12 +23,9 @@ from orchestration.progress.definition import (
     ProgressPartition,
 )
 from orchestration.repositories.pipeline_progress import (
-    are_extract_attempts_terminal,
     create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
-    release_pipeline_progress_claim,
-    try_claim_pipeline_progress,
     update_pipeline_progress_detail,
 )
 
@@ -30,16 +37,14 @@ class _ScalarResult:
     def scalar_one() -> int:
         return 42
 
-    @staticmethod
-    def scalar_one_or_none() -> int:
-        return 42
-
 
 class _Result:
     rowcount = 1
 
 
 class _Connection:
+    """Capture generated SQL and parameters without emulating PostgreSQL state."""
+
     def __init__(self) -> None:
         self.statements: list[str] = []
         self.params: list[dict[str, object] | None] = []
@@ -123,7 +128,7 @@ def test_progress_ddl_is_cadence_neutral_parent_detail_model() -> None:
     assert "campaign_key" not in sql
 
 
-def test_initialize_progress_seeds_parent_and_expected_details() -> None:
+def test_initialize_progress_builds_parent_and_expected_detail_inserts() -> None:
     engine = _Engine()
 
     progress_id = initialize_pipeline_progress(
@@ -141,10 +146,12 @@ def test_initialize_progress_seeds_parent_and_expected_details() -> None:
     assert (
         f"INSERT INTO {PIPELINE_PROGRESS_SCHEMA}.{PIPELINE_PROGRESS_DETAIL_TABLE}"
     ) in sql
-    detail_params: list[dict[str, object]] = []
-    for params in engine.connection.params:
-        if isinstance(params, dict) and "request_key" in params:
-            detail_params.append(params)
+
+    detail_params = [
+        params
+        for params in engine.connection.params
+        if isinstance(params, dict) and "request_key" in params
+    ]
     assert [params["request_key"] for params in detail_params] == [
         "jan-key",
         "feb-key",
@@ -152,7 +159,7 @@ def test_initialize_progress_seeds_parent_and_expected_details() -> None:
     ]
 
 
-def test_detail_update_keeps_status_and_validation_as_columns() -> None:
+def test_detail_update_builds_status_evidence_and_metrics_parameters() -> None:
     engine = _Engine()
 
     update_pipeline_progress_detail(
@@ -182,19 +189,29 @@ def test_detail_update_keeps_status_and_validation_as_columns() -> None:
     assert params["metrics"] == '{"peak_rss_mib": 512.5}'
 
 
-def test_detail_update_rejects_invalid_status() -> None:
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"load_status": "successful"}, "Unsupported load_status"),
+        ({"validation_status": "complete"}, "Unsupported validation_status"),
+    ],
+)
+def test_detail_update_rejects_invalid_status(
+    kwargs: dict[str, str],
+    message: str,
+) -> None:
     engine = _Engine()
 
-    with pytest.raises(ValueError, match="Unsupported load_status"):
+    with pytest.raises(ValueError, match=message):
         update_pipeline_progress_detail(
             cast(Engine, cast(object, engine)),
             42,
             "jan-key",
-            load_status="successful",
+            **kwargs,
         )
 
 
-def test_parent_completion_is_derived_from_all_detail_evidence() -> None:
+def test_reconciliation_sql_requires_complete_matching_persisted_evidence() -> None:
     engine = _Engine()
 
     reconcile_pipeline_progress(cast(Engine, cast(object, engine)), 42)
@@ -216,103 +233,4 @@ def test_parent_completion_is_derived_from_all_detail_evidence() -> None:
     assert "detail_state.actual_count = progress.expected_partition_count" in sql
     assert "detail_state.completed_count = progress.expected_partition_count" in sql
     assert "detail_state.failed_count = 0" in sql
-    assert "THEN 'complete'" in sql
-    assert "THEN 'failed'" in sql
-    assert "ELSE 'pending'" in sql
-    assert "detail_state.attempted_count > 0" in sql
     assert "COALESCE(progress.completed_at, CURRENT_TIMESTAMP)" in sql
-    assert "completed_partition_count = detail_state.completed_count" in sql
-    assert "failed_partition_count = detail_state.failed_count" in sql
-
-
-def test_claim_is_atomic_and_released_only_after_verified_completion() -> None:
-    engine = _Engine()
-    assert try_claim_pipeline_progress(
-        cast(Engine, cast(object, engine)), 42, "scheduled__one"
-    )
-    claim_sql = engine.connection.statements[-1]
-    assert "selection_owner IS NULL OR selection_owner = :owner" in claim_sql
-    assert "failed_partition_count = 0" in claim_sql
-    assert "RETURNING id" in claim_sql
-
-    assert release_pipeline_progress_claim(
-        cast(Engine, cast(object, engine)), 42, require_complete=True
-    )
-    release_sql = engine.connection.statements[-1]
-    assert "execution_status = 'complete'" in release_sql
-    assert "validation_status = 'valid'" in release_sql
-    assert "selection_owner = NULL" in release_sql
-
-
-
-class _BarrierResult:
-    def __init__(self, row: dict[str, int] | None) -> None:
-        self.row = row
-
-    def mappings(self):
-        return self
-
-    def one_or_none(self):
-        return self.row
-
-
-class _BarrierConnection:
-    def __init__(self, row: dict[str, int] | None) -> None:
-        self.row = row
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        return False
-
-    def execute(self, statement, params=None):
-        assert params == {"pipeline_progress_id": 42}
-        return _BarrierResult(self.row)
-
-
-class _BarrierEngine:
-    def __init__(self, row: dict[str, int] | None) -> None:
-        self.row = row
-
-    def connect(self):
-        return _BarrierConnection(self.row)
-
-
-@pytest.mark.parametrize(
-    ("row", "expected"),
-    [
-        (
-            {"expected_count": 3, "actual_count": 3, "terminal_count": 3},
-            True,
-        ),
-        (
-            {"expected_count": 3, "actual_count": 3, "terminal_count": 2},
-            False,
-        ),
-        (
-            {"expected_count": 3, "actual_count": 2, "terminal_count": 2},
-            False,
-        ),
-    ],
-)
-def test_extract_attempt_barrier_requires_every_expected_terminal_partition(
-    row: dict[str, int],
-    expected: bool,
-) -> None:
-    engine = _BarrierEngine(row)
-
-    assert are_extract_attempts_terminal(
-        cast(Engine, cast(object, engine)),
-        42,
-    ) is expected
-
-
-def test_extract_attempt_barrier_rejects_unknown_progress() -> None:
-    engine = _BarrierEngine(None)
-
-    with pytest.raises(ValueError, match="unknown pipeline progress"):
-        are_extract_attempts_terminal(
-            cast(Engine, cast(object, engine)),
-            42,
-        )
