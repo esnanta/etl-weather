@@ -169,6 +169,7 @@ def test_failed_first_result_retries_after_first_pass_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_failed_ready",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
         first_result={"first_attempt_failed": True},
