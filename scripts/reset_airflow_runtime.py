@@ -9,10 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
-import signal
 import sys
-import time
 from pathlib import Path
 from typing import Callable
 
@@ -20,6 +17,11 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
+from scripts.airflow_processes import (
+    list_airflow_services,
+    list_localexecutor_workers,
+    terminate_processes,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,67 +45,32 @@ RUNTIME_FILENAMES = (
     "simple_auth_manager_passwords.json.generated",
 )
 
-# Main Airflow services must be stopped explicitly by the operator. The runtime
-# reset does not kill services that can schedule, resume, or coordinate work.
-BLOCKING_SERVICE_MARKERS = (
-    b"airflow api-server",
-    b"airflow scheduler",
-    b"airflow triggerer",
-    b"airflow dag-processor",
-)
-
-# LocalExecutor worker children can remain after their parent runtime exits.
-LOCAL_EXECUTOR_WORKER_MARKER = b"airflow worker -- localexecutor"
-
-
-def _matching_processes(
-    markers: tuple[bytes, ...],
-    proc_root: Path = Path("/proc"),
-) -> list[tuple[int, str]]:
-    """Return process IDs/commands whose cmdline contains one of the markers."""
-    if not proc_root.is_dir():
-        raise RuntimeError(f"Unable to inspect process table at {proc_root}.")
-
-    matches: list[tuple[int, str]] = []
-    current_pid = os.getpid()
-    for entry in proc_root.iterdir():
-        if not entry.name.isdecimal():
-            continue
-        pid = int(entry.name)
-        if pid == current_pid:
-            continue
-        try:
-            raw = (entry / "cmdline").read_bytes().replace(b"\0", b" ").strip()
-        except OSError:
-            continue
-        lowered = raw.lower()
-        if any(marker in lowered for marker in markers):
-            matches.append((pid, raw.decode(errors="replace")))
-    return matches
+# Reset policy remains local to this command: main Airflow services are blockers,
+# while residual LocalExecutor workers may be stopped after services are absent.
 
 
 def blocking_airflow_services(
     proc_root: Path = Path("/proc"),
 ) -> list[tuple[int, str]]:
-    """Return main Airflow services that must be stopped manually."""
-    return _matching_processes(BLOCKING_SERVICE_MARKERS, proc_root)
+    """Return main Airflow services that block guarded runtime reset."""
+    return list_airflow_services(proc_root=proc_root)
 
 
 def local_executor_workers(
     proc_root: Path = Path("/proc"),
 ) -> list[tuple[int, str]]:
-    """Return residual LocalExecutor worker processes safe for reset cleanup."""
-    return _matching_processes((LOCAL_EXECUTOR_WORKER_MARKER,), proc_root)
+    """Return residual LocalExecutor workers eligible for runtime cleanup."""
+    return list_localexecutor_workers(proc_root=proc_root)
 
 
 def stop_local_executor_workers(
     *,
     proc_root: Path = Path("/proc"),
     grace_seconds: float = 2.0,
-    sleep_fn: Callable[[float], None] = time.sleep,
-    kill_fn: Callable[[int, int], None] = os.kill,
+    sleep_fn: Callable[[float], None] | None = None,
+    kill_fn: Callable[[int, int], None] | None = None,
 ) -> list[int]:
-    """Terminate residual LocalExecutor workers, escalating after a short grace."""
+    """Stop residual LocalExecutor workers only when main services are absent."""
     blocking = blocking_airflow_services(proc_root)
     if blocking:
         rendered = "; ".join(
@@ -115,35 +82,16 @@ def stop_local_executor_workers(
         )
 
     workers = local_executor_workers(proc_root)
-    if not workers:
-        return []
+    kwargs: dict[str, object] = {
+        "remaining_processes_fn": lambda: local_executor_workers(proc_root),
+        "grace_seconds": grace_seconds,
+    }
+    if sleep_fn is not None:
+        kwargs["sleep_fn"] = sleep_fn
+    if kill_fn is not None:
+        kwargs["kill_fn"] = kill_fn
 
-    pids = [pid for pid, _ in workers]
-    for pid in pids:
-        try:
-            kill_fn(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-
-    if grace_seconds > 0:
-        sleep_fn(grace_seconds)
-
-    remaining = {pid for pid, _ in local_executor_workers(proc_root)}
-    for pid in pids:
-        if pid not in remaining:
-            continue
-        try:
-            kill_fn(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-    remaining_after_kill = {pid for pid, _ in local_executor_workers(proc_root)}
-    if remaining_after_kill:
-        raise RuntimeError(
-            "Unable to stop LocalExecutor worker process(es): "
-            + ", ".join(str(pid) for pid in sorted(remaining_after_kill))
-        )
-    return pids
+    return terminate_processes(workers, **kwargs)  # type: ignore[arg-type]
 
 
 def clear_airflow_runtime_state(
