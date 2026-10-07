@@ -750,13 +750,24 @@ Only after automated tests pass:
 
 - [ ] Start a disposable local Airflow runtime with scheduler/triggerer/workers.
 - [ ] Create representative Airflow metadata, including deferred/running state.
-- [ ] Run `python scripts/destroy_all.py` inspect-only and verify targets.
-- [ ] Run `python scripts/destroy_all.py --execute`.
-- [ ] Confirm all recognized Airflow processes are gone.
-- [ ] Confirm Airflow metadata/log/data runtime state is empty.
-- [ ] Confirm PostgreSQL is freshly recreated with canonical schema/tables.
-- [ ] Confirm `.env`, `env-example`, `airflow.cfg`, JWT key, source code,
-      and Git state are preserved.
+- [x] User inspect-only validation on 2026-10-07 detected the intended targets
+      and 32 residual LocalExecutor workers without mutating runtime/data state.
+- [x] User executed `python scripts/destroy_all.py --execute` with exact
+      `DESTROY` confirmation on 2026-10-07.
+- [x] Real destroy stopped all 32 recognized LocalExecutor workers;
+      `airflow_processes_remaining=0`.
+- [x] Airflow runtime/log/data verification passed:
+      `airflow_runtime_files_remaining=0`,
+      `data_entries_remaining=0`, and
+      `airflow_log_entries_remaining=0`.
+- [x] PostgreSQL session safety passed with `other_sessions=0`; the application
+      database was recreated and final verification reported
+      `database_ready=1`.
+- [x] Destroy preserved tracked Airflow configuration
+      `orchestration/airflow.cfg`; broader preserved-file/bootstrap verification
+      remains part of the next step.
+- [ ] Confirm `.env`, `env-example`, JWT key, source code, and Git state are
+      preserved after destroy.
 - [ ] Bootstrap Airflow from the destroyed state without manual cleanup.
 - [ ] Only then resume the clean scheduled-quarter pilot.
 
