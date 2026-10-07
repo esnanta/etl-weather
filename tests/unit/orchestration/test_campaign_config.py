@@ -49,3 +49,30 @@ def test_campaign_years_reject_inverted_range() -> None:
 
 def test_campaign_years_allow_one_full_year() -> None:
     orchestration_config._validate_campaign_years(2016, 2016)
+
+
+
+def test_root_config_import_does_not_require_campaign_environment() -> None:
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env.pop("CAMPAIGN_KEY", None)
+    env.pop("CAMPAIGN_START_YEAR", None)
+    env.pop("CAMPAIGN_END_YEAR", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import config; print(config.APPLICATION_SCHEMA)",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "climate_data"
