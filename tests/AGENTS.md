@@ -161,6 +161,43 @@ Provenance tests protect the minimum artifact traceability required by the curre
 
 Do not introduce transform-version or Git-commit provenance tests. RAW checksum/path remain Parquet metadata rather than PostgreSQL columns.
 
+## Test Construction Principles
+
+**Test boleh membuat data, tetapi jangan membuat ulang implementation-under-test.**
+
+Tests may construct deterministic input data, fixtures, timestamps, DataFrames, xarray datasets, temporary files, and instances of production models. They must not recreate the production algorithm, persistence semantics, campaign policy, or other implementation that the test claims to verify and then assert against that recreated behavior.
+
+Use production domain objects when an appropriate production type already exists. Do not introduce `SimpleNamespace`, ad-hoc dictionaries, or test-only domain classes merely to imitate a production model.
+
+**Gunakan production configuration ketika configuration adalah subject-under-test. Gunakan explicit minimal fixtures ketika logic/algorithm adalah subject-under-test.**
+
+In practice:
+
+- configuration-contract tests should use the production configuration or the production factory that resolves it, so accidental configuration changes are observable;
+- algorithm, scientific, validation, storage, and edge-case tests should use the smallest explicit fixture that makes the behavior understandable and independent from unrelated deployment configuration;
+- deliberately invalid or alternate configurations should be written explicitly in the test;
+- do not reuse deprecated project configuration values as generic fixtures because their historical meaning can make the test ambiguous;
+- do not create one global test fixture merely to remove repeated literals when individual tests need different semantic inputs.
+
+Examples:
+
+- a test that verifies the configured Aceh retrieval extent should use `ACEH_BBOX_COORDINATES` or `build_aceh_bbox()`;
+- a test that verifies a 0.1° two-by-two grid should use an explicit minimal two-by-two bounding box;
+- a test that verifies different bounding boxes produce different artifact identities should define two intentionally different bounding boxes.
+
+Mocks, fakes, stubs, and monkeypatches belong at justified external or collaborator boundaries. They may isolate CDS/network calls, PostgreSQL when database semantics are not the subject, Airflow runtime context, OS measurements, clocks, or failure injection. They must not mock away the scientific, persistence, scheduling, or policy logic being claimed by the test.
+
+## Test File Documentation
+
+Every new test module, and every existing test module materially revised during a test-quality refactor, must have a module-level docstring that states:
+
+1. the production behavior or contract being tested;
+2. the production object, function, class, or module under test;
+3. any mocked, stubbed, monkeypatched, or otherwise isolated boundary and why that isolation is legitimate;
+4. where stronger integration coverage owns behavior that the unit test intentionally does not prove.
+
+Keep this docstring concise and specific to the file. Do not use it as a duplicate copy of `README.md` or this AGENTS file.
+
 ## Test Data and Paths
 
 Prefer one to three local days, one or a few grid cells, explicit UTC/local timestamps, deterministic numeric values, explicit missing-value cases, and temporary directories for generated artifacts.
@@ -210,6 +247,9 @@ When adding or changing behavior:
 - include negative cases where failure behavior is part of the contract;
 - use integration coverage when correctness depends on real PostgreSQL behavior;
 - avoid duplicating the same contract across multiple test levels/domains;
+- keep unit assertions focused on behavior that the unit level can genuinely prove;
+- prefer PostgreSQL integration coverage when transaction, locking, conflict, or persisted-state semantics are the contract;
+- keep or add the required module-level test docstring when a test module is materially revised;
 - update `README.md` when testing strategy or canonical commands change;
 - update this file when a technical testing invariant changes.
 

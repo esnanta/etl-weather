@@ -1,13 +1,18 @@
-"""Check readable CDS pacing decisions without sending provider requests."""
+"""Verify submission-gate logging with the production pacing decision model.
+
+The tests exercise reserve_or_defer() with a real WeatherRequest and the
+production SubmissionDecision type. Database engine creation and durable pacing
+storage are isolated because this module verifies gate/log behavior rather than
+PostgreSQL locking, which is covered by orchestration integration tests.
+"""
 
 import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from types import SimpleNamespace
-
 import pytest
 
 from config import CDS_DATASET, CDS_VARIABLES
+from orchestration.repositories.submission_pacing import SubmissionDecision
 from orchestration.scheduling import submission_gate as pacing
 from orchestration.scheduling.submission_gate import SubmissionDeferred
 from pipeline.models.weather import DataSource, WeatherRequest
@@ -32,8 +37,11 @@ def test_submission_log_fields_use_separate_lines(monkeypatch, caplog, granted):
     )
     monkeypatch.setattr(
         "orchestration.scheduling.submission_gate.reserve_submission",
-        lambda engine: SimpleNamespace(granted=granted, checked_at=submitted,
-                                       next_allowed_at=next_allowed),
+        lambda engine: SubmissionDecision(
+            granted=granted,
+            checked_at=submitted,
+            next_allowed_at=next_allowed,
+        ),
     )
     request = WeatherRequest(
         source=DataSource.CDS,

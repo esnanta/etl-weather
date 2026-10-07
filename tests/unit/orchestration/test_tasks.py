@@ -1,3 +1,12 @@
+"""Verify orchestration task wrappers while isolating runtime and OS boundaries.
+
+The tests execute production request/date validation, task boundary checks,
+memory logging, and disk-warning logic. Pipeline runtime calls are replaced only
+when testing wrapper observability/failure propagation, while shutil.disk_usage
+is substituted as an operating-system boundary. Scientific transformation and
+persistence behavior are covered by their dedicated production-backed tests.
+"""
+
 import logging
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path

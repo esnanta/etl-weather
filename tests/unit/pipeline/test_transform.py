@@ -1,3 +1,13 @@
+"""Verify ERA5-Land scientific transformation with independent fixtures.
+
+The tests call production transform_data() directly. Input hourly series are
+small explicit scientific fixtures rather than production configuration. The
+cumulative-value helper models ERA5-Land source accumulation/reset behavior; it
+does not compute the expected local-daily result. Expected UTC/UTC+7 timestamps,
+daily totals, means, units, grid independence, and missing-value behavior are
+asserted independently from the production transformation algorithm.
+"""
+
 from dataclasses import replace
 from datetime import datetime, timezone
 import logging
@@ -17,15 +27,24 @@ def _create_era5_land_request() -> WeatherRequest:
         end_date="2022-01-01",
         variables=["tp", "t2m", "swvl1", "ssrd", "d2m"],
         bbox=BoundingBox(
-            north_lat=5.2,
-            west_lon=96.1,
-            south_lat=3.4,
-            east_lon=97.6,
+            north_lat=4.6,
+            west_lon=96.8,
+            south_lat=4.5,
+            east_lon=96.9,
         ),
     )
 
 
-def _era5_land_cumulative_value(timestamp: pd.Timestamp, hourly_increment: float) -> float:
+def _era5_land_cumulative_value(
+    timestamp: pd.Timestamp,
+    hourly_increment: float,
+) -> float:
+    """Build one deterministic ERA5-Land source accumulation profile.
+
+    ERA5-Land accumulated source values reset on the UTC day boundary. This
+    helper only creates that hourly provider-style input pattern; it does not
+    reproduce the production local-day aggregation formula or expected output.
+    """
     if timestamp.hour == 0:
         return 24 * hourly_increment
     return timestamp.hour * hourly_increment
@@ -78,7 +97,7 @@ def test_era5_land_daily_aggregation_keeps_utc_and_local_time() -> None:
 def test_era5_land_accumulated_variables_use_boundary_formula() -> None:
     transformed = transform_data(_create_loaded_dataset()).dataset
     assert transformed.loc[0, "tp"] == pytest.approx(24.0)
-    assert transformed.loc[0, "ssrd"] == pytest.approx(24 * 3600.0)
+    assert transformed.loc[0, "ssrd"] == pytest.approx(86_400.0)
 
 
 def test_era5_land_daily_mean_uses_all_24_local_hours() -> None:

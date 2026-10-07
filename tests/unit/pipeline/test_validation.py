@@ -1,3 +1,12 @@
+"""Verify scientific validation with explicit minimal grid/time fixtures.
+
+The tests call the production raw and transformed validators directly. Bounding
+boxes, timestamps, grid coordinates, and climate values are deliberately small
+fixtures chosen to expose validation contracts rather than mirror deployment
+configuration. Expected failures are stated independently from validator
+implementation details.
+"""
+
 from dataclasses import replace
 from datetime import datetime, timezone
 

@@ -2,7 +2,7 @@
 
 This document explains how testing is organized for the ERA5-Land ETL project, what each test level and domain protects, and how to run the current suites.
 
-For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules are kept in [`tests/AGENTS.md`](./AGENTS.md).
+For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules—including production-object use, fixture ownership, mocking boundaries, and test-module documentation—are kept in [`tests/AGENTS.md`](./AGENTS.md).
 
 ## Testing Structure
 
@@ -139,7 +139,7 @@ If a valid RAW or transformed artifact already exists, tests verify that the pip
 Activate the project environment first:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 ```
 
 Run all unit tests:
@@ -181,6 +181,8 @@ The README intentionally does not keep a permanent numeric pass-count baseline b
 
 - Use `pytest`.
 - Prefer small, deterministic fixtures.
+- Use production configuration when configuration itself is under test; use explicit minimal fixtures when testing logic or algorithms.
+- Test data may be constructed, but do not recreate the implementation being tested.
 - Keep routine unit tests offline.
 - Mock external systems rather than internal scientific logic.
 - Use explicit expected values for climate formulas, units, and timestamps.

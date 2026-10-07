@@ -1,3 +1,11 @@
+"""Verify canonical PostgreSQL schema DDL emitted by production schema builders.
+
+These unit tests execute the production create_schema/create-table functions
+through a minimal recording engine and assert the generated SQL contract only.
+Actual PostgreSQL DDL execution and repeated bootstrap behavior are verified by
+integration tests, so this module does not emulate database semantics.
+"""
+
 from typing import cast
 
 from sqlalchemy.engine import Engine
