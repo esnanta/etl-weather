@@ -13,7 +13,7 @@ from typing import cast
 import pytest
 from sqlalchemy.engine import Engine
 
-from orchestration.config import (
+from config import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
