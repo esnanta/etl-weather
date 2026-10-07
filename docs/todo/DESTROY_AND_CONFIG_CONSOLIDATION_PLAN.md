@@ -198,17 +198,17 @@ active LocalExecutor worker -> refuse or require explicit runtime cleanup
 
 Recommended implementation:
 
-- [ ] Remove reset-specific exceptions that allow deferred task instances.
-- [ ] Remove reset-specific exceptions that allow a running DagRun merely
+- [x] Remove reset-specific exceptions that allow deferred task instances.
+- [x] Remove reset-specific exceptions that allow a running DagRun merely
       because only deferred tasks remain.
-- [ ] Review whether residual LocalExecutor workers should remain auto-cleanable
-      by `reset_all.py`; prefer refusal if that keeps the reset contract clearer.
-- [ ] Keep `reset_airflow_runtime.py` as the narrower guarded runtime cleanup
+- [x] Residual LocalExecutor workers are not auto-cleaned by `reset_all.py`;
+      they are blockers under the conservative reset contract.
+- [x] Keep `reset_airflow_runtime.py` as the narrower guarded runtime cleanup
       command.
-- [ ] Preserve inspect-only default behavior.
-- [ ] Preserve `APP_ENV=dev` hard requirement.
-- [ ] Preserve exact-target confirmation before destructive reset actions.
-- [ ] Update reset tests so active/deferred/resumable state is rejected.
+- [x] Preserve inspect-only default behavior.
+- [x] Preserve `APP_ENV=dev` hard requirement.
+- [x] Preserve exact-target confirmation before destructive reset actions.
+- [x] Update reset tests so active/deferred/resumable state is rejected.
 
 Exit condition:
 
@@ -659,9 +659,10 @@ Use this order so each change has one clear purpose.
 
 ### D2 — Restore reset semantics
 
-- [ ] Revert reset-only allowances for deferred/running-DagRun clean-slate use.
-- [ ] Decide final residual-worker behavior for conservative reset.
-- [ ] Update/reset maintenance tests.
+- [x] Revert reset-only allowances for deferred/running-DagRun clean-slate use.
+- [x] Decide final residual-worker behavior for conservative reset: any active
+      LocalExecutor worker blocks `reset_all.py`.
+- [x] Update/reset maintenance tests.
 - [ ] Run focused operations tests.
 
 ### D3 — Shared Airflow process primitives
