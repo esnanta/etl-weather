@@ -1,23 +1,24 @@
+"""Verify pure PostgreSQL-loader data preparation and SQL construction.
+
+These unit tests exercise production loader functions with real weather,
+artifact, and database configuration models. A minimal recording connection is
+used only to capture SQLAlchemy statements and bound parameters; PostgreSQL
+idempotency, conflict handling, unchanged-partition decisions, and transaction
+rollback are verified by integration tests against an isolated real database.
+"""
+
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+import pandas as pd
 from sqlalchemy.engine import Connection
 
-import pandas as pd
-
-from pipeline.database import DatabaseConfig
 import pipeline.loaders.daily_climate_postgres as postgres_loader
+from pipeline.database import DatabaseConfig
 from pipeline.loaders.daily_climate_postgres import (
-    find_unchanged_daily_climate_partition,
-    load_to_postgresql,
     upsert_daily_climate_metadata,
     upsert_daily_climate_observations,
-)
-
-prepare_observation_dataframe = getattr(
-    postgres_loader,
-    "_prepare_observation_dataframe",
 )
 from pipeline.models.weather import (
     BoundingBox,
@@ -26,6 +27,11 @@ from pipeline.models.weather import (
     DatasetArtifact,
     TransformedWeatherDataset,
     WeatherRequest,
+)
+
+prepare_observation_dataframe = getattr(
+    postgres_loader,
+    "_prepare_observation_dataframe",
 )
 
 
@@ -87,6 +93,30 @@ def _config() -> DatabaseConfig:
     )
 
 
+class _ScalarResult:
+    """Return the one scalar value required by metadata INSERT ... RETURNING."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def scalar(self) -> int:
+        return self.value
+
+
+class _RecordingConnection:
+    """Capture SQL and parameters without emulating persistence semantics."""
+
+    def __init__(self, *, scalar_value: int = 42) -> None:
+        self.scalar_value = scalar_value
+        self.statements: list[str] = []
+        self.params: list[object] = []
+
+    def execute(self, statement, params=None):
+        self.statements.append(str(statement))
+        self.params.append(params)
+        return _ScalarResult(self.scalar_value)
+
+
 def test_database_config_uses_daily_climate_table_names() -> None:
     config = _config()
 
@@ -122,91 +152,10 @@ def test_prepare_observation_dataframe_preserves_missing_as_null() -> None:
     assert dataframe.loc[0, "tp_daily_total_mm"] is None
 
 
-class _ScalarResult:
-    def __init__(self, value):
-        self.value = value
-
-    def scalar(self):
-        return self.value
-
-
-class _MappingResult:
-    def __init__(self, value):
-        self.value = value
-
-    def mappings(self):
-        return self
-
-    def one_or_none(self):
-        return self.value
-
-
-class _CountResult:
-    def __init__(self, value: int):
-        self.value = value
-
-    def scalar_one(self):
-        return self.value
-
-
-class _PartitionLookupConnection:
-    def __init__(self, metadata, database_rows: int):
-        self.metadata = metadata
-        self.database_rows = database_rows
-        self.statements: list[str] = []
-        self.params: list[object] = []
-
-    def execute(self, statement, params=None):
-        sql = str(statement)
-        self.statements.append(sql)
-        self.params.append(params)
-        if "WHERE request_key = :request_key" in sql:
-            return _MappingResult(self.metadata)
-        if "WHERE daily_climate_id = :daily_climate_id" in sql:
-            return _CountResult(self.database_rows)
-        raise AssertionError(f"Unexpected SQL: {sql}")
-
-
-class _BeginContext:
-    def __init__(self, connection):
-        self.connection = connection
-
-    def __enter__(self):
-        return self.connection
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        return False
-
-
-class _Engine:
-    def __init__(self, connection):
-        self.connection = connection
-
-    def begin(self):
-        return _BeginContext(self.connection)
-
-
-class _UpsertConnection:
-    def __init__(self, daily_climate_id: int = 42):
-        self.daily_climate_id = daily_climate_id
-        self.statements: list[str] = []
-        self.params: list[object] = []
-
-    def execute(self, statement, params=None):
-        sql = str(statement)
-        self.statements.append(sql)
-        self.params.append(params)
-        if "INSERT INTO" in sql and "ON CONFLICT (request_key)" in sql:
-            return _ScalarResult(self.daily_climate_id)
-        if "INSERT INTO" in sql and "ON CONFLICT (daily_climate_id" in sql:
-            return None
-        raise AssertionError(f"Unexpected SQL: {sql}")
-
-
-def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
+def test_upsert_daily_climate_metadata_builds_identity_and_provenance(
     monkeypatch,
 ) -> None:
-    connection = _UpsertConnection(daily_climate_id=42)
+    connection = _RecordingConnection(scalar_value=42)
     artifact = _artifact()
 
     monkeypatch.setattr(
@@ -237,17 +186,15 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     assert daily_climate_id == 42
     assert len(connection.statements) == 1
     statement_text = connection.statements[0]
-    assert "INSERT INTO" in statement_text
-    assert "climate_data.daily_climate" in statement_text
+    assert "INSERT INTO climate_data.daily_climate" in statement_text
     assert "ON CONFLICT (request_key)" in statement_text
-    assert "downloaded_at" in statement_text
-    assert "transformed_artifact_path" in statement_text
-    assert "transformed_sha256" in statement_text
     assert "RETURNING id" in statement_text
 
     params = connection.params[0]
     assert isinstance(params, dict)
     assert params["request_key"]
+    assert params["dataset_name"] == "reanalysis-era5-land"
+    assert params["source"] == "cds"
     assert params["downloaded_at"] == datetime(
         2022, 1, 2, 3, 4, 5, tzinfo=UTC
     )
@@ -256,135 +203,8 @@ def test_upsert_daily_climate_metadata_uses_request_key_and_provenance(
     assert params["transformed_at"] == _transformed_at()
 
 
-def test_unchanged_partition_matches_provenance_and_observation_count() -> None:
-    connection = _PartitionLookupConnection(
-        metadata={
-            "id": 42,
-            "transformed_artifact_path": "data/transformed/daily.parquet",
-            "transformed_sha256": "transformed-hash",
-        },
-        database_rows=1,
-    )
-
-    result = find_unchanged_daily_climate_partition(
-        request_key="request-key",
-        transformed_artifact_path="data/transformed/daily.parquet",
-        transformed_sha256="transformed-hash",
-        expected_rows=1,
-        connection=cast(Connection, cast(object, connection)),
-        config=_config(),
-    )
-
-    assert result == (42, 1)
-    assert len(connection.statements) == 2
-
-
-def test_partition_is_not_skipped_when_checksum_changes() -> None:
-    connection = _PartitionLookupConnection(
-        metadata={
-            "id": 42,
-            "transformed_artifact_path": "data/transformed/daily.parquet",
-            "transformed_sha256": "old-hash",
-        },
-        database_rows=1,
-    )
-
-    result = find_unchanged_daily_climate_partition(
-        request_key="request-key",
-        transformed_artifact_path="data/transformed/daily.parquet",
-        transformed_sha256="new-hash",
-        expected_rows=1,
-        connection=cast(Connection, cast(object, connection)),
-        config=_config(),
-    )
-
-    assert result is None
-    assert len(connection.statements) == 1
-
-
-def test_partition_is_not_skipped_when_artifact_path_changes() -> None:
-    connection = _PartitionLookupConnection(
-        metadata={
-            "id": 42,
-            "transformed_artifact_path": "data/transformed/old.parquet",
-            "transformed_sha256": "transformed-hash",
-        },
-        database_rows=1,
-    )
-
-    result = find_unchanged_daily_climate_partition(
-        request_key="request-key",
-        transformed_artifact_path="data/transformed/daily.parquet",
-        transformed_sha256="transformed-hash",
-        expected_rows=1,
-        connection=cast(Connection, cast(object, connection)),
-        config=_config(),
-    )
-
-    assert result is None
-    assert len(connection.statements) == 1
-
-
-def test_partition_is_not_skipped_when_observation_count_changes() -> None:
-    connection = _PartitionLookupConnection(
-        metadata={
-            "id": 42,
-            "transformed_artifact_path": "data/transformed/daily.parquet",
-            "transformed_sha256": "transformed-hash",
-        },
-        database_rows=0,
-    )
-
-    result = find_unchanged_daily_climate_partition(
-        request_key="request-key",
-        transformed_artifact_path="data/transformed/daily.parquet",
-        transformed_sha256="transformed-hash",
-        expected_rows=1,
-        connection=cast(Connection, cast(object, connection)),
-        config=_config(),
-    )
-
-    assert result is None
-    assert len(connection.statements) == 2
-
-
-def test_load_skips_database_writes_for_unchanged_partition(monkeypatch) -> None:
-    connection = _PartitionLookupConnection(
-        metadata={
-            "id": 42,
-            "transformed_artifact_path": "data/transformed/daily.parquet",
-            "transformed_sha256": "transformed-hash",
-        },
-        database_rows=1,
-    )
-    monkeypatch.setattr(
-        "pipeline.loaders.daily_climate_postgres.create_database_engine",
-        lambda _: _Engine(connection),
-    )
-    monkeypatch.setattr("pipeline.loaders.daily_climate_postgres.create_schema", lambda *_: None)
-    monkeypatch.setattr("pipeline.loaders.daily_climate_postgres.create_daily_climate_table", lambda *_: None)
-    monkeypatch.setattr(
-        "pipeline.loaders.daily_climate_postgres.create_daily_climate_detail_table",
-        lambda *_: None,
-    )
-    monkeypatch.setattr(
-        "pipeline.loaders.daily_climate_postgres.artifact_path_for_metadata",
-        lambda _: "data/transformed/daily.parquet",
-    )
-    monkeypatch.setattr(
-        "pipeline.loaders.daily_climate_postgres.calculate_file_sha256",
-        lambda _: "transformed-hash",
-    )
-
-    result = load_to_postgresql(_dataset(), _artifact(), _config())
-
-    assert result == (42, 0)
-    assert len(connection.statements) == 2
-    assert all("INSERT INTO" not in sql for sql in connection.statements)
-
-
-def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None:
-    connection = _UpsertConnection()
+def test_upsert_daily_climate_observations_builds_grid_time_conflict_upsert() -> None:
+    connection = _RecordingConnection()
 
     rows_processed = upsert_daily_climate_observations(
         _dataset(),
@@ -396,8 +216,7 @@ def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None
     assert rows_processed == 1
     assert len(connection.statements) == 1
     statement_text = connection.statements[0]
-    assert "INSERT INTO" in statement_text
-    assert "climate_data.daily_climate_detail" in statement_text
+    assert "INSERT INTO climate_data.daily_climate_detail" in statement_text
     assert (
         "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)"
         in statement_text
@@ -413,7 +232,7 @@ def test_upsert_daily_climate_observations_uses_grid_time_conflict_key() -> None
 
 
 def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> None:
-    connection = _UpsertConnection()
+    connection = _RecordingConnection()
     dataset = _dataset()
     empty_dataset = TransformedWeatherDataset(
         request=dataset.request,
