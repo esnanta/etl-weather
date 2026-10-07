@@ -612,19 +612,188 @@ python -m pytest \
   -q
 ```
 
-**T5 is implementation-complete pending both local unit and PostgreSQL integration confirmation.**
+**T5 is complete.** Local verification on 2026-10-07:
+
+```text
+tests/unit/pipeline/test_load.py + test_database.py
+9 passed in 0.72s
+
+tests/integration/pipeline/test_postgresql_idempotency.py
+4 passed in 1.27s
+```
+
+Commands used:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/unit/pipeline/test_load.py \
+  tests/unit/pipeline/test_database.py \
+  -q
+
+python -m pytest \
+  tests/integration/pipeline/test_postgresql_idempotency.py \
+  -q
+```
 
 ### T6 — Review orchestration tests
 
-- [ ] Review campaign policy and selection tests.
-- [ ] Review progress wiring and reconciliation tests.
-- [ ] Review scheduled-selection and mapped-month tests.
-- [ ] Review submission logging and pacing tests.
-- [ ] Review task boundary tests.
-- [ ] Replace domain look-alikes with production objects where available.
-- [ ] Keep repository/Airflow/external side effects isolated when the unit test is intentionally testing policy or task orchestration.
-- [ ] Avoid monkeypatching the exact production decision logic that the test claims to verify.
-- [ ] Add/update the required module-level docstring in every revised file.
+- [x] Review campaign policy and selection tests.
+- [x] Review progress wiring and reconciliation tests.
+- [x] Review scheduled-selection and mapped-month tests.
+- [x] Review submission logging and pacing tests.
+- [x] Review task boundary tests.
+- [x] Replace domain look-alikes with production objects where available.
+- [x] Keep repository/Airflow/external side effects isolated when the unit test is intentionally testing policy or task orchestration.
+- [x] Avoid monkeypatching the exact production decision logic that the test claims to verify.
+- [x] Add/update the required module-level docstring in every revised file.
+
+#### T6 implementation result — 2026-10-07
+
+The orchestration suite was reviewed by responsibility rather than applying a blanket rule against monkeypatching.
+
+##### Campaign policy and scheduled selection
+
+`test_campaign.py` and `test_scheduled_selection_pilot.py` remain focused unit tests.
+
+They execute the production campaign policy / monthly-job selection code while repository I/O is replaced. This is appropriate because the behavior under test is ordering, eligibility, failed-quarter blocking, claim-result handling, and monthly mapping—not PostgreSQL transaction mechanics.
+
+T3 already replaced progress-shaped look-alikes with production `PipelineProgress`. No further structural rewrite is required.
+
+Real claim atomicity remains owned by `tests/integration/orchestration/test_pipeline_progress_reconciliation.py`.
+
+##### Progress wiring
+
+`test_progress_wiring.py` remains a task-wiring unit test.
+
+It verifies:
+
+- manual and scheduled request mapping;
+- status updates around load evidence;
+- failure propagation;
+- campaign repair handoff;
+- pacing deferral not being misclassified as extraction failure;
+- scheduled slot metadata.
+
+Runtime/database/artifact side effects remain isolated. T3 already replaced the material domain look-alikes with production `CampaignSelection` and `DatasetArtifact`.
+
+The local result/connection objects used specifically by `persisted_row_count()` remain candidates for later simplification only if that repository receives dedicated integration coverage. They are not expanded during T6.
+
+##### Pipeline progress repository
+
+`tests/unit/orchestration/test_pipeline_progress.py` was narrowed substantially.
+
+Removed from unit-level behavioral proof:
+
+- fake claim/release semantics;
+- fake extraction-attempt barrier result interpretation;
+- custom barrier result/connection/engine hierarchy.
+
+Retained at unit level:
+
+- cadence-neutral progress DDL construction;
+- parent/detail INSERT construction and seeded request-key parameters;
+- progress-detail update SQL/parameter construction;
+- status validation;
+- reconciliation SQL contract requiring matching canonical persisted evidence.
+
+The file now uses one minimal recording engine only to capture generated SQL and parameters, and its top-level docstring explicitly states that it does not emulate PostgreSQL state.
+
+##### Real PostgreSQL progress semantics
+
+`tests/integration/orchestration/test_pipeline_progress_reconciliation.py` is now explicitly documented as authoritative for:
+
+- persisted-evidence reconciliation;
+- atomic claims;
+- release behavior;
+- failed-partition recovery;
+- manual repair;
+- extraction-attempt barrier behavior.
+
+A new PostgreSQL integration test verifies the extraction-attempt barrier:
+
+1. three expected detail rows initially pending -> barrier false;
+2. one complete + one failed + one pending -> barrier false;
+3. all three details terminal (`complete` or `failed`) -> barrier true;
+4. unknown progress identity -> explicit error.
+
+This removes the need for the former test-side barrier database implementation.
+
+##### Submission logging and pacing
+
+`test_submission_log.py` remains valid after T3 because it executes production `reserve_or_defer()` with production `SubmissionDecision`. Database acquisition and durable reservation are isolated because the test asserts log/deferral behavior.
+
+`test_submission_pacing.py` remains unit coverage for interval/config validation.
+
+Actual atomic/durable pacing continues to be proven by
+`tests/integration/orchestration/test_submission_pacing.py`.
+
+##### Raw checkpoint / Airflow operator tests
+
+`test_raw_checkpoint_operator.py` remains valid.
+
+Airflow/runtime/progress collaborators are intentionally isolated so the tests can prove task deferral/retry policy without making CDS calls or relying on live PostgreSQL. The production operator/task decision logic itself remains under test.
+
+##### Task boundary tests
+
+`test_tasks.py` remains valid.
+
+Runtime ETL calls, disk-usage OS calls, and monitoring side effects are collaborator/external boundaries. The task wrapper functions themselves are executed. The `SimpleNamespace(free=...)` values model `shutil.disk_usage` output and are not production domain-state look-alikes.
+
+##### Orchestration database/bootstrap tests
+
+`test_database.py` remains valid as composition/order coverage. Its actual DDL/bootstrap result is already verified against PostgreSQL in
+`tests/integration/orchestration/test_orchestration_database_bootstrap.py`.
+
+##### Reporting tests
+
+`test_reporting.py` remains focused on reporting/query shaping and does not need live PostgreSQL merely to verify formatting/aggregation behavior.
+
+##### Files changed in T6
+
+- `tests/unit/orchestration/test_pipeline_progress.py`
+  - reduced database emulation;
+  - removed fake claim/barrier semantics;
+  - added required top-level module docstring.
+
+- `tests/integration/orchestration/test_pipeline_progress_reconciliation.py`
+  - added required top-level module docstring;
+  - added real PostgreSQL extraction-attempt barrier coverage.
+
+No production code was changed.
+
+Focused unit regression:
+
+```bash
+source activate-airflow.sh -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python -m pytest \
+  tests/unit/orchestration/test_campaign.py \
+  tests/unit/orchestration/test_pipeline_progress.py \
+  tests/unit/orchestration/test_progress_wiring.py \
+  tests/unit/orchestration/test_raw_checkpoint_operator.py \
+  tests/unit/orchestration/test_scheduled_selection_pilot.py \
+  tests/unit/orchestration/test_submission_log.py \
+  tests/unit/orchestration/test_submission_pacing.py \
+  tests/unit/orchestration/test_tasks.py \
+  -q
+```
+
+PostgreSQL orchestration verification:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/integration/orchestration/test_orchestration_database_bootstrap.py \
+  tests/integration/orchestration/test_pipeline_progress_reconciliation.py \
+  tests/integration/orchestration/test_submission_pacing.py \
+  -q
+```
+
+**T6 is implementation-complete pending focused unit and PostgreSQL integration confirmation.**
 
 ### T7 — Preserve legitimate external-boundary isolation
 
