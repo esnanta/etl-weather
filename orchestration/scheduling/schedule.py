@@ -10,13 +10,13 @@ import os
 from collections.abc import Mapping
 from datetime import timedelta
 
-from config import CADENCE_CRON, CADENCE_ENV, DEFAULT_CADENCE, ENABLED_ENV
+from config import CAMPAIGN_SCHEDULE_INTERVAL_MINUTES, ENABLED_ENV
 
 
 def campaign_schedule(
     environ: Mapping[str, str] | None = None,
 ) -> str | timedelta | None:
-    """Return a Jakarta-local cron tick only when explicitly enabled."""
+    """Return the fixed campaign interval only when explicitly enabled."""
     values = os.environ if environ is None else environ
     enabled = values.get(ENABLED_ENV, "false").strip().lower()
     if enabled not in {"true", "false"}:
@@ -24,9 +24,4 @@ def campaign_schedule(
     if enabled == "false":
         return None
 
-    cadence = values.get(CADENCE_ENV, DEFAULT_CADENCE).strip().lower()
-    if cadence not in CADENCE_CRON:
-        raise ValueError(
-            f"{CADENCE_ENV} must be one of: {', '.join(CADENCE_CRON)}."
-        )
-    return CADENCE_CRON[cadence]
+    return timedelta(minutes=CAMPAIGN_SCHEDULE_INTERVAL_MINUTES)
