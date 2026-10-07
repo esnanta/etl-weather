@@ -74,6 +74,8 @@ def _run_preflight(config: DatabaseConfig) -> None:
     recreate_postgres_database._validate_runtime_guards(
         config,
         allow_residual_localexecutor_workers=True,
+        allow_deferred_task_instances=True,
+        allow_running_dagrun_with_only_deferred_tasks=True,
     )
 
 
