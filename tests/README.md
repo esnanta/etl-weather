@@ -2,7 +2,7 @@
 
 This document explains how testing is organized for the ERA5-Land ETL project, what each test level and domain protects, and how to run the current suites.
 
-For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules are kept in [`tests/AGENTS.md`](./AGENTS.md).
+For installation and environment setup, see [`/README.md`](../README.md). For Airflow operation and recovery, see [`/orchestration/README.md`](../orchestration/README.md). Detailed developer-facing testing rules—including production-object use, fixture ownership, mocking boundaries, and test-module documentation—are kept in [`tests/AGENTS.md`](./AGENTS.md).
 
 ## Testing Structure
 
