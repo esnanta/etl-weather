@@ -166,17 +166,30 @@ def test_execute_reset_uses_verified_components_in_safe_order(monkeypatch) -> No
 
 
 
-def test_preflight_allows_residual_localexecutor_workers_for_reset_all(
+def test_preflight_allows_reset_cleanup_candidates(
     monkeypatch,
 ) -> None:
-    calls: list[tuple[bool, str]] = []
+    calls: list[tuple[bool, bool, bool, str]] = []
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._validate_static_guards",
         lambda config: None,
     )
 
-    def runtime_guard(config, *, allow_residual_localexecutor_workers=False):
-        calls.append((allow_residual_localexecutor_workers, config.database))
+    def runtime_guard(
+        config,
+        *,
+        allow_residual_localexecutor_workers=False,
+        allow_deferred_task_instances=False,
+        allow_running_dagrun_with_only_deferred_tasks=False,
+    ):
+        calls.append(
+            (
+                allow_residual_localexecutor_workers,
+                allow_deferred_task_instances,
+                allow_running_dagrun_with_only_deferred_tasks,
+                config.database,
+            )
+        )
 
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._validate_runtime_guards",
@@ -185,7 +198,7 @@ def test_preflight_allows_residual_localexecutor_workers_for_reset_all(
 
     reset_all._run_preflight(_config())
 
-    assert calls == [(True, "weather")]
+    assert calls == [(True, True, True, "weather")]
 
 
 def test_database_failure_prevents_local_cleanup(monkeypatch) -> None:
