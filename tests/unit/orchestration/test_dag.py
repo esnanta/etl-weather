@@ -49,7 +49,7 @@ def test_etl_dag_uses_one_mapped_monthly_task_group(dag) -> None:
         LOAD_TASK_ID,
     }
 
-    task_group = dag.task_group.get_child_by_label("monthly_etl")
+    task_group = dag.task_group.children.get("monthly_etl")
     assert task_group is not None
     assert task_group.is_mapped is True
 
