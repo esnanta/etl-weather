@@ -691,7 +691,8 @@ Use this order so each change has one clear purpose.
 - [x] Add final clean-state verification for Airflow processes/runtime files,
       data/log directories, and canonical application database tables.
 - [x] Add `test_destroy_all.py`.
-- [ ] Run focused operation tests and full unit regression.
+- [x] User verification on 2026-10-07: 81 focused operations tests passed in
+      3.21s and the full unit suite passed 318 tests in 8.20s.
 
 ### D5 — Consolidate config
 
