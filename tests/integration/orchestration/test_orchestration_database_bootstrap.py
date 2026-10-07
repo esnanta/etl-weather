@@ -8,7 +8,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from orchestration.config import (
+from config import (
     PACING_SCHEMA,
     PACING_TABLE,
     PIPELINE_PROGRESS_DETAIL_TABLE,
