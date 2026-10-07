@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from orchestration.campaign.policy import CampaignQuarter, iter_campaign_quarters
-from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
