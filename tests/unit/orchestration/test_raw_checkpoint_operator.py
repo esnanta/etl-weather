@@ -6,13 +6,29 @@ retry, and progress contracts for genuine provider errors.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from airflow.sdk.exceptions import TaskDeferred
 
 from orchestration.operators import raw_checkpoint
 from orchestration.scheduling.submission_gate import SubmissionDeferred
+
+
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0, "0s"),
+        (29.1, "30s"),
+        (1723, "28m 43s"),
+        (3600, "1h 0m 0s"),
+        (3723, "1h 2m 3s"),
+    ],
+)
+def test_format_wait_duration(seconds: float, expected: str) -> None:
+    assert raw_checkpoint.format_wait_duration(seconds) == expected
 
 
 def test_operator_exposes_month_label_after_runtime_resolution(
