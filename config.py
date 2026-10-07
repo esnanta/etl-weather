@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -67,9 +67,12 @@ CADENCE_ENV = "ERA5_CAMPAIGN_SCHEDULE_CADENCE"
 # Default scheduler cadence when scheduling is enabled.
 DEFAULT_CADENCE = "2h"
 
-# Supported scheduler cadences and Jakarta-local cron expressions.
+# Supported scheduler cadences and Airflow schedule expressions.
+# Use timedelta for 45m because standard five-field cron cannot represent a
+# continuous 45-minute interval without alternating 45- and 15-minute gaps.
 CADENCE_CRON = {
     "30m": "*/30 * * * *",
+    "45m": timedelta(minutes=45),
     "1h": "0 * * * *",
     "2h": "0 */2 * * *",
 }
