@@ -1,3 +1,17 @@
+"""Verify WeatherPipeline checkpoint orchestration through production ETL interfaces.
+
+These tests exercise the production WeatherPipeline and production request,
+dataset, artifact, and ETL interface contracts. Small recording collaborators
+implement the injected production interfaces only to expose runtime decisions:
+whether extraction, checkpoint load/save, transformation, validation, and load
+delegation occur.
+
+The collaborators do not claim to verify concrete CDS extraction, local
+storage, ERA5-Land transformation, or PostgreSQL persistence. Those concrete
+components are covered by their dedicated unit tests and PostgreSQL integration
+tests.
+"""
+
 from datetime import UTC, datetime
 from pathlib import Path
 
