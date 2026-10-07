@@ -235,15 +235,18 @@ DataFrames, NetCDF/Parquet contents, or excessively large request structures.
 ## 11. Name DAGs and Tasks by Runtime Intent
 
 Use stable names that communicate orchestration intent and checkpoint
-postconditions. For the current five-task graph, prefer:
+postconditions. The current DAG maps one `monthly_etl` TaskGroup per month:
 
 ```text
 build_monthly_requests
-attempt_raw_checkpoint [YYYY-MM]
-resolve_raw_checkpoint [YYYY-MM]
-ensure_transformed_checkpoint [YYYY-MM]
-load [YYYY-MM]
+monthly_etl[YYYY-MM].attempt_raw_checkpoint
+monthly_etl[YYYY-MM].resolve_raw_checkpoint
+monthly_etl[YYYY-MM].ensure_transformed_checkpoint
+monthly_etl[YYYY-MM].load
 ```
+
+TaskGroup qualification is orchestration structure only; the logical month and
+request identity remain independent from Airflow task IDs.
 
 The pipeline runtime API beneath these tasks uses
 `ensure_raw_checkpoint()`, `ensure_transformed_checkpoint()`, and `load()`.
