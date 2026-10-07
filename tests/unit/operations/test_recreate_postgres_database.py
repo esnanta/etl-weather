@@ -251,3 +251,67 @@ def test_direct_script_execution_resolves_root_config_without_shadowing() -> Non
     assert result.returncode == 3
     assert "database recreation is disabled when APP_ENV=prod" in result.stderr
     assert "ImportError" not in result.stderr
+
+
+def test_runtime_guard_can_ignore_only_residual_localexecutor_workers(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_TASK_STATES},
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_DAGRUN_STATES},
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_processes",
+        lambda: [(501, "airflow worker -- LocalExecutor: <idle>")],
+    )
+    monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
+
+    maintenance._validate_runtime_guards(
+        _database_config(),
+        allow_residual_localexecutor_workers=True,
+    )
+
+
+def test_runtime_guard_still_blocks_main_airflow_service_when_workers_allowed(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_TASK_STATES},
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_DAGRUN_STATES},
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_processes",
+        lambda: [
+            (501, "airflow worker -- LocalExecutor: <idle>"),
+            (502, "airflow scheduler"),
+        ],
+    )
+    monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
+
+    with pytest.raises(RuntimeError, match="still running"):
+        maintenance._validate_runtime_guards(
+            _database_config(),
+            allow_residual_localexecutor_workers=True,
+        )
