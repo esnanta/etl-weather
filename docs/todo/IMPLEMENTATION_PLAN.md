@@ -1,722 +1,543 @@
 # Apache Airflow Implementation Plan
 
-This document tracks the staged introduction of Apache Airflow orchestration.
+This document tracks the remaining work required to operate the ERA5-Land
+historical campaign safely with Apache Airflow.
+
 It follows the architecture and engineering contracts in
 [`../../AGENTS.md`](../../AGENTS.md), the current pipeline behavior in
 [`../../README.md`](../../README.md), and the Airflow-specific policies in:
 
-- [`../../docs/AIRFLOW_BEST_PRACTICE.md`](../../docs/AIRFLOW_BEST_PRACTICE.md)
-- [`../../docs/AIRFLOW_CODING_GUIDELINES.md`](../../docs/AIRFLOW_CODING_GUIDELINES.md)
+- [`../AIRFLOW_BEST_PRACTICE.md`](../AIRFLOW_BEST_PRACTICE.md)
+- [`../AIRFLOW_CODING_GUIDELINES.md`](../AIRFLOW_CODING_GUIDELINES.md)
 
-Airflow must orchestrate the existing pipeline without replacing its scientific
-transformation, validation, checkpoint, provenance, or persistence behavior.
+Airflow orchestrates the existing pipeline. Scientific transformation,
+validation, deterministic checkpoint behavior, request identity, artifact
+layout, provenance, and canonical PostgreSQL persistence remain owned by
+`pipeline/`.
 
-## Current Implementation Status
+This file is an implementation and rollout checklist. Detailed operating
+commands belong in `orchestration/README.md`.
 
-Implementation progress through 2026-09-26:
+---
 
-- JSON-safe request specifications and checkpoint-backed runtime entrypoints;
-- 105 core unit tests after the runtime-boundary change;
-- manual date-range ERA5-Land ETL DAG and thin task wrappers;
-- Airflow 3.3.2 dependency boundary and local activation/configuration;
-- DagBag, task graph, retry, timeout, pool, interval, and ten-year mapping tests;
-- 119 tests passed in the combined Airflow/pipeline environment;
-- two PostgreSQL integration tests passed against a configured isolated test
-  database on 2026-09-23;
-- local metadata migration and `cds_api` pool command verified without running
-  an external CDS request or historical ETL run;
-- local standalone startup verified, followed by diagnosis of the first smoke
-  run's pre-execution failure and configuration of a shared Airflow JWT secret;
-- Airflow DAG constructor types made explicit for IDE/static inspection:
-  mutable `tags` and `ParamsDict` parameters;
-- one-month live ETL run completed successfully on 2026-09-24;
-- same-month rerun completed successfully in approximately ten seconds with
-  validated RAW and transformed checkpoints resumed;
-- PostgreSQL confirmed the unchanged partition using matching request key,
-  artifact path, checksum, and 16,430-row count, then skipped the database
-  write with `rows_processed=0`;
-- task-process peak RSS instrumentation added to all three mapped ETL boundaries;
-  measurements are logged on success and failure without changing XCom;
-- a three-month January-March 2024 DagRun completed successfully in about
-  20 minutes 26 seconds, producing three RAW and three transformed artifacts;
-- PostgreSQL contained the expected 48,230 observations across the three
-  monthly partitions, with complete local-day ranges and recorded checksums;
-- the three-month artifacts occupied approximately 16 MB RAW and 1.5 MB
-  transformed storage. Peak task memory was not captured by this run;
-- an April 2024 fresh run completed on 2026-09-25 in approximately 33 minutes
-  36 seconds, despite seven recovered CDS download read timeouts;
-- April task-process peak RSS was 517.59 MiB for extraction, 572.22 MiB for
-  transformation, and 307.30 MiB for loading; the load processed 15,900 rows;
-- subsequent April DagRuns succeeded; two extraction logs confirm RAW checkpoint
-  resume, with one resumed extraction peak RSS of 457.25 MiB.
-- idempotent initialization for all 40 quarter batches and database-backed parent reconciliation are implemented as Airflow-neutral helpers; their 45 orchestration tests and isolated PostgreSQL reconciliation test passed locally on 2026-09-26;
-- the Airflow-neutral selector now seeds exact campaign identities, reconciles
-  in calendar order, and chooses the earliest eligible incomplete quarter;
-- the existing DAG now maps monthly ETL boundaries through progress-aware wrappers;
-- validated whole-month manual loads now update exact campaign detail identities;
-- one persisted failed detail blocks subsequent automatic CDS submissions, and
-  an atomic owner claim prevents competing selectors from choosing the same
-  quarter; release follows verified completion or manual recovery;
-- CDS pacing uses a PostgreSQL submission clock, a 30-minute default interval,
-  a deferrable extraction operator, and resumable retrieval chunks. CI passed
-  186 tests with five PostgreSQL integration tests skipped; the isolated local
-  pacing integration test passed separately;
-- the manual May 2024 live pilot completed successfully on 2026-09-26. The
-  context request was submitted at 17:30:06 Asia/Jakarta, the May request was
-  deferred at 17:31:19, and the triggerer woke the task at 18:00:06. The
-  context chunk resumed from its checkpoint, and May was submitted at 18:00:13
-  (about 30 minutes 7 seconds after the first submission). RAW validation
-  passed with 768 hourly steps, 1,505 grid points, and all five variables;
-- the manual April 2024 recovery on 2026-09-27 advanced 2024 Q2 to 3/3
-  verified months and the campaign report to 1/40 complete quarters. The
-  latest recorded valid load was April at 10:36:10 Asia/Jakarta. The
-  DagRun reached `success` at 10:36:11, about 12 seconds after it started;
-- the read-only campaign report on 2026-09-26 showed 0/40 complete
-  quarters and a last valid load at 20:20:09 Asia/Jakarta. A valid monthly
-  load does not complete its three-month quarter; the report now makes
-  partial month counts and last-loaded month explicit;
-- a post-change June 2024 manual extraction pilot submitted the May 31 context
-  POST at 19:35:24.566821 Asia/Jakarta and the June POST at 20:05:35.214587,
-  1,810.648 seconds later. The June submission was initially deferred, the
-  triggerer woke the task, and the cached context chunk was reused. A broken
-  object-store download retried safely; there was no observed job POST retry.
-  June RAW passed temporal/spatial validation (744 hours, 1,505 grid points,
-  five variables). The extract log alone does not establish DagRun/load success;
-- the 19:31 Asia/Jakarta local-host snapshot reported 5.97 GiB free for
-  artifacts/logs/metadata, 53.59 GiB temporary space, 5.70 GiB available RAM,
-  a 23.05 MiB PostgreSQL database, and two visible triggerer-related
-  processes. This is a local sample, not a forecast of a future deployment;
+## 1. Current Scope
 
-Still pending:
-
-- the existing DAG uses the mode contract, exact progress identity, mapped
-  boundary status, persisted load proof, and live-verified CDS pacing; its
-  schedule remains disabled;
-- PostgreSQL progress/pacing backup and restart recovery are documented;
-  keep the measured local disk headroom visible during the campaign. Future
-  deployment capacity checks belong to that deployment, not the Stage 8 code gate;
-- the configurable Asia/Jakarta scheduler cadence is implemented but disabled
-  by default; a read-only exact-identity 2016–2025 summary is available.
-  The offline scheduled selection pilot is implemented; complete remaining
-  observability and a controlled real scheduled DagRun before enabling the
-  bounded campaign;
-- decide future operational ingestion after the historical campaign. No additional DAG is part of the current plan.
-
-## Target Structure
-
-The initial orchestration layout above was later refined during the P2–P4
-responsibility refactor. The current structure is documented in
-`orchestration/README.md`; the important boundary remains unchanged:
-`pipeline/` owns ETL/scientific behavior, while `orchestration/` owns
-scheduling, progress, pacing, monitoring, and Airflow control flow.
-
-Responsibilities:
-
-- `activate-airflow.sh`: activates `myvenv` and anchors Airflow runtime state
-  to the repository's `orchestration/` directory.
-- `generate-airflow-jwt-secret.sh`: creates or atomically rotates the protected
-  Airflow JWT secret file without placing the value in `.env`.
-- `orchestration/dags/`: thin DAG declarations, scheduling, dependency wiring,
-  retries, timeouts, pools, concurrency, and small XCom metadata.
-- `orchestration/tasks/`: thin Airflow task wrappers that call Airflow-neutral
-  runtime entrypoints.
-- `orchestration/docs/`: implementation notes, operating procedures, and
-  checklists.
-- `pipeline/`: all extraction, scientific transformation, validation, storage,
-  provenance, and database logic.
-- `scripts/`: local command-line entrypoints that remain usable without Airflow.
-
-## Initial Historical ETL Design (Implemented Baseline)
-
-This section records the implemented manual baseline before the quarterly
-campaign agreed on 2026-09-25. Stage 8 supersedes the proposed full-range
-rollout without changing completed stages 0–6. The first DAG is a manually
-triggered ERA5-Land ETL. The user
-must provide an explicit inclusive period, for example:
+The active historical campaign is:
 
 ```text
-2016-01-01 through 2025-12-31
+dataset  : reanalysis-era5-land
+period   : 2016-01-01 -> 2025-12-31
+unit     : one calendar quarter per scheduled DagRun
+months   : 120
+quarters : 40
+timezone : Asia/Jakarta
 ```
 
-or:
+The active provider variables remain:
 
 ```text
-2014-01-01 through 2024-12-31
+tp
+t2m
+swvl1
+ssrd
+d2m
 ```
 
-Airflow must not infer a ten-year range from the wall clock. The selected range
-is a runtime input and must pass the existing request validation.
-
-The historical range is split by the pipeline into deterministic monthly
-partitions. A ten-year range is therefore approximately 120 partitions in one
-reviewed DagRun, rather than thousands of daily DagRuns.
+The configured Aceh bounding box remains:
 
 ```text
-explicit inclusive range
-          |
-          v
-validate and split by month
-          |
-          v
-monthly request specifications
-          |
-          v
-resolve_raw_checkpoint (mapped)
-          |
-          v
-ensure_transformed_checkpoint (mapped)
-          |
-          v
-load (mapped)
+north : 6.1
+south : 1.9
+west  : 94.9
+east  : 98.3
 ```
 
-Validation remains inside the existing runtime boundaries. There are no
-separate Airflow validation tasks.
-
-## Artifact and Worker Assumption
-
-The current `LocalDataStorage` implementation requires every task worker to
-see the same `data/` filesystem. The initial local deployment must therefore
-use a single host or a genuinely shared data mount.
-
-A distributed executor with isolated worker filesystems is out of scope until
-the project adopts shared storage through an explicit design decision.
-
-## Stage 0 — Branch and Baseline Guard
-
-- [x] Confirm that all reads and writes target branch `dev`.
-- [x] Record the current `dev` commit before implementation.
-- [x] Confirm that the working tree or remote branch contains no unexpected
-      overlapping changes.
-- [x] Run the existing core unit-test baseline.
-- [x] Run the isolated PostgreSQL integration baseline when the configured test
-      database is available.
-- [x] Do not modify scientific contracts, units, timestamps, request identity,
-      artifact layout, or database identity as part of Airflow setup.
-
-Exit condition: the pre-Airflow baseline is known and passing.
-
-## Stage 1 — Airflow-Neutral Boundary Handoff
-
-The existing runtime methods return xarray and Pandas-backed objects. Those
-objects must not cross Airflow task boundaries or enter XCom.
-
-- [x] Add a JSON-safe request specification serializer and parser.
-- [x] Reuse `WeatherRequest`, `build_request()`, `validate_request()`, and
-      `build_request_key()`; do not create a second identity algorithm.
-- [x] Add an Airflow-neutral extraction entrypoint for one monthly request.
-- [x] Add an Airflow-neutral transformation entrypoint that rehydrates and
-      validates the deterministic RAW checkpoint.
-- [x] Add an Airflow-neutral load entrypoint that rehydrates and validates the
-      deterministic transformed checkpoint.
-- [x] Delegate internally to `ensure_raw_checkpoint()`,
-      `ensure_transformed_checkpoint()`, and `load()`.
-- [x] Return only small status/control metadata from each boundary.
-- [x] Preserve the existing `run_monthly_batch()` CLI behavior.
-- [x] Add unit tests for fresh and resumed cross-process handoff.
-- [x] Confirm that core tests still run without importing Airflow.
-
-Exit condition: each runtime boundary can execute in a separate process using
-only a request specification or deterministic artifact reference.
-
-## Stage 2 — Orchestration Configuration Helpers
-
-- [x] Centralize reusable non-secret request constants without coupling
-      `pipeline/` to Airflow.
-- [x] Preserve the active dataset `reanalysis-era5-land`.
-- [x] Preserve provider variables `tp`, `t2m`, `swvl1`, `ssrd`, and
-      `d2m`.
-- [x] Preserve the Aceh bounding box: north `6.1`, south `1.9`, west
-      `94.9`, east `98.3`.
-- [x] Implement one pure `Asia/Jakarta` interval-to-inclusive-date helper.
-- [x] Reject empty, reversed, and non-local-midnight intervals.
-- [x] Keep historical start and end dates explicit runtime inputs.
-- [x] Use the existing monthly request splitter.
-- [x] Test one-day, multi-day, cross-timezone, invalid-boundary, and ten-year
-      partition cases.
-
-Exit condition: explicit historical inputs deterministically produce the
-expected monthly request specifications.
-
-## Stage 3 — Historical ETL DAG
-
-Create one manual DAG named `cds_era5_land_etl`.
-
-- [x] Place the DAG in `orchestration/dags/`.
-- [x] Place task wrappers in `orchestration/tasks/`.
-- [x] Use `schedule=None`.
-- [x] Set `catchup=False`.
-- [x] Set a fixed timezone-aware start date in `Asia/Jakarta`.
-- [x] Set `max_active_runs=1`.
-- [x] Accept explicit inclusive start and end dates.
-- [x] Validate the requested range before expansion.
-- [x] Split the range into monthly requests with pipeline-owned code.
-- [x] Use dynamic task mapping for monthly partitions.
-- [x] Keep the dependency graph
-      `attempt_raw_checkpoint -> prepare_retry_pass -> resolve_raw_checkpoint -> ensure_transformed_checkpoint -> load`.
-- [x] Assign extraction to the `cds_api` pool.
-- [x] Start the `cds_api` pool with one slot.
-- [x] Configure extraction for at most three attempts with bounded backoff.
-- [x] Configure transformation with no automatic retry.
-- [x] Configure loading for at most two attempts with bounded backoff.
-- [x] Set finite execution timeouts for every boundary.
-- [x] Let original failures reach Airflow.
-- [x] Keep XCom payloads small and JSON-serializable.
-- [x] Ensure `run_id`, task attempts, and wall-clock time never affect
-      `request_key` or artifact paths.
-
-Exit condition (completed baseline): a single manual DagRun can accept a reviewed
-explicit range and expose the status of its monthly partitions. Stage 8 adds
-automatic scheduling in bounded quarters; a full ten-year DagRun is no longer
-the planned rollout.
-
-## Stage 4 — Local Airflow Environment
-
-Airflow and pipeline dependencies use the single `requirements.txt` manifest.
-The pinned Airflow version must still be installed first with its matching
-official constraints, because those constraints are specific to the Airflow
-installation step and do not govern every project package.
-
-- [x] Confirm the deployment Python version.
-- [x] Select and pin a compatible Apache Airflow version.
-- [x] Keep the Airflow and pipeline dependency pins in one `requirements.txt`.
-- [x] Install Airflow using its matching official constraints file.
-- [x] Configure `AIRFLOW_HOME` to the repository's `orchestration/`
-      directory through the root `activate-airflow.sh` script.
-- [x] Set `dags_folder` to `orchestration/dags/`.
-- [x] Set `load_examples=False`.
-- [x] Configure the initial local executor/development mode.
-- [x] Create the `cds_api` pool with one slot.
-- [x] Resolve CDS and PostgreSQL credentials through Airflow Connections,
-      environment-backed secrets, or the approved local secret boundary.
-- [x] Require one file-backed `api_auth/jwt_secret` shared by the scheduler,
-      task runner, and API server through the supported `_CMD` configuration.
-- [x] Provide a separate script that securely creates or rotates the shared
-      JWT secret file without printing its value.
-- [x] Never commit credentials, logs, `airflow.db`, generated PID files, or
-      serialized task data.
-- [x] Update `.gitignore` for Airflow runtime state.
-- [x] Verify the exact CLI commands against the pinned Airflow version.
-
-Exit condition: the local Airflow environment parses the repository DAG
-without examples or committed runtime state.
-
-## Stage 5 — Orchestration README
-
-Use the supplied README only as a document-structure reference. Rewrite its
-project-specific content for this repository.
-
-- [x] Explain that commands run from the repository root.
-- [x] Document supported Python and Airflow versions.
-- [x] Document installation with the matching official constraint URL.
-- [x] Document `AIRFLOW_HOME` activation.
-- [x] Document metadata database initialization/migration.
-- [x] Document local startup and shutdown commands for the pinned version.
-- [x] Document the orchestration directory structure.
-- [x] Document the three-boundary task graph.
-- [x] Document explicit historical date parameters with examples.
-- [x] Document the `cds_api` pool and shared-filesystem assumption.
-- [x] Document credentials without exposing secret values.
-- [x] Document safe rerun/resume behavior.
-- [x] Avoid an unguarded destructive database-reset command.
-
-Exit condition: a developer can install, start, trigger, inspect, stop, and
-safely rerun the historical ETL from `orchestration/README.md`.
-
-## Stage 6 — Airflow Tests
-
-- [x] Verify DagBag import has no errors.
-- [x] Verify DAG import performs no CDS, database, or artifact I/O.
-- [x] Verify the DAG ID and three runtime boundary task IDs.
-- [x] Verify dependency order.
-- [x] Verify timezone, fixed start date, schedule, `catchup`, and
-      `max_active_runs`.
-- [x] Verify extraction pool, retries, retry delays, and timeouts.
-- [x] Verify monthly dynamic mapping inputs.
-- [x] Verify XCom payload shape and size.
-- [x] Verify wrappers delegate to pipeline runtime entrypoints.
-- [x] Verify wrapper exceptions propagate.
-- [x] Verify no Airflow import leaks into `pipeline/`.
-- [x] Run all existing core unit tests without Airflow.
-- [x] Run PostgreSQL integration tests when the isolated database is available.
-
-Exit condition: orchestration tests and the unchanged core baseline pass.
-
-## Capacity Snapshot — 2026-09-25
-
-On the local host, `free -h` reported 15 GiB total RAM, 6.6 GiB available,
-and no swap in use. The measured peak RSS for one fresh monthly task process
-was 572.22 MiB during transformation. With `max_active_tasks=2`, concurrent
-task memory, Airflow services, PostgreSQL, and the operating system must be
-considered together; these per-process peaks do not measure host-wide peak RAM.
-
-`df -h data` reported the `/home` filesystem at 99% usage with only 3.6 GiB
-available. Existing `data/` occupies 23 MiB for January–April 2024, while
-`orchestration/airflow.db` is about 1 MiB. A simple 120/4 scaling of those
-four months suggests roughly 690 MiB of NetCDF/Parquet artifacts for 120
-months, **excluding** PostgreSQL tables/indexes/WAL, CDS temporary downloads,
-Airflow logs/metadata, and normal filesystem headroom. Network read timeouts
-during April make elapsed-time extrapolation unreliable.
-
-These measurements describe the local development host. A future cloud
-installation must be evaluated at deployment, not as a prerequisite to
-implementing the schedule. Monitor local disk headroom during any local run.
-Mapped tasks now log a non-blocking warning below 5 GiB available on their
-local artifact or temporary filesystem; this does not measure remote
-PostgreSQL storage. Keep the final date range explicit. The local Airflow
-metadata database uses SQLite for development; review migration to an
-external database before increasing concurrency for a full-range run.
-
-## Stage 7 — Controlled Pilot (Completed)
-
-- [x] Run one monthly partition.
-- [x] Rerun the same month and confirm RAW/Parquet resume and database
-      idempotency.
-- [x] Run three consecutive monthly partitions.
-- [x] Check artifact count, provenance, row counts, disk usage, task duration,
-      and database load.
-- [x] Instrument extraction, transformation, and loading to log process peak RSS.
-- [x] Capture peak memory from fresh and resumed live task runs.
-- [x] Warn in mapped-task logs when local artifact or temporary disk space
-      falls below 5 GiB or cannot be measured.
-- [x] Record the successful January–March 2024 three-month pilot and the
-      subsequent April fresh and resumed runs.
-
-Exit condition (met): monthly resume and a three-month run have been verified.
-The former proposal to trigger one complete ten-year DagRun has been replaced
-by Stage 8.
-
-## Stage 8 — Scheduled Quarterly Historical Campaign (In Progress)
-
-**Agreed scope (2026-09-25):** extend the existing
-`cds_era5_land_etl` DAG with automatic and explicit manual modes.
-The campaign covers 2016-01-01 through 2025-12-31: 40 calendar
-quarters and 120 monthly partitions. Airflow lists **one DAG**.
-Each automatic DagRun selects at most one quarter and maps its three
-monthly RAW-checkpoint attempt/resolution, transformed-checkpoint, and load chains.
-The 40 quarters are campaign progress, not 40 DAG definitions;
-manual recovery also uses the same DAG. A manual annual range is an
-optional operator input, not a separate DAG per year.
-
-Scheduling and selection:
-
-- [x] Define an unambiguous mode contract in `orchestration/mode.py` before
-      DAG integration. A scheduled run will select the next eligible incomplete
-      quarter; a manual run requires explicit inclusive dates. Reject incomplete
-      date pairs and ambiguous mode inputs.
-
-The mode contract uses Airflow's DagRun `run_type` as its sole mode authority.
-No `mode` parameter is accepted. `scheduled` runs require empty `dag_run.conf`
-and return no operator dates; a later selection step will use persisted progress
-to choose the earliest eligible incomplete quarter. `manual` runs require
-`dag_run.conf` to contain exactly `start_date` and `end_date` as canonical
-`YYYY-MM-DD` strings, inclusive and in ascending order. The existing request
-builder still validates the historical range and six-day availability lag.
-Unsupported run types, extra keys, incomplete pairs, invalid dates, and
-scheduled configuration fail explicitly. A single failed month or quarter is
-the recommended manual repair scope. Manual dates are not silently replaced
-by scheduler-selected dates. The contract is implemented and used by the DAG. Its schedule remains
-`None` by default pending the scheduled rollout.
-- [x] Keep the campaign boundaries fixed at 2016-01-01 and 2025-12-31,
-      select quarters in calendar order from 2016 Q1 through 2025 Q4,
-      and map exactly three whole calendar months per automatic run.
-- [x] Configure Jakarta-local campaign ticks at 30 minutes, one hour, or
-      two hours, independently of CDS pacing. Default to disabled and retain
-      `catchup=False` and `max_active_runs=1`; test the enabled DAG policy.
-- [x] Pilot manual repair of the incomplete April 2024 campaign month.
-      The 2024 Q2 parent advanced from 2/3 to complete after April's
-      recorded valid load; the report changed from 0/40 to 1/40 quarters.
-      The April manual DagRun finished in `success` on 2026-09-27.
-- [x] Pilot scheduled selection offline with isolated progress state and no
-      CDS or production database access: Q1 maps three months, a competing
-      tick cannot advance, completion selects Q2, failure blocks, recovery
-      selects Q3, and forty complete quarters yield no jobs.
-- [ ] Pilot a real scheduled DagRun before enabling the ongoing campaign.
-      A controlled pilot procedure records the preflight, pause/unpause, three
-      monthly results, and postflight evidence. On 2026-09-27, the first live
-      scheduled 2016 Q1 DagRun completed in `success` after 2h 45m 52s;
-      January, February, and March each passed RAW validation and their mapped
-      extract, transform, and load tasks succeeded. Verify the persisted
-      campaign report and database evidence before closing this item. Skipped
-      ticks must not skip quarters; active runs must not overlap.
-- [x] Before continuing the unattended campaign, implement scheduled-mode
-      earliest-start slots for the three monthly maps (initially one hour apart)
-      without altering shared DagRun logical dates or the global CDS submission
-      clock. Manual recovery remains explicitly dated and must not inherit
-      scheduled offsets. The observed 2016 Q1 submissions were already about
-      one hour apart per month, but early activation of later maps caused
-      repeated deferral and worker wake-ups. A slot is a minimum start time,
-      not a guaranteed finish time or a provider-mandated interval.
-- [x] Design and test one first attempt per month before retrying a retriable
-      failure from an earlier month. Keep bounded retries, checkpoint resume,
-      and explicit final failure evidence; a terminal failed detail must still
-      block advancement until verified manual recovery. Test the order with
-      injected failures without contacting CDS, including failures at each
-      month and a final unsuccessful retry. Do not assume Airflow's default
-      mapped-task retries guarantee this order.
-- [x] Render human-readable CDS submission decisions (`reserved` and
-      `deferred`) with separate lines for chunk, submitted_at, and
-      next_allowed_at as applicable. Keep event names and machine-readable
-      timestamps stable, and add focused log assertions without provider calls.
-- [ ] Review campaign tick cadence against measured DagRun duration and queued
-      runs before unattended rollout. The first 2016 Q1 run took 2h 45m 52s,
-      longer than the configured 2h tick interval; keep `max_active_runs=1`
-      and select a sustainable configurable cadence from repeated observations.
-      CDS guidance describes variable service limits and queueing, not a fixed
-      30-minute submission quota or a one-hour monthly start requirement.
-- [x] Keep manual triggers available through the same DAG; document that
-      manual and automatic runs share `max_active_runs=1` and can queue
-      behind one another.
-- [ ] After all 40 quarters are verified complete, make scheduled ticks
-      safe no-ops and document pausing the DAG. Do not infer new periods
-      beyond 2025 from the wall clock.
-
-Durable progress and recovery:
-
-- [x] Refactor durable operational progress into the existing PostgreSQL climate
-      database using two cadence-neutral tables:
-      `climate_data.pipeline_progress` and
-      `climate_data.pipeline_progress_detail`. Do not create a separate database.
-      Quarter/two-month/month grouping remains scheduler policy rather than
-      persistence identity. SQLite metadata remains local development state.
-- [x] `climate_data.pipeline_progress` represents one logical requested range/batch.
-      Store explicit `start_date` and `end_date`, pipeline/source/dataset identity,
-      configuration identity, expected/completed/failed partition counts,
-      execution status, validation status, timestamps, and the latest bounded
-      diagnostic error. Do not encode quarter number as the durable identity.
-- [x] `climate_data.pipeline_progress_detail` represents one processed partition and
-      its artifact/database outcome. Store the parent progress ID, request key,
-      exact period, RAW NetCDF path/checksum/file size, transformed artifact
-      path/checksum/file size when available, temporal and spatial validation
-      metrics, row counts, grid counts, extract/transform/load status,
-      validation status/message, processing timestamps, and bounded diagnostic
-      metadata.
-- [x] Keep stable query/recovery fields as ordinary columns. Allow an optional
-      `metrics JSONB` field only for evolving operational measurements such as
-      task peak RSS, retry counts, durations, or disk-space observations; do
-      not put request identity, status, or validation truth solely in JSONB.
-- [x] Define parent completion from verified detail state: a progress row may
-      become complete only when every expected detail partition is complete
-      and valid. Partial manual repair must update only the affected detail and
-      may complete the parent only after all expected partitions verify.
-- [x] Document storage setup, backup, restart, and reconciliation behavior
-      before enabling automatic mode. The runbook covers coordinated PostgreSQL
-      and artifact snapshots, pacing state, stale claims, and manual repair.
-- [x] Key progress to the explicit requested range plus a deterministic configuration identity derived from source, dataset, variables, bounding box, and expected partition request identities so changed configuration cannot reuse unrelated completion state.
-- [x] For the current quarterly campaign, mark the parent progress row complete only after all three monthly detail rows have successful loads and verified persisted partitions. Persist completion atomically; task success alone must not advance the campaign.
-- [x] Reconcile valid manual repairs with the same monthly completion
-      evidence. A manual range may complete an affected quarter once all
-      its months are verified, but partial manual success must never mark
-      an incomplete quarter complete.
-- [x] Select the earliest incomplete quarter on every scheduled run so
-      restarts, missed ticks, and retries cannot silently skip a period.
-      Guard concurrent progress updates even when `max_active_runs=1`.
-- [ ] Bound repeated automatic failures for the same quarter; log/alert
-      with year, quarter, month, and reason, then require diagnosis and
-      manual repair instead of repeatedly submitting bad requests.
-      Resume from validated checkpoints without overwriting RAW files.
-
-Scheduler cadence and CDS submission interval are separate controls:
+The historical campaign uses one DAG:
 
 ```text
-scheduler cadence
-        =
-seberapa sering Airflow mencoba menjalankan pipeline
-
-CDS submission interval
-        =
-jarak minimum antar request aktual ke CDS
+cds_era5_land_etl
 ```
 
-Scheduler cadence is runtime orchestration policy and must be configurable
-without changing progress-table identity or scientific contracts. The initial
-campaign may use 30 minutes, one hour, two hours, or another reviewed value.
-It controls how often Airflow attempts to start/select work. With
-`max_active_runs=1`, a new run must not overlap an active run.
+No yearly DAGs, quarterly DAG definitions, rolling ten-year window, ARCO path,
+or separate ongoing-ingestion DAG are part of this campaign.
 
-CDS submission interval is an independent provider-pacing control. It governs
-minimum time between actual CDS retrieval submissions, including retries or
-multiple monthly partitions within one logical progress range. The Airflow
-schedule and the one-slot `cds_api` pool do not by themselves guarantee this
-minimum elapsed time between provider submissions.
+---
 
-Neither value is part of `climate_data.pipeline_progress` or
-`climate_data.pipeline_progress_detail` durable identity. They may be recorded as
-runtime/observability metadata when useful, but changing cadence or pacing must
-not invalidate otherwise identical request/progress identity.
+## 2. Current Architecture
 
-CDS request pacing:
+The responsibility refactor supersedes older path references in previous
+versions of this plan.
 
-- [x] Keep the one-slot `cds_api` pool. Document that it limits
-      concurrent extraction but does not enforce time between requests.
-- [x] Add a configurable minimum interval before each CDS submission POST,
-      shared by automatic and manual modes, including internal library retries,
-      additional chunks, and Airflow task retries. The 30-minute default is
-      an operational starting point, not a claimed Copernicus quota.
-- [x] Control retriable CDS job POSTs inside pinned `cdsapi==0.7.7`.
-      Its `robust` wrapper can retry submissions after timeouts or retriable
-      HTTP responses. A dedicated requests session reserves a durable slot
-      before every POST, including internal retries. GET polling and downloads
-      do not reserve slots. Offline tests include the real pinned client's
-      retry after a simulated submission timeout, with the second POST denied
-      before transport.
-- [x] Persist/coordinate the last submission timestamp across runs and
-      workers; avoid holding a worker or pool slot idle for a long wait
-      when Airflow can defer or reschedule it. Preserve a one-slot limit
-      at submission, and make recovery after process termination safe.
-- [ ] Review CDS queue time, provider errors, retries, and successful
-      submissions; make both the inter-request interval and scheduler cadence adjustable independently without editing scientific contracts.
-      The June pilot observed an object-store GET retry, not a job POST retry;
-      a deterministic test uses the pinned cdsapi retry path to verify POST pacing.
+Current orchestration structure:
 
-Observability, validation, and rollout:
+```text
+orchestration/
+├── config.py
+├── campaign/
+│   ├── policy.py
+│   ├── repair.py
+│   └── reporting.py
+├── dags/
+│   └── cds_era5_land_etl.py
+├── monitoring/
+├── operators/
+│   └── raw_checkpoint.py
+├── progress/
+│   ├── definition.py
+│   └── tracking.py
+├── repositories/
+│   ├── database.py
+│   ├── load_evidence.py
+│   ├── pipeline_progress.py
+│   └── submission_pacing.py
+├── scheduling/
+│   ├── intervals.py
+│   ├── requests.py
+│   ├── run_mode.py
+│   ├── schedule.py
+│   └── submission_gate.py
+└── tasks/
+```
 
-- [x] Provide a read-only exact-identity campaign report with yearly completion
-      counts, partial monthly boundary states, failed quarters, and the month
-      of the last recorded valid load. Keep its output out of XCom and exclude
-      unrelated manual ranges/configurations.
-- [ ] Log the selected year/quarter, three months, mode, attempt, CDS
-      pacing decision, completed/remaining quarters, and failure reason.
-      Use the read-only 2016–2025 summary without creating annual DAGs or
-      sending large payloads through XCom.
-- [x] Update the orchestration README and current operating examples so
-      schedule-disabled-by-default behavior, quarterly automatic selection,
-      bounded manual recovery, status checks, and the warning against a
-      120-month campaign DagRun are explicit. Historical Stage 3 text remains
-      marked as the implemented manual baseline rather than current rollout
-      guidance.
-- [x] Add focused offline tests for mode selection, 2016–2025 quarter
-      boundaries, stable progress and configuration identity, missed ticks,
-      incomplete/failing loads, manual repair, terminal no-op, scheduled
-      monthly offsets, first-pass/retry ordering, and CDS pacing behavior.
-- [x] Run the affected unit/orchestration and isolated PostgreSQL integration
-      tests after the P4 responsibility refactor: 211 passed and 6 passed on
-      2026-10-04. Controlled live scheduled verification remains a separate
-      rollout requirement before enabling the entire campaign.
-- [x] Provide a read-only host capacity snapshot and a repeatable manual
-      post-change CDS pilot procedure without exposing secrets.
-- [x] Review the local June 2024 extraction pilot for actual POST spacing,
-      deferral, cached context reuse, download retry, and RAW validation.
-      No provider job POST retry occurred; DagRun/load completion was not supplied.
-- [x] Record the local development-host disk, memory, PostgreSQL database
-      size, and visible triggerer process snapshot. Keep local disk headroom
-      under observation; revisit capacity when deploying to a different host.
-      Do not extrapolate April wall time as a guaranteed CDS throughput.
-- [ ] Track all 40 quarter statuses, failed months, last successful load,
-      request pacing, and elapsed time during the campaign. Confirm
-      2016–2025 completeness against expected monthly partitions and
-      database records before declaring the campaign finished.
+Operational documentation remains in `orchestration/README.md`. Project-wide
+Airflow policy remains under `docs/`; there is no required
+`orchestration/docs/` directory in the current layout.
 
-Exit condition: one DAG can schedule and recover the bounded 40-quarter
-campaign; every completed quarter has three verified monthly loads,
-its progress survives restarts, and additional ticks cannot submit
-data after 2025.
+The active mapped flow is:
 
-## Stage 9 — Future Ongoing Ingestion (Deferred)
+```text
+manual dates or scheduled quarter
+              |
+              v
+     build_monthly_requests
+              |
+              v
+     attempt_raw_checkpoint
+              |
+              v
+     resolve_raw_checkpoint
+              |
+              v
+ensure_transformed_checkpoint
+              |
+              v
+             load
+```
 
-The quarterly 2016–2025 campaign has a fixed end date. Ingesting
-newer periods after 2025 requires its own decision about data
-availability, timing, and operations. This stage does not authorize
-a second DAG or expand the historical campaign.
+Validation remains inside pipeline runtime boundaries. NetCDF, Parquet, xarray,
+and Pandas objects never cross XCom.
 
-- [ ] Resolve the relationship between a future ingestion interval and
-      the six-completed-local-day availability lag.
-- [ ] Decide whether to extend the existing DAG's mode contract or use
-      a different design after reviewing campaign results.
-- [ ] Define freshness, last-success observability, bounded alerts,
-      and retry behavior for periods outside the fixed campaign.
-- [ ] Test delayed availability, retry, resume, and idempotency.
+---
 
-Exit condition: an explicitly approved ongoing-ingestion design
-respects the scientific and historical campaign contracts.
+## 3. Completed Baseline — Stages 0–7
 
-## Explicit Non-Goals
+Stages 0–7 are complete and are no longer active implementation work.
+
+### Stage 0 — Branch and baseline guard
+
+- [x] Work only on branch `dev`.
+- [x] Preserve scientific contracts and deterministic request/artifact identity.
+- [x] Establish unit and isolated PostgreSQL integration baselines.
+
+### Stage 1 — Airflow-neutral runtime handoff
+
+- [x] JSON-safe request specifications.
+- [x] Separate RAW, transformed, and load runtime boundaries.
+- [x] Deterministic checkpoint rehydration across task processes.
+- [x] Small control/status payloads only.
+- [x] Core pipeline remains independent from Airflow imports.
+
+### Stage 2 — Request and interval configuration
+
+- [x] Preserve dataset, variables, timezone, and Aceh bounding box.
+- [x] Explicit historical date validation.
+- [x] Monthly deterministic request splitting.
+- [x] Local-day interval handling remains pipeline compatible.
+
+### Stage 3 — Initial manual ETL DAG
+
+- [x] One DAG: `cds_era5_land_etl`.
+- [x] Explicit manual start/end dates.
+- [x] Dynamic monthly mapping.
+- [x] Bounded retries and execution timeouts.
+- [x] One-slot `cds_api` pool.
+- [x] Request identity independent from Airflow run ID and wall-clock time.
+
+The original `schedule=None` design was the manual baseline only. It is
+superseded by the configurable campaign schedule described below.
+
+### Stage 4 — Local Airflow runtime
+
+- [x] Single project `requirements.txt`.
+- [x] Repository-local Airflow runtime.
+- [x] SQLite Airflow metadata retained for local development.
+- [x] Shared file-backed Airflow JWT secret.
+- [x] Runtime files and secrets excluded from Git.
+
+### Stage 5 — Airflow operating documentation
+
+- [x] Setup/start/stop/trigger/status guidance.
+- [x] Manual and scheduled mode guidance.
+- [x] Shared-filesystem assumption.
+- [x] Safe retry/resume guidance.
+- [x] Backup/restart guidance for PostgreSQL progress, pacing, and artifacts.
+
+### Stage 6 — Tests
+
+- [x] DAG import and graph tests.
+- [x] Mapping, retry, timeout, pool, schedule, and mode tests.
+- [x] Progress/reconciliation tests.
+- [x] CDS submission pacing tests.
+- [x] PostgreSQL integration coverage for persistence/progress/pacing.
+- [x] Pipeline tests remain runnable without importing Airflow.
+
+The exact test count is not a design contract. The latest local baseline must
+be rerun before the one-year campaign pilot and recorded in the operator notes.
+
+### Stage 7 — Controlled monthly and quarterly pilots
+
+- [x] Fresh monthly run.
+- [x] Same-month idempotent rerun.
+- [x] Multi-month run.
+- [x] Peak-RSS instrumentation.
+- [x] Disk-space warning.
+- [x] Live CDS pacing/deferral observed.
+- [x] Manual recovery observed.
+- [x] Persisted monthly evidence independently checked.
+
+Historical live runs remain useful evidence, but runs that crossed DAG versions
+are not accepted as proof of the current graph.
+
+---
+
+## 4. Stage 8 — Scheduled Historical Campaign
+
+Stage 8 is the only active implementation/rollout stage.
+
+The campaign contract is:
+
+```text
+scheduled DagRun
+      |
+      v
+select earliest eligible incomplete quarter
+      |
+      v
+map exactly three calendar months
+      |
+      v
+persist/reconcile monthly evidence
+      |
+      v
+complete quarter only when all 3 months are valid
+```
+
+Manual repair uses the same DAG and an explicit complete calendar month or
+reviewed explicit range.
+
+### 8.1 Completed campaign mechanics
+
+- [x] Scheduled/manual mode is derived from DagRun type.
+- [x] Scheduled selection uses the earliest eligible incomplete quarter.
+- [x] Campaign identity is fixed to the configured 2016–2025 range.
+- [x] Each automatic run maps exactly three whole calendar months.
+- [x] `max_active_runs=1` prevents overlapping active DagRuns.
+- [x] Progress is stored in PostgreSQL rather than inferred from Airflow history.
+- [x] Parent completion requires verified persisted detail evidence.
+- [x] Manual whole-month repair reconciles against the same campaign identity.
+- [x] Atomic selection claims prevent competing selectors from taking the same
+      quarter.
+- [x] A terminal failed detail blocks automatic advancement and requires
+      diagnosis/manual repair.
+- [x] Scheduled monthly earliest-start lower bounds are +0h, +1h, and +2h.
+- [x] Manual runs do not inherit scheduled monthly offsets.
+- [x] Extraction uses a first pass followed by a durable first-pass barrier
+      before retrying a failed month.
+- [x] Retry count remains bounded.
+- [x] CDS pacing uses a PostgreSQL global submission clock.
+- [x] CDS pacing applies to actual POST submissions, including context chunks
+      and retriable submission attempts.
+- [x] Pacing deferral releases the worker.
+- [x] Scheduler cadence and CDS submission interval are independently
+      configurable.
+- [x] When every configured quarter is complete, scheduled selection returns no
+      monthly jobs; additional ticks are therefore safe no-ops.
+
+### 8.2 Small observability gap before the one-year pilot
+
+Existing logs already include selected quarter/months/mode, CDS
+`reserved`/`deferred` decisions, timestamps, and bounded failure reasons.
+
+Before the one-year campaign pilot, review whether one small DagRun-level
+summary should be added. Do not add a large monitoring subsystem.
+
+Desired completion summary:
+
+```text
+quarter
+mode
+months
+DagRun elapsed time
+quarter completion result
+campaign completed/remaining quarter count
+failed month/reason when applicable
+```
+
+Checklist:
+
+- [ ] Confirm whether the existing Airflow/task logs plus
+      `scripts/report_campaign_progress.py` are already sufficient for the
+      one-year pilot.
+- [ ] If not sufficient, add only a small completion-summary log at the
+      orchestration boundary. Do not duplicate the campaign report in every
+      mapped task and do not put the full report in XCom.
+- [ ] Add/adjust focused offline log assertions only if logging behavior changes.
+
+This observability review must not delay the pilot unless a missing signal would
+prevent us from deciding whether a quarter safely completed.
+
+### 8.3 Scheduler cadence evaluation
+
+Scheduler cadence and provider submission pacing remain separate controls:
+
+```text
+ERA5_CAMPAIGN_SCHEDULE_CADENCE
+    = how often Airflow creates a scheduled campaign opportunity
+
+SUBMISSION_INTERVAL_SECONDS
+    = minimum spacing between actual CDS submission POSTs
+```
+
+Current supported campaign cadences are 30 minutes, 1 hour, and 2 hours.
+The current default is 2 hours. The CDS submission interval default is 1800
+seconds.
+
+A previous clean 2016 Q1 run took approximately 2h 45m 52s. One observation is
+not enough to choose a final cadence.
+
+For the one-year pilot:
+
+- [ ] Keep `max_active_runs=1`.
+- [ ] Start with the currently reviewed cadence unless the clean pre-pilot
+      evidence shows a clear operational problem.
+- [ ] Record scheduled tick time, actual DagRun start/end, queue delay, and
+      quarter elapsed time for each of the four quarters.
+- [ ] Record CDS submission timestamps, deferrals, provider errors, and retries.
+- [ ] After at least four clean quarter observations, decide whether the
+      campaign cadence should remain unchanged or be extended.
+- [ ] If a cadence longer than the currently supported set is justified,
+      change it as a separate reviewed orchestration configuration task; do not
+      change scientific contracts or progress identity.
+
+Cadence evaluation is an operational decision, not a prerequisite for
+scientific correctness.
+
+---
+
+## 5. Stage 8A — Clean Current-Graph Scheduled Pilot
+
+Before running a full calendar year, execute one clean scheduled quarter under
+one unchanged DAG version.
+
+This replaces older duplicated "real scheduled pilot" checklist items.
+
+Preconditions:
+
+- [ ] All previous DagRuns are terminal.
+- [ ] No DAG graph deployment occurs while the pilot is active.
+- [ ] Scheduling state, progress state, pacing state, disk headroom, and
+      PostgreSQL connectivity are inspected.
+- [ ] Unit/orchestration tests and selected PostgreSQL integration tests pass.
+- [ ] The target quarter is the earliest incomplete quarter for the configured
+      campaign state.
+
+Verify during/after the pilot:
+
+- [ ] Three monthly jobs are mapped for one quarter.
+- [ ] Scheduled earliest-start lower bounds are +0h/+1h/+2h.
+- [ ] Provider POST timestamps respect the durable pacing gate.
+- [ ] Context chunks and target chunks resume correctly after deferral.
+- [ ] The first-pass barrier behaves as designed.
+- [ ] Any retry/resume behavior is bounded and checkpoint-safe.
+- [ ] Transformation and load complete for all successful monthly partitions.
+- [ ] PostgreSQL observation counts match progress evidence.
+- [ ] Artifact paths/checksums match persisted load evidence.
+- [ ] Campaign report marks the quarter complete only after all three months
+      verify.
+- [ ] No later quarter is skipped.
+- [ ] Record total DagRun elapsed time and queue/deferral observations.
+
+Exit condition: one quarter completes under the current DAG version with
+Airflow state, PostgreSQL progress, persisted climate data, and artifact
+evidence all agreeing.
+
+---
+
+## 6. Stage 8B — One-Year Campaign Pilot
+
+After Stage 8A succeeds, the next rollout gate is a one-calendar-year campaign.
+
+### Pilot scope
+
+Use the first campaign year:
+
+```text
+2016-01-01 -> 2016-12-31
+```
+
+The pilot is **not** one manual twelve-month DagRun. It must exercise normal
+scheduled campaign behavior across four quarter selections:
+
+```text
+2016 Q1 -> Jan, Feb, Mar
+2016 Q2 -> Apr, May, Jun
+2016 Q3 -> Jul, Aug, Sep
+2016 Q4 -> Oct, Nov, Dec
+```
+
+If campaign state already contains verified 2016 partitions, decide explicitly
+whether to retain that evidence or recreate/reset the development campaign
+state before starting this pilot. Do not silently mix old and new pilot
+evidence.
+
+### One-year pilot checklist
+
+Before enabling the four-quarter run:
+
+- [ ] Stage 8A clean scheduled pilot is complete.
+- [ ] Decide and record whether the pilot uses clean/recreated campaign state or
+      intentionally retained verified state.
+- [ ] Record initial campaign report.
+- [ ] Record initial capacity snapshot.
+- [ ] Confirm sufficient artifact/log disk headroom.
+- [ ] Confirm PostgreSQL backup/recovery procedure is understood.
+- [ ] Freeze DAG graph changes for the duration of an active DagRun.
+
+For each quarter:
+
+- [ ] Confirm the selected quarter is the earliest incomplete quarter.
+- [ ] Record mapped months.
+- [ ] Record DagRun start/end and elapsed time.
+- [ ] Record important CDS pacing decisions and provider failures/retries.
+- [ ] Confirm all three monthly transformed/load results against PostgreSQL.
+- [ ] Confirm quarter progress becomes complete only after persisted evidence.
+- [ ] If a terminal month fails, stop automatic advancement, diagnose, perform
+      bounded manual repair, reconcile, then continue.
+- [ ] Do not clear durable progress or overwrite RAW data as a retry strategy.
+
+After 2016 Q4:
+
+- [ ] Campaign report shows all four 2016 quarters complete.
+- [ ] All 12 expected monthly partitions have valid persisted evidence.
+- [ ] No month is duplicated by request identity.
+- [ ] Observation counts agree with the corresponding progress detail rows.
+- [ ] Transformed artifact paths/checksums agree with persisted load metadata.
+- [ ] Review disk growth, PostgreSQL growth, task memory observations, queue
+      delay, CDS errors/retries, and quarter elapsed times.
+- [ ] Complete the scheduler cadence decision using the four-quarter evidence.
+- [ ] Record any manual intervention required during the year and whether the
+      recovery procedure was sufficient.
+
+Exit condition: one full calendar year completes through normal quarterly
+scheduled operation and can be independently reconstructed from artifacts,
+PostgreSQL observations, and durable campaign progress.
+
+---
+
+## 7. Stage 8C — Full 2016–2025 Campaign
+
+Do not enable the remaining campaign simply because Stage 8A passes. Stage 8B
+is the rollout gate.
+
+Preconditions:
+
+- [ ] Stage 8B one-year campaign pilot passes.
+- [ ] Scheduler cadence decision is recorded.
+- [ ] Remaining observability is sufficient for unattended operation.
+- [ ] Capacity observations do not show an unresolved local storage/memory
+      blocker.
+- [ ] Recovery procedure has been exercised at least once if a real failure
+      occurred during the one-year pilot.
+
+Then continue the same campaign policy from the earliest incomplete quarter
+through 2025 Q4.
+
+During the campaign:
+
+- [ ] Track completed/remaining/failed quarters.
+- [ ] Track failed months and manual repairs.
+- [ ] Track last successful persisted load.
+- [ ] Track quarter elapsed time and meaningful provider error/retry behavior.
+- [ ] Periodically inspect artifact disk, PostgreSQL size, and Airflow runtime
+      health.
+- [ ] Do not deploy a changed DAG graph into an active DagRun.
+
+Final verification:
+
+- [ ] All 40 configured quarters are complete.
+- [ ] All 120 expected monthly partitions are represented by valid persisted
+      evidence.
+- [ ] No failed campaign details remain.
+- [ ] Expected database partitions and observation counts agree with progress.
+- [ ] Additional scheduled ticks map no work.
+- [ ] Pause the historical campaign after final verification and record the
+      completion state.
+
+Exit condition: the bounded 2016–2025 historical campaign is complete,
+reconciled, recoverable, and no new period beyond 2025 can be inferred from
+the wall clock.
+
+---
+
+## 8. Explicitly Deferred — Future Ongoing Ingestion
+
+Ongoing ingestion after 2025 is not part of the historical campaign and must
+not be designed while the one-year rollout gate is still unresolved.
+
+Deferred decisions:
+
+- [ ] Define the relationship between future ingestion intervals and the
+      completed-local-day availability lag.
+- [ ] Decide whether the existing DAG mode contract should be extended or a
+      different design is justified.
+- [ ] Define freshness and last-success observability.
+- [ ] Define bounded alert/retry behavior for new periods.
+- [ ] Test delayed availability, resume, and idempotency.
+
+No second DAG is authorized by this section.
+
+---
+
+## 9. Explicit Non-Goals
 
 - No separate Airflow validation tasks.
 - No DataFrame, xarray Dataset, NetCDF bytes, or Parquet bytes in XCom.
-- No scientific transformation or SQL persistence in DAG/task-wrapper files.
+- No scientific transformation or canonical climate SQL persistence in the DAG.
 - No Airflow imports in `pipeline/`.
-- No scheduler catchup as the ten-year bootstrap mechanism.
-- No unpaced full-range 120-month DagRun for the 2016–2025 campaign.
-- No 40 quarterly DAG definitions or ten yearly manual DAG definitions.
+- No scheduler catchup as the historical bootstrap mechanism.
+- No unpaced 120-month DagRun.
+- No 40 quarterly DAG definitions.
+- No ten yearly DAG definitions.
 - No implicit rolling ten-year range.
-- No distributed workers with isolated local artifact storage.
+- No distributed workers with isolated local artifact filesystems.
 - No restoration of inactive ARCO paths.
+- No new monitoring platform merely to run the one-year pilot.
 
+---
 
-### Pre-campaign change review (2026-09-27)
+## 10. Immediate Work Order
 
-The scheduled mapper now assigns earliest-start instants at selection time: the
-three months receive UTC anchors at +0, +1, and +2 hours within the same
-DagRun. These instants are lower bounds. The DagRun logical date remains shared.
-Manual jobs have no slot offset. The PostgreSQL CDS submission clock continues
-to gate every actual POST, including context chunks and retry attempts; its
-30-minute default and the one-hour slots are adjustable project policies.
+The current work order is intentionally short:
 
-Extraction uses a first mapped pass with zero Airflow retries. A real failure
-is recorded in progress and passed as small control metadata, while pacing
-deferrals still release the worker. A barrier waits for all three first-pass
-map results before mapping the second pass. Successful months pass through;
-failed months resume their checkpoint with one Airflow retry in the
-second pass: one first-pass attempt plus two second-pass attempts preserves the
-original maximum of three attempts. A terminal failure propagates and leaves the failed progress
-detail blocking the next quarter. Manual ranges follow the same two passes,
-without scheduled slots. Transformation and load keep their existing policies.
+```text
+1. reconcile this implementation plan              DONE
+2. review only the small observability gap          NEXT
+3. run one clean current-graph scheduled quarter    NEXT
+4. run the 2016 one-year / four-quarter pilot       NEXT
+5. evaluate cadence from four-quarter evidence
+6. continue 2017-2025 only after the one-year gate
+7. design ongoing ingestion only after campaign evidence exists
+```
 
-**Verification remains open:** this workspace has no Airflow, pytest, or
-PostgreSQL runtime, but Python compilation passed and GitHub Actions on `dev`
-ran the full offline suite after the retry-budget change: **208 passed, 5
-skipped** (run 36313959964). The skipped database integration tests do not
-verify the operator's progress database. Do not enable unattended scheduling
-until the live graph/deferral behavior and persisted evidence are checked. The 2016 Q1 DagRun success is not enough to close the live-pilot
-item: collect the progress report and database evidence. Check active DagRuns
-before any restart or campaign continuation; pausing a DAG does not stop tasks
-already running.
-
-The 2-hour tick is shorter than the 2h 45m 52s first pilot. Keep
-`max_active_runs=1` and the cadence configurable; inspect subsequent runtimes
-and queued DagRuns before choosing a sustainable cadence. No cadence change
-is justified by this single run.
-
-### Live follow-up — 2026-09-28
-
-- [x] Diagnose the June 2016 `attempt_raw_checkpoint[2]` pacing wait from the
-      operator log. It resumed at 10:30:27 Asia/Jakarta, reserved the May 31
-      context POST at 10:30:28.994241, downloaded it, then deferred the June
-      target POST until 11:00:28.994241. This is two separately paced chunks
-      within one monthly request, not a failed first attempt. Verify the
-      context cache resume and target reservation in the later log; do not
-      infer completion from the earlier deferral.
-- [x] Inspect the 2016 Q2 DagRun that crossed DAG versions v3/v4.
-      It ended Airflow success but removed old extraction maps and left May/June
-      downstream work pending. A separate manual May-June DagRun completed the
-      two missing loads, and the campaign report and independent database check
-      confirm the quarter complete. This mixed-version scheduled run is not
-      evidence that the +0/+1/+2-hour slots or retry barrier work live. Do not
-      pull a changed DAG graph during an active run again.
-- [x] Recover the two missing 2016 Q2 loads through one manual May-June DagRun
-      after the mixed v3/v4 scheduled run ended. The scheduled run finished
-      Airflow `success` on 2026-09-28 at 15:54:51 Asia/Jakarta after 23h 8m
-      56s, but its old `extract_or_resume[0..2]` instances were `removed`;
-      only April had a completed transform/load. Durable campaign progress
-      correctly stayed at 2/40 with May and June extracted but pending
-      transformation and load. The manual run
-      `manual__2026-09-28T09:40:27.384394+00:00` completed `success` in
-      about 17 seconds; both mapped months passed first extraction, the retry
-      barrier, extraction pass-through, transformation, and load. The read-only
-      progress report advanced to 3/40 quarters and 2016 to 2/4. Its latest
-      recorded valid load was May by completion timestamp, which does not
-      imply that June was omitted. Independently inspect monthly PostgreSQL
-      observation counts/provenance before closing the live verification item.
-- [x] Independently verify the 2016 Q2 April-June database partitions,
-      observation counts, and provenance. The read-only operator check on
-      2026-09-28 returned PASS for April (15,900 rows), May (16,430 rows),
-      and June (15,900 rows); persisted observation counts match progress
-      counts, and transformed paths and SHA-256 metadata match for all three.
-      The exact campaign report records 3/40 quarters complete, 37 remaining,
-      and zero failed. Its latest valid load names May because that completion
-      timestamp was latest; June also passed the independent check.
-- [ ] Conduct one clean scheduled pilot under the current DAG version after
-      active runs are terminal and evidence is reviewed. Verify slot earliest
-      starts, first-pass barrier, provider POST timestamps, retry/resume, and
-      persisted completion. Keep the campaign schedule disabled until then.
+Do not reopen completed Stages 0–7 unless a regression provides concrete
+evidence that one of their contracts no longer holds.
