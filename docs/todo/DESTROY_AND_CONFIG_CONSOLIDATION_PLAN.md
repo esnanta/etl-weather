@@ -740,9 +740,12 @@ Use this order so each change has one clear purpose.
       `04224bb74a2497e616f00f24fb5245893b0c0d81`: no `pipeline/` files and no
       `orchestration/dags/` files changed, so scientific ETL behavior and the
       DAG graph were not modified by this maintenance/configuration work.
-- [x] Freeze the next clean-pilot DAG reference by recording active DAG blob
-      `b8dfb0748ceb61432dc367e328642287ca699c68` for
-      `orchestration/dags/cds_era5_land_etl.py`.
+- [x] Initial clean-pilot DAG reference was recorded as
+      `b8dfb0748ceb61432dc367e328642287ca699c68`, but this reference is superseded
+      by the 2026-10-07 mapped TaskFlow label fix after a real run exposed
+      Airflow 3.3.2 post-execute rendering failure for `task.op_kwargs`.
+      Record a new DAG blob only after the fix is locally verified and before
+      the next clean scheduled pilot.
 
 ### D8 — Real destroy validation
 
