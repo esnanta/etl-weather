@@ -82,16 +82,13 @@ def stop_local_executor_workers(
         )
 
     workers = local_executor_workers(proc_root)
-    kwargs: dict[str, object] = {
-        "remaining_processes_fn": lambda: local_executor_workers(proc_root),
-        "grace_seconds": grace_seconds,
-    }
-    if sleep_fn is not None:
-        kwargs["sleep_fn"] = sleep_fn
-    if kill_fn is not None:
-        kwargs["kill_fn"] = kill_fn
-
-    return terminate_processes(workers, **kwargs)  # type: ignore[arg-type]
+    return terminate_processes(
+        workers,
+        remaining_processes_fn=lambda: local_executor_workers(proc_root),
+        grace_seconds=grace_seconds,
+        sleep_fn=sleep_fn,
+        kill_fn=kill_fn,
+    )
 
 
 def clear_airflow_runtime_state(
