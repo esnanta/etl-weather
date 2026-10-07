@@ -677,7 +677,8 @@ Use this order so each change has one clear purpose.
       `reset_airflow_runtime.py` may stop only residual LocalExecutor workers
       after main services are absent.
 - [x] Add dedicated unit coverage for process discovery and termination.
-- [ ] Run the full unit gate after D3 implementation.
+- [x] User verification on 2026-10-07: 61 focused operations tests passed in
+      2.05s and the full unit suite passed 298 tests in 6.65s.
 
 ### D4 — Implement destroy
 
