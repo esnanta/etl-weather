@@ -181,13 +181,7 @@ def _validate_static_guards(config: DatabaseConfig) -> None:
         )
 
 
-def _validate_runtime_guards(
-    config: DatabaseConfig,
-    *,
-    allow_residual_localexecutor_workers: bool = False,
-    allow_deferred_task_instances: bool = False,
-    allow_running_dagrun_with_only_deferred_tasks: bool = False,
-) -> None:
+def _validate_runtime_guards(config: DatabaseConfig) -> None:
     if campaign_schedule() is not None:
         raise RuntimeError(
             "ERA5 campaign scheduling is enabled. Set "
@@ -199,43 +193,11 @@ def _validate_runtime_guards(
         "Airflow task preflight | %s",
         " | ".join(f"{state}={count}" for state, count in task_counts.items()),
     )
-    blocking_tasks = {
-        state: count
-        for state, count in task_counts.items()
-        if count and not (allow_deferred_task_instances and state == "deferred")
-    }
+    blocking_tasks = {state: count for state, count in task_counts.items() if count}
     if blocking_tasks:
         raise RuntimeError(
             "Airflow task instances can still run or resume: "
             + ", ".join(f"{state}={count}" for state, count in blocking_tasks.items())
-        )
-
-    processes = _airflow_processes()
-    if allow_residual_localexecutor_workers:
-        localexecutor_marker = b"airflow worker -- localexecutor"
-        blocking_processes = [
-            (pid, command)
-            for pid, command in processes
-            if localexecutor_marker not in command.lower().encode()
-        ]
-        residual_workers = len(processes) - len(blocking_processes)
-    else:
-        blocking_processes = processes
-        residual_workers = 0
-
-    logger.info(
-        "Airflow process preflight | blocking_processes=%d | "
-        "residual_localexecutor_workers=%d",
-        len(blocking_processes),
-        residual_workers,
-    )
-    if blocking_processes:
-        rendered = "; ".join(
-            f"pid={pid} cmd={command}" for pid, command in blocking_processes
-        )
-        raise RuntimeError(
-            "Airflow processes that can resume or schedule work are still running: "
-            + rendered
         )
 
     dag_run_counts = _airflow_dag_run_state_counts(_airflow_metadata_path())
@@ -244,18 +206,19 @@ def _validate_runtime_guards(
         " | ".join(f"{state}={count}" for state, count in dag_run_counts.items()),
     )
     blocking_runs = {state: count for state, count in dag_run_counts.items() if count}
-    if (
-        allow_running_dagrun_with_only_deferred_tasks
-        and not blocking_tasks
-        and task_counts.get("deferred", 0) > 0
-        and blocking_runs
-        and set(blocking_runs) == {"running"}
-    ):
-        blocking_runs = {}
     if blocking_runs:
         raise RuntimeError(
             "ERA5-Land DagRuns can still run or resume: "
             + ", ".join(f"{state}={count}" for state, count in blocking_runs.items())
+        )
+
+    processes = _airflow_processes()
+    logger.info("Airflow process preflight | blocking_processes=%d", len(processes))
+    if processes:
+        rendered = "; ".join(f"pid={pid} cmd={command}" for pid, command in processes)
+        raise RuntimeError(
+            "Airflow processes that can resume or schedule work are still running: "
+            + rendered
         )
 
     session_count = _database_session_count(config)
