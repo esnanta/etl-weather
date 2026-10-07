@@ -1,14 +1,23 @@
-# App environment.
-# dev: development mode (guarded DB recreation may be available)
-# prod: production mode (DB recreation is disabled)
-# APP_ENV is required; invalid or empty values stop startup.
+# Project environment example.
+# Runtime/configuration ownership lives in the root config.py module.
+# Copy only the values appropriate for the local environment; never commit secrets.
+
+# Application environment.
+# dev:
+# - development mode;
+# - guarded database recreation may be available;
+# - reset maintenance commands may run;
+# - scripts/destroy_all.py is available only in this mode.
+# prod:
+# - destructive maintenance and database recreation are disabled.
+# APP_ENV is required; invalid or empty values stop guarded startup/maintenance.
 APP_ENV=dev
 
 # CDS API connection.
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-# Primary PostgreSQL database.
+# Primary PostgreSQL application database.
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=your_database_name
@@ -23,33 +32,43 @@ TEST_POSTGRES_DATABASE=weather_test
 TEST_POSTGRES_USER=your_test_username
 TEST_POSTGRES_PASSWORD=your_test_password
 
-# Default inclusive date range for standalone runs.
+# Default inclusive date range for standalone pipeline runs.
 # Used only when no explicit period is provided.
-# Format: YYYY-MM-DD
+# Format: YYYY-MM-DD.
 CDS_START_DATE=2022-01-01
 CDS_END_DATE=2022-01-03
 
-# Airflow historical campaign settings.
-# CAMPAIGN_KEY: stable identifier for campaign progress and reporting.
+# Airflow historical campaign identity and year bounds.
+# These values are required when orchestration accesses campaign configuration.
+# CAMPAIGN_KEY is the stable identity used for progress selection/reporting.
 # CAMPAIGN_START_YEAR / CAMPAIGN_END_YEAR:
-# - Must be 4-digit years.
-# - Scheduler uses Jan 1 of start year to Dec 31 of end year.
-# - For short pilots, prefer manual runs with explicit start_date/end_date.
+# - must be four-digit years;
+# - define complete calendar years from Jan 1 through Dec 31;
+# - may be equal for a one-year development campaign.
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2016
 
-# ERA5_CAMPAIGN_SCHEDULE_ENABLED=false: manual DAG runs only (no auto schedule).
-# ERA5_CAMPAIGN_SCHEDULE_ENABLED=true: run scheduled bounded historical campaigns.
+# Scheduled campaign switch.
+# false: manual DAG runs only; no automatic campaign tick.
+# true: enable the bounded historical campaign schedule.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
 
-# Airflow schedule cadence (used only when scheduling is enabled).
+# Scheduler tick cadence, used only when scheduling is enabled.
 # Allowed values: 30m, 1h, 2h.
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+# The current development pilot example uses 1h.
+# Root config.py still owns the code fallback DEFAULT_CADENCE=2h when this
+# environment value is omitted.
+ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
 
-# Minimum interval between provider submission POST requests (seconds).
-# Independent of scheduler cadence.
+# Minimum interval between provider submission POST requests, in seconds.
+# This is independent from the scheduler cadence.
 SUBMISSION_INTERVAL_SECONDS=300
 
+# Scheduled mapped-month earliest-start spacing is intentionally a code constant:
+# MONTHLY_SLOT_SPACING_MINUTES=15 in root config.py.
+# Do not add an environment variable for it unless configuration policy changes.
+
 # Shared Airflow JWT secret is managed outside .env.
-# See orchestration/README.md for setup instructions.
+# Keep using the existing airflow-jwt-key.txt setup documented in
+# orchestration/README.md.
