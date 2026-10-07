@@ -56,13 +56,19 @@ ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
 
 # Scheduler tick cadence, used only when scheduling is enabled.
 # Allowed values: 30m, 1h, 2h.
+# Example: 1h means Airflow gets one scheduled campaign-selection opportunity
+# every Jakarta-local hour. It does not mean one month must finish every hour.
 # The current development pilot example uses 1h.
 # Root config.py still owns the code fallback DEFAULT_CADENCE=2h when this
 # environment value is omitted.
 ERA5_CAMPAIGN_SCHEDULE_CADENCE=1h
 
 # Minimum interval between provider submission POST requests, in seconds.
-# This is independent from the scheduler cadence.
+# Example: 300 means at least 5 minutes between actual CDS submission POSTs.
+# This pacing applies to each provider submission, including context chunks,
+# and is independent from the scheduler cadence above.
+# Root config.py owns the code fallback DEFAULT_INTERVAL_SECONDS=1800 when this
+# environment value is omitted.
 SUBMISSION_INTERVAL_SECONDS=300
 
 # Scheduled mapped-month earliest-start spacing is intentionally a code constant:
