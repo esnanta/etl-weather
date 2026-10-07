@@ -409,19 +409,26 @@ CDS submission pacing
 
 ### C3 — Add pure cooldown eligibility helper
 
-- [ ] Implement a small testable helper that accepts predecessor completion time,
+- [x] Implement a small testable helper that accepts predecessor completion time,
       current time, and cooldown duration.
-- [ ] Return explicit eligibility metadata where useful, including
-      `eligible_at` / remaining duration.
-- [ ] Keep helper independent from Airflow runtime objects.
+- [x] Return explicit eligibility metadata including `eligible_at` and
+      remaining duration.
+- [x] Keep helper independent from Airflow runtime objects.
+- [x] Move human-readable wait formatting into an Airflow-neutral shared
+      scheduling helper and reuse it from RAW deferral logging.
 
 ### C4 — Integrate cooldown into campaign selection
 
-- [ ] Reconcile predecessor progress.
-- [ ] Enforce predecessor complete + valid.
-- [ ] Enforce `completed_at + cooldown`.
-- [ ] Preserve existing failure, availability, and claim behavior.
-- [ ] Add explicit cooldown observability logs.
+- [x] Reconcile predecessor progress through the existing ordered selector.
+- [x] Enforce predecessor complete + valid before automatic advancement.
+- [x] Enforce `completed_at + cooldown`.
+- [x] Avoid claiming the next quarter while cooldown is active.
+- [x] Block automatic advancement if a complete predecessor lacks
+      `completed_at`.
+- [x] Preserve existing failure, availability, and claim behavior.
+- [x] Add explicit cooldown active/satisfied observability logs.
+- [x] Add deterministic unit coverage for the 9m59s and exact 10m boundaries.
+- [ ] User verifies focused campaign/scheduler tests locally.
 
 ### C5 — Focused tests
 
