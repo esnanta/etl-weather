@@ -529,20 +529,90 @@ source activate-airflow.sh
 python -m pytest tests/unit/pipeline/test_runtime.py -q
 ```
 
-**T4 is implementation-complete pending local pytest confirmation.**
+**T4 is complete.** Local focused regression on 2026-10-07:
+
+```text
+7 passed in 0.71s
+```
+
+Command used:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest tests/unit/pipeline/test_runtime.py -q
+```
 
 ### T5 — Review persistence unit tests
 
-- [ ] Review `tests/unit/pipeline/test_load.py` and related repository/loader tests.
-- [ ] Keep pure dataframe preparation and deterministic statement/parameter construction at unit level when useful.
-- [ ] Identify assertions that mainly prove custom fake SQLAlchemy behavior.
-- [ ] Move or consolidate PostgreSQL-dependent behavioral proof into integration tests.
-- [ ] Verify idempotent repeated load against real PostgreSQL.
-- [ ] Verify transaction rollback against real PostgreSQL.
-- [ ] Verify conflict/update behavior against real PostgreSQL where it is part of the contract.
-- [ ] Verify persisted row counts and canonical observation identity against real PostgreSQL where appropriate.
-- [ ] Remove fake database machinery only after equivalent behavioral coverage is confirmed.
-- [ ] Add/update the required module-level docstring.
+- [x] Review `tests/unit/pipeline/test_load.py` and related repository/loader tests.
+- [x] Keep pure dataframe preparation and deterministic statement/parameter construction at unit level when useful.
+- [x] Identify assertions that mainly prove custom fake SQLAlchemy behavior.
+- [x] Move or consolidate PostgreSQL-dependent behavioral proof into integration tests.
+- [x] Verify idempotent repeated load against real PostgreSQL.
+- [x] Verify transaction rollback against real PostgreSQL.
+- [x] Verify conflict/update behavior against real PostgreSQL where it is part of the contract.
+- [x] Verify persisted row counts and canonical observation identity against real PostgreSQL where appropriate.
+- [x] Remove fake database machinery only after equivalent behavioral coverage is confirmed.
+- [x] Add/update the required module-level docstring.
+
+#### T5 implementation result — 2026-10-07
+
+T5 narrows unit persistence tests to behavior that can be proven without pretending to be PostgreSQL, and moves persistence semantics to the existing isolated PostgreSQL integration suite.
+
+Changes to `tests/unit/pipeline/test_load.py`:
+
+- removed custom partition lookup/result/engine/transaction classes that routed behavior by inspecting SQL text;
+- removed unit tests that treated those fake database objects as proof of unchanged-partition/idempotency behavior;
+- retained pure `_prepare_observation_dataframe` tests for canonical database column names and missing-value-to-NULL conversion;
+- retained deterministic metadata INSERT/UPSERT statement and bound-parameter construction;
+- retained deterministic detail UPSERT statement construction, canonical conflict key, timestamp conversion, and empty-dataset behavior;
+- replaced the previous database machinery with one minimal recording connection whose only purpose is to capture emitted SQL and parameters;
+- added the required module-level docstring explaining that real PostgreSQL semantics belong to integration tests.
+
+Changes to `tests/integration/pipeline/test_postgresql_idempotency.py`:
+
+- added a top-level module docstring making the real isolated PostgreSQL suite authoritative for persistence behavior;
+- retained the existing repeated-load idempotency test;
+- retained the existing transaction rollback test;
+- added a real PostgreSQL case where one persisted observation is deleted, proving that row-count mismatch prevents the unchanged-partition shortcut and a repeated load restores the complete partition;
+- added a real PostgreSQL provenance-mismatch case where metadata path/checksum and persisted observation values are deliberately made stale, proving that the loader takes the normal UPSERT path, restores canonical provenance, and updates the conflicting observation values.
+
+Changes to `tests/unit/pipeline/test_database.py`:
+
+- kept the recording-engine DDL construction tests because they assert the emitted schema/table/index contract;
+- added the required module-level docstring explicitly stating that these tests do not emulate PostgreSQL execution semantics;
+- actual PostgreSQL DDL/bootstrap behavior remains owned by integration coverage.
+
+Persistence responsibility after T5:
+
+- **unit tests**: dataframe preparation, NULL conversion, SQL/parameter construction, DDL construction;
+- **integration tests**: actual idempotency, row-count evidence, provenance mismatch recovery, conflict UPDATE behavior, transaction rollback, and persisted canonical observations.
+
+No production code was changed.
+
+Focused regression to run locally:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/unit/pipeline/test_load.py \
+  tests/unit/pipeline/test_database.py \
+  -q
+```
+
+Then run the real PostgreSQL persistence suite:
+
+```bash
+source activate-airflow.sh -q
+
+python -m pytest \
+  tests/integration/pipeline/test_postgresql_idempotency.py \
+  -q
+```
+
+**T5 is implementation-complete pending both local unit and PostgreSQL integration confirmation.**
 
 ### T6 — Review orchestration tests
 
@@ -614,7 +684,7 @@ python -m pytest tests/unit/pipeline/test_runtime.py -q
 Use the project environment:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 ```
 
 Focused unit domains:
