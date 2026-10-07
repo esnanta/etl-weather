@@ -6,6 +6,8 @@ from durable progress identity and the PostgreSQL CDS submission clock.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from orchestration.scheduling.schedule import (
@@ -18,10 +20,14 @@ from ..._paths import REPOSITORY_ROOT
 
 @pytest.mark.parametrize(
     ("cadence", "cron"),
-    [("30m", "*/30 * * * *"), ("1h", "0 * * * *"),
-     ("2h", "0 */2 * * *")],
+    [
+        ("30m", "*/30 * * * *"),
+        ("45m", timedelta(minutes=45)),
+        ("1h", "0 * * * *"),
+        ("2h", "0 */2 * * *"),
+    ],
 )
-def test_explicit_cadence(cadence: str, cron: str) -> None:
+def test_explicit_cadence(cadence: str, cron: str | timedelta) -> None:
     assert campaign_schedule({ENABLED_ENV: "true", CADENCE_ENV: cadence}) == cron
 
 
