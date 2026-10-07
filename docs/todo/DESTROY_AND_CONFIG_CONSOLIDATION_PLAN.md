@@ -709,7 +709,8 @@ Use this order so each change has one clear purpose.
 - [x] Root config remains Airflow-neutral/lightweight: standard library,
       `python-dotenv`, constants, and pure configuration resolvers only.
 - [x] Add coverage that root config can import without campaign environment keys.
-- [ ] Run focused config/orchestration tests and full unit regression.
+- [x] User verification on 2026-10-07: 83 focused config/orchestration tests
+      passed in 3.99s and the full unit suite passed 319 tests in 8.86s.
 
 ### D6 — Update `env-example`
 
