@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
-from datetime import date, timedelta
+from datetime import date
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -61,21 +61,11 @@ PIPELINE_TIMEZONE = CAMPAIGN_TIMEZONE
 # Environment variable that explicitly enables scheduled campaign ticks.
 ENABLED_ENV = "ERA5_CAMPAIGN_SCHEDULE_ENABLED"
 
-# Environment variable selecting the enabled scheduler cadence.
-CADENCE_ENV = "ERA5_CAMPAIGN_SCHEDULE_CADENCE"
+# Fixed interval between scheduled campaign eligibility checks.
+CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10
 
-# Default scheduler cadence when scheduling is enabled.
-DEFAULT_CADENCE = "2h"
-
-# Supported scheduler cadences and Airflow schedule expressions.
-# Use timedelta for 45m because standard five-field cron cannot represent a
-# continuous 45-minute interval without alternating 45- and 15-minute gaps.
-CADENCE_CRON = {
-    "30m": "*/30 * * * *",
-    "45m": timedelta(minutes=45),
-    "1h": "0 * * * *",
-    "2h": "0 */2 * * *",
-}
+# Minimum delay after a complete, valid quarter before the next quarter is eligible.
+QUARTER_COOLDOWN_MINUTES = 10
 
 # Provider availability lag retained for historical request eligibility.
 AVAILABILITY_LAG_DAYS = 6
@@ -98,11 +88,8 @@ PIPELINE_PROGRESS_TABLE = "pipeline_progress"
 PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
 PACING_TABLE = "submission_pacing"
 
-# Environment variable controlling minimum seconds between CDS submissions.
-INTERVAL_ENV = "SUBMISSION_INTERVAL_SECONDS"
-
-# Default minimum interval between provider submissions, in seconds.
-DEFAULT_INTERVAL_SECONDS = 1800
+# Fixed minimum interval between provider submission POST requests.
+SUBMISSION_INTERVAL_MINUTES = 5
 
 _CAMPAIGN_ATTRIBUTE_NAMES = frozenset(
     {
