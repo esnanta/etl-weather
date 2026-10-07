@@ -733,9 +733,16 @@ Use this order so each change has one clear purpose.
       in 8.99s.
 - [x] User verification on 2026-10-07: isolated PostgreSQL integration gate
       passed 9 tests in 1.58s.
-- [ ] Update operational documentation.
-- [ ] Review diff for accidental `pipeline/` or scientific changes.
-- [ ] Commit/freeze one DAG version before the next clean scheduled pilot.
+- [x] Update operational documentation in root `README.md` and
+      `orchestration/README.md` for reset vs destroy, preserved state,
+      current environment examples, and single root-config ownership.
+- [x] Review the D2-D6 diff from checklist baseline
+      `04224bb74a2497e616f00f24fb5245893b0c0d81`: no `pipeline/` files and no
+      `orchestration/dags/` files changed, so scientific ETL behavior and the
+      DAG graph were not modified by this maintenance/configuration work.
+- [x] Freeze the next clean-pilot DAG reference by recording active DAG blob
+      `b8dfb0748ceb61432dc367e328642287ca699c68` for
+      `orchestration/dags/cds_era5_land_etl.py`.
 
 ### D8 — Real destroy validation
 
