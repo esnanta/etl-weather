@@ -34,8 +34,9 @@ Precondition checklist:
 - [x] Confirm the current DAG still maps each stage separately.
 - [x] Confirm the active DAG uses `max_active_runs=1`,
       `max_active_tasks=2`, and the one-slot `cds_api` pool.
-- [ ] Resolve whether `orchestration/AGENTS.md` should exist. If it is restored
-      or created before implementation, review it before changing code.
+- [x] `orchestration/AGENTS.md` is intentionally not required for this refactor;
+      orchestration rules are covered by root `AGENTS.md` plus the Airflow
+      best-practice/coding-guideline documents.
 - [ ] Freeze DAG graph deployment while any current DagRun is active.
 
 Only branch `dev` may be modified for this work.
@@ -158,7 +159,9 @@ month's extraction is deferred.
 Checklist:
 
 - [x] Select Mapped TaskGroup per month as the preferred design.
-- [ ] Confirm the exact Airflow 3 API syntax supported by the pinned dependency.
+- [x] Confirm the exact Airflow 3 API syntax supported by the pinned dependency.
+      `apache-airflow==3.3.2` supports `from airflow.sdk import task_group` and
+      dynamic TaskGroup mapping with `@task_group` plus `.expand(...)`.
 - [ ] Keep the DAG declaration thin; extract helper construction only when it
       improves readability and remains orchestration-specific.
 - [ ] Keep task IDs stable where practical for operator familiarity.
@@ -424,8 +427,9 @@ Use this sequence and mark each item as it is completed:
 
 - [x] Approve Mapped TaskGroup per month as the target architecture.
 - [x] Create this implementation plan before editing scripts.
-- [ ] Resolve/review the missing `orchestration/AGENTS.md` reference.
-- [ ] Confirm pinned Airflow TaskGroup dynamic-mapping API and current graph
+- [x] Treat root `AGENTS.md` and Airflow policy documents as the orchestration
+      authority; no separate `orchestration/AGENTS.md` is required.
+- [x] Confirm pinned Airflow TaskGroup dynamic-mapping API and current graph
       behavior.
 - [ ] Update focused DAG-structure tests first or alongside the graph change.
 - [ ] Refactor the DAG to a mapped monthly TaskGroup.
