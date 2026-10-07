@@ -15,7 +15,13 @@ from orchestration.operators import raw_checkpoint
 from orchestration.scheduling.submission_gate import SubmissionDeferred
 
 
-def test_operator_exposes_month_label_from_request_spec() -> None:
+def test_operator_exposes_month_label_after_runtime_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        lambda *args, **kwargs: {"boundary": "ensure_raw_checkpoint"},
+    )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="label_test",
         request_spec={"start_date": "2016-02-01"},
@@ -23,17 +29,21 @@ def test_operator_exposes_month_label_from_request_spec() -> None:
         run_mode="scheduled",
     )
 
+    assert operator.month_label is None
+    operator.execute({})
     assert operator.month_label == "2016-02"
 
 
-def test_operator_rejects_missing_month_label_source() -> None:
+def test_operator_rejects_missing_month_label_source_at_runtime() -> None:
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="invalid_label",
+        request_spec={},
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
     with pytest.raises(ValueError, match="request_spec.start_date"):
-        raw_checkpoint.RawCheckpointOperator(
-            task_id="invalid_label",
-            request_spec={},
-            progress_id=42,
-            run_mode="scheduled",
-        )
+        operator.execute({})
 
 
 def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatch) -> None:
