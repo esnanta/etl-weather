@@ -282,13 +282,14 @@ comes from dependency restructuring or from a pacing/configuration change.
 
 Expected orchestration files:
 
-- [ ] `orchestration/dags/cds_era5_land_etl.py`
+- [x] `orchestration/dags/cds_era5_land_etl.py`
       - introduce the monthly TaskGroup;
       - map the group over monthly jobs;
       - preserve explicit retry, timeout, pool, and concurrency policy.
 - [ ] Small orchestration helper module only if needed to keep the DAG thin.
-- [ ] Existing task/operator wrappers only if their signatures must change for
-      TaskGroup mapping; avoid changes when current JSON-safe contracts suffice.
+- [x] Existing RAW operator changed only as required for TaskGroup mapping:
+      mapped references are template-resolvable and request/month validation
+      occurs during task execution rather than DAG parsing.
 
 Expected test files:
 
@@ -431,9 +432,11 @@ Use this sequence and mark each item as it is completed:
       authority; no separate `orchestration/AGENTS.md` is required.
 - [x] Confirm pinned Airflow TaskGroup dynamic-mapping API and current graph
       behavior.
-- [ ] Update focused DAG-structure tests first or alongside the graph change.
-- [ ] Refactor the DAG to a mapped monthly TaskGroup.
-- [ ] Make only the minimum wrapper/helper changes required.
+- [x] Update focused DAG-structure tests alongside the graph change.
+- [x] Refactor the DAG to a mapped monthly TaskGroup.
+- [x] Make only the minimum wrapper/helper changes required: RAW mapped inputs
+      are resolved/validated at task runtime so TaskGroup references remain
+      parse-safe.
 - [ ] Run focused orchestration tests.
 - [ ] Run the full unit regression gate.
 - [ ] Run selected PostgreSQL integration tests.
