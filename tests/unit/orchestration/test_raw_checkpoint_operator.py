@@ -222,7 +222,7 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_earliest_start_defer_logs_human_readable_wait(
-    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     earliest = datetime.now(timezone.utc) + timedelta(minutes=15)
     operator = raw_checkpoint.RawCheckpointOperator(
@@ -234,21 +234,19 @@ def test_earliest_start_defer_logs_human_readable_wait(
         earliest_start_at=earliest.isoformat(),
     )
 
-    with caplog.at_level("INFO"), pytest.raises(TaskDeferred):
+    with pytest.raises(TaskDeferred):
         operator.execute({})
 
-    assert any(
-        "RAW earliest-start deferred" in record.message
-        and "month=2016-02" in record.message
-        and "wait=" in record.message
-        and "resume_at_local=" in record.message
-        for record in caplog.records
-    )
+    output = capsys.readouterr().out
+    assert "RAW earliest-start deferred" in output
+    assert "month=2016-02" in output
+    assert "wait=" in output
+    assert "resume_at_local=" in output
 
 
 def test_submission_pacing_defer_logs_human_readable_wait(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     next_allowed_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
@@ -267,13 +265,11 @@ def test_submission_pacing_defer_logs_human_readable_wait(
         run_mode="scheduled",
     )
 
-    with caplog.at_level("INFO"), pytest.raises(TaskDeferred):
+    with pytest.raises(TaskDeferred):
         operator.execute({})
 
-    assert any(
-        "RAW CDS pacing deferred" in record.message
-        and "month=2016-01" in record.message
-        and "wait=" in record.message
-        and "next_allowed_at_local=" in record.message
-        for record in caplog.records
-    )
+    output = capsys.readouterr().out
+    assert "RAW CDS pacing deferred" in output
+    assert "month=2016-01" in output
+    assert "wait=" in output
+    assert "next_allowed_at_local=" in output
