@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orchestration import config as orchestration_config
+import config as orchestration_config
 
 
 def test_required_campaign_environment_rejects_missing_value(
