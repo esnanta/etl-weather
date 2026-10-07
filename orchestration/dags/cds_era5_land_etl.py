@@ -70,14 +70,14 @@ with DAG(
 
     @task(
         task_id="ensure_transformed_checkpoint",
-        map_index_template="{{ month_label }}",
+        map_index_template="{{ task.op_kwargs['month_label'] }}",
         retries=0,
         execution_timeout=timedelta(hours=2),
     )
     def ensure_transformed_checkpoint(
         raw_checkpoint_result: dict[str, object],
+        month_label: str,
     ) -> dict[str, object]:
-        context = get_current_context()
         request = raw_checkpoint_result.get(
             "request", raw_checkpoint_result.get("request_spec")
         )
@@ -88,20 +88,25 @@ with DAG(
                 "Mapped transformation requires request.start_date "
                 "for the Airflow month label."
             )
-        context["month_label"] = str(request["start_date"])[:7]
+        if month_label != str(request["start_date"])[:7]:
+            raise ValueError(
+                "Mapped transformation month_label must match request.start_date."
+            )
         return ensure_transformed_checkpoint_with_progress(raw_checkpoint_result)
 
     @task(
         task_id="load",
-        map_index_template="{{ month_label }}",
+        map_index_template="{{ task.op_kwargs['month_label'] }}",
         retries=1,
         retry_delay=timedelta(minutes=5),
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(minutes=30),
         execution_timeout=timedelta(hours=2),
     )
-    def load(transformed_checkpoint_result: dict[str, object]) -> dict[str, object]:
-        context = get_current_context()
+    def load(
+        transformed_checkpoint_result: dict[str, object],
+        month_label: str,
+    ) -> dict[str, object]:
         request = transformed_checkpoint_result.get(
             "request", transformed_checkpoint_result.get("request_spec")
         )
@@ -112,12 +117,16 @@ with DAG(
                 "Mapped load requires request.start_date "
                 "for the Airflow month label."
             )
-        context["month_label"] = str(request["start_date"])[:7]
+        if month_label != str(request["start_date"])[:7]:
+            raise ValueError(
+                "Mapped load month_label must match request.start_date."
+            )
         return load_with_progress(transformed_checkpoint_result)
 
     @task_group(group_id="monthly_etl")
     def monthly_etl(
         request_spec: dict[str, object],
+        month_label: str,
         progress_id: int,
         run_mode: str,
         earliest_start_at: str | None,
@@ -125,6 +134,7 @@ with DAG(
         attempt_raw_checkpoint = RawCheckpointOperator(
             task_id="attempt_raw_checkpoint",
             request_spec=request_spec,
+            month_label=month_label,
             progress_id=progress_id,
             run_mode=run_mode,
             earliest_start_at=earliest_start_at,
@@ -138,6 +148,7 @@ with DAG(
         resolve_raw_checkpoint = RawCheckpointOperator(
             task_id="resolve_raw_checkpoint",
             request_spec=request_spec,
+            month_label=month_label,
             progress_id=progress_id,
             run_mode=run_mode,
             earliest_start_at=earliest_start_at,
@@ -152,9 +163,10 @@ with DAG(
         )
 
         transformed_checkpoint = ensure_transformed_checkpoint(
-            resolve_raw_checkpoint.output
+            resolve_raw_checkpoint.output,
+            month_label,
         )
-        load(transformed_checkpoint)
+        load(transformed_checkpoint, month_label)
 
     monthly_jobs = build_monthly_requests()
     monthly_etl.expand_kwargs(monthly_jobs)
