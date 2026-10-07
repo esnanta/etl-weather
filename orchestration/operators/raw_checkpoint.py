@@ -33,6 +33,7 @@ class RawCheckpointOperator(BaseOperator):
 
     template_fields = (
         "request_spec",
+        "month_label",
         "progress_id",
         "run_mode",
         "earliest_start_at",
@@ -43,6 +44,7 @@ class RawCheckpointOperator(BaseOperator):
         self,
         *,
         request_spec: dict[str, object],
+        month_label: str,
         progress_id: int,
         run_mode: str,
         earliest_start_at: str | None = None,
@@ -55,14 +57,14 @@ class RawCheckpointOperator(BaseOperator):
         # resolves these template fields for the concrete mapped task instance
         # before execute(), so request validation belongs at runtime.
         self.request_spec = request_spec
+        self.month_label = month_label
         self.progress_id = progress_id
         self.run_mode = run_mode
         self.earliest_start_at = earliest_start_at
         self.first_result = first_result
         self.first_pass = first_pass
-        self.month_label: str | None = None
 
-    def _resolve_month_label(self) -> str:
+    def _validate_month_label(self) -> str:
         if not isinstance(self.request_spec, dict):
             raise ValueError("Mapped RAW checkpoint requires resolved request_spec metadata.")
         start_date = self.request_spec.get("start_date")
@@ -71,11 +73,16 @@ class RawCheckpointOperator(BaseOperator):
                 "Mapped RAW checkpoint requires request_spec.start_date "
                 "in YYYY-MM-DD format."
             )
-        self.month_label = start_date[:7]
+        expected = start_date[:7]
+        if not isinstance(self.month_label, str) or self.month_label != expected:
+            raise ValueError(
+                "Mapped RAW checkpoint requires month_label to match "
+                "request_spec.start_date."
+            )
         return self.month_label
 
     def execute(self, context: Context) -> dict[str, object]:
-        month_label = self._resolve_month_label()
+        month_label = self._validate_month_label()
 
         if self.first_result is not None:
             if not isinstance(self.first_result, dict):
