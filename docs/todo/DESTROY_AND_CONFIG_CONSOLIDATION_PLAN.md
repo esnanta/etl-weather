@@ -682,14 +682,16 @@ Use this order so each change has one clear purpose.
 
 ### D4 — Implement destroy
 
-- [ ] Add `scripts/destroy_all.py`.
-- [ ] Add exact `DESTROY` confirmation.
-- [ ] Add full Airflow stop/escalation.
-- [ ] Add database/session safety.
-- [ ] Reuse tested data/log/runtime/database primitives where appropriate.
-- [ ] Add final clean-state verification.
-- [ ] Add `test_destroy_all.py`.
-- [ ] Run focused operation tests.
+- [x] Add `scripts/destroy_all.py`.
+- [x] Add exact `DESTROY` confirmation.
+- [x] Add full Airflow stop/escalation through the shared D3 process primitives.
+- [x] Add database/session safety; external PostgreSQL sessions block recreation
+      and are reported with PID/user/application/client/state context.
+- [x] Reuse tested data/log/runtime/database primitives where appropriate.
+- [x] Add final clean-state verification for Airflow processes/runtime files,
+      data/log directories, and canonical application database tables.
+- [x] Add `test_destroy_all.py`.
+- [ ] Run focused operation tests and full unit regression.
 
 ### D5 — Consolidate config
 
