@@ -74,6 +74,7 @@ def prepare_monthly_jobs(
         return [
             {
                 "request_spec": spec,
+                "month_label": str(spec["start_date"])[:7],
                 "progress_id": progress_id,
                 "run_mode": mode.mode,
                 "earliest_start_at": (
