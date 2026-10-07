@@ -84,8 +84,8 @@ DISK_WARNING_GIB = 5
 # Number of bytes in one GiB for disk-space calculations.
 GIB = 1024**3
 
-# Hour spacing between mapped scheduled monthly lower bounds.
-MONTHLY_SLOT_SPACING_HOURS = 1
+# Minute spacing between mapped scheduled monthly lower bounds.
+MONTHLY_SLOT_SPACING_MINUTES = 15
 
 # Shared application schema used by operational progress tables.
 PIPELINE_PROGRESS_SCHEMA = APPLICATION_SCHEMA
