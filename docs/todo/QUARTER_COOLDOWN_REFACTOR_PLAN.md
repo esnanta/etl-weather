@@ -455,6 +455,8 @@ coverage uses a different file.
 
 ### C6 — Full unit regression
 
+- [x] User verification on 2026-10-08: full unit suite passed 325 tests in 7.55s.
+
 ```bash
 source activate-airflow.sh -q
 
