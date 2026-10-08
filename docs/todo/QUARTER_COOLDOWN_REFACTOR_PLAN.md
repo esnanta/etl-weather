@@ -428,9 +428,13 @@ CDS submission pacing
 - [x] Preserve existing failure, availability, and claim behavior.
 - [x] Add explicit cooldown active/satisfied observability logs.
 - [x] Add deterministic unit coverage for the 9m59s and exact 10m boundaries.
-- [ ] User verifies focused campaign/scheduler tests locally.
+- [x] User verifies focused campaign/scheduler tests locally: 66 passed in 4.92s
+      on 2026-10-08.
 
 ### C5 — Focused tests
+
+- [x] User verification on 2026-10-08: 66 focused orchestration tests passed
+      in 4.92s.
 
 Run:
 
