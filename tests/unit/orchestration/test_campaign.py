@@ -303,6 +303,54 @@ def test_selection_blocks_next_quarter_when_predecessor_completion_time_is_missi
     assert "completed_at" in selected.reason
 
 
+
+
+def test_cooldown_wait_log_explains_next_eligible_time(
+    progress_selection, caplog, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    with caplog.at_level("INFO"):
+        selected = select_earliest_incomplete_quarter(
+            dummy_engine,
+            claim_owner="scheduled__cooldown-log",
+            current_local_date=date.max,
+            current_time=COMPLETED_AT + timedelta(minutes=9, seconds=59),
+        )
+
+    assert selected is None
+    assert "reason=quarter_cooldown" in caplog.text
+    assert "previous_quarter=2016 Q1" in caplog.text
+    assert "next_quarter=2016 Q2" in caplog.text
+    assert "eligible_at_local=" in caplog.text
+    assert "checked_at_local=" in caplog.text
+    assert "remaining=1s" in caplog.text
+    assert "result=no_selection" in caplog.text
+
+
+def test_selection_log_identifies_selected_and_next_quarter(
+    progress_selection, caplog, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    with caplog.at_level("INFO"):
+        selected = select_earliest_incomplete_quarter(
+            dummy_engine,
+            claim_owner="scheduled__selection-log",
+            current_local_date=date.max,
+            current_time=COMPLETED_AT + timedelta(minutes=10),
+        )
+
+    assert isinstance(selected, CampaignSelection)
+    assert "Campaign quarter selected" in caplog.text
+    assert "quarter=2016 Q2" in caplog.text
+    assert "months=2016-04,2016-05,2016-06" in caplog.text
+    assert "selected_at_local=" in caplog.text
+    assert "next_quarter=2016 Q3" in caplog.text
+
+
 def test_selection_starts_at_first_incomplete_quarter(
     progress_selection, dummy_engine: Engine
 ) -> None:
