@@ -466,6 +466,10 @@ python -m pytest tests/unit -q
 
 ### C7 — PostgreSQL integration gate
 
+- [x] User verification on 2026-10-08: existing PostgreSQL integration gate passed
+      9 tests in 1.48s.
+- [ ] Add and verify one dedicated durable quarter-cooldown integration test.
+
 Run the existing orchestration integration suite plus new cooldown coverage.
 
 At minimum:
