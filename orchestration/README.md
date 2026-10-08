@@ -147,10 +147,7 @@ Manual execution is useful for explicit historical work and for repairing a fail
 
 ## Orchestration Timing Policy
 
-Orchestration timing is source-controlled in root `config.py` rather than
-configured through `.env`.
-
-The active policy is:
+Timing values are source-controlled in root `config.py`:
 
 ```text
 CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10
@@ -159,28 +156,28 @@ MONTHLY_SLOT_SPACING_MINUTES       = 15
 SUBMISSION_INTERVAL_MINUTES        = 5
 ```
 
-These values control different boundaries:
+Meaning:
 
-- the campaign schedule interval determines how often Airflow checks for
-  scheduled campaign work;
-- the quarter cooldown delays the next quarter until the previous quarter is
-  complete and valid, then waits an additional 10 minutes;
-- monthly slot spacing gives the three months in one selected quarter
-  earliest-start offsets of +0, +15, and +30 minutes;
-- submission pacing enforces at least five minutes between actual CDS
-  submission POST requests.
+- every 10 minutes Airflow checks whether scheduled campaign work is eligible;
+- after one quarter becomes `complete + valid`, the next quarter waits 10 minutes;
+- the three months inside one quarter use earliest-start offsets `+0/+15/+30`;
+- actual CDS submission POST requests remain at least 5 minutes apart.
 
-`ERA5_CAMPAIGN_SCHEDULE_ENABLED` remains an environment switch because it
-controls whether scheduled campaign ticks are enabled at all. The timing values
-above are not deployment overrides.
+Example:
 
-A monthly partition may require more than one CDS submission because the UTC+7
-daily boundary can require a previous-day context chunk. Pacing therefore
-applies to every actual submission, not only once per mapped month.
+```text
+21:00  Q1 selected
+       Jan +0m, Feb +15m, Mar +30m
 
-When a pacing or earliest-start boundary is not ready, the extraction operator
-defers instead of occupying a worker. Completed retrieval chunks are reused
-when the task wakes again.
+21:47  Q1 complete + valid
+21:57  quarter cooldown ends
+
+22:00  next scheduler check
+       Q2 may be selected
+```
+
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED` remains in `.env` only as the scheduled-mode
+on/off switch. Waiting tasks defer without occupying a worker.
 
 ## Campaign Progress
 
