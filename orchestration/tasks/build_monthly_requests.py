@@ -37,7 +37,10 @@ def prepare_monthly_jobs(
                 engine, claim_owner=run_id
             )
             if selected is None:
-                logger.info("No eligible incomplete campaign quarter remains.")
+                logger.info(
+                    "Scheduled campaign mapped no monthly jobs; "
+                    "see preceding campaign decision log for the exact reason."
+                )
                 return []
             if isinstance(selected, CampaignBlocked):
                 logger.warning(
