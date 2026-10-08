@@ -469,6 +469,12 @@ python -m pytest \
 
 ### C9 — Clean destroy/bootstrap pilot
 
+Pilot DAG blob recorded before runtime start:
+
+```text
+080b1cf431178ba22b3a07f5f2ecd36acbc29acb
+```
+
 Only after unit + integration gates pass:
 
 - [ ] Destroy local development runtime/data using `destroy_all.py`.
