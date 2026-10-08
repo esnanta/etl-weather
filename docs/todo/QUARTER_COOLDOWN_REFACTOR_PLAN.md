@@ -468,7 +468,9 @@ python -m pytest tests/unit -q
 
 - [x] User verification on 2026-10-08: existing PostgreSQL integration gate passed
       9 tests in 1.48s.
-- [ ] Add and verify one dedicated durable quarter-cooldown integration test.
+- [x] Add and verify one dedicated durable quarter-cooldown integration test.
+- [x] User verification on 2026-10-08: full PostgreSQL integration gate including
+      durable cooldown passed 10 tests in 1.47s.
 
 Run the existing orchestration integration suite plus new cooldown coverage.
 
@@ -483,7 +485,8 @@ python -m pytest \
   -q
 ```
 
-- [ ] Add the cooldown integration test path to this gate once created.
+- [x] Cooldown integration coverage is included in
+      `tests/integration/orchestration/test_pipeline_progress_reconciliation.py`.
 
 ### C8 — Documentation
 
