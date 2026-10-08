@@ -478,7 +478,10 @@ Pilot DAG blob recorded before runtime start:
 Only after unit + integration gates pass:
 
 - [ ] Destroy local development runtime/data using `destroy_all.py`.
-- [ ] Bootstrap Airflow without manual cleanup.
+- [x] Bootstrap Airflow without manual cleanup.
+- [x] Verify `cds_api` pool has 1 slot.
+- [x] Verify DAG task list matches the expected mapped monthly flow.
+- [x] Verify clean metadata has no historical DagRuns.
 - [ ] Start Airflow with the approved scheduler cadence.
 - [ ] Verify one DAG version is used for the whole pilot.
 - [ ] Verify Q1 runs Jan/Feb/Mar depth-first with `+0/+15/+30` earliest starts.
