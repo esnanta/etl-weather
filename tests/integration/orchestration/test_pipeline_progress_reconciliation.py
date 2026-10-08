@@ -117,10 +117,7 @@ def test_durable_completed_at_controls_next_quarter_cooldown(monkeypatch) -> Non
             )
             persisted_request_keys.append(partition.request_key)
 
-            local_midnight = datetime.combine(
-                partition.start_date,
-                datetime.min.time(),
-            )
+            local_midnight = datetime.fromisoformat(partition.start_date)
             utc_instant = local_midnight - timedelta(hours=7)
             with engine.begin() as connection:
                 daily_climate_id = connection.execute(
