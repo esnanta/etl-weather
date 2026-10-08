@@ -29,44 +29,14 @@ persistence, or request-key behavior.
 
 ---
 
-## 2. Current Behavior
+## 2. Baseline Before Refactor
 
-The current scheduler cadence is clock-based.
+Before this refactor, scheduler cadence and CDS pacing could be supplied through
+environment variables, while monthly spacing was a code constant. Quarter
+selection had no completion-relative cooldown.
 
-For example:
-
-```env
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=45m
-```
-
-means Airflow creates scheduled campaign opportunities every 45 minutes. It
-does **not** mean "wait 45 minutes after one quarter finishes."
-
-Inside one selected quarter, mapped months currently use:
-
-```python
-MONTHLY_SLOT_SPACING_MINUTES = 15
-```
-
-so a quarter selected at 21:00 gets earliest-start lower bounds:
-
-```text
-month 1 → 21:00
-month 2 → 21:15
-month 3 → 21:30
-```
-
-Provider submissions are independently constrained by:
-
-```env
-SUBMISSION_INTERVAL_SECONDS=300
-```
-
-which means at least five minutes between actual CDS submission POST requests.
-
-These three clocks are independent today.
-
----
+The refactor centralizes all timing durations in root `config.py` and adds a
+durable quarter cooldown based on PostgreSQL `completed_at`.
 
 ## 3. Target Behavior
 
@@ -128,7 +98,7 @@ Q2 must never be selected before Q1 is complete and its cooldown has expired.
 - [ ] Keep `max_active_tasks=2`.
 - [ ] Keep the one-slot `cds_api` pool.
 - [ ] Keep `MONTHLY_SLOT_SPACING_MINUTES=15` unless separately approved.
-- [ ] Keep `SUBMISSION_INTERVAL_SECONDS` semantics unchanged.
+- [ ] Keep `SUBMISSION_INTERVAL_MINUTES` semantics unchanged.
 - [ ] Keep provider pacing durable in PostgreSQL.
 - [ ] Keep campaign progress identity cadence-neutral.
 - [ ] Keep manual repair behavior unchanged.
@@ -490,10 +460,12 @@ python -m pytest \
 
 ### C8 — Documentation
 
-- [ ] Update `orchestration/README.md`.
-- [ ] Update `env-example` only for approved environment-facing cadence
-      changes.
-- [ ] Keep this checklist updated after each completed phase.
+- [x] Keep `orchestration/README.md` timing explanation short and example-driven.
+- [x] Document the four source-controlled timing constants consistently.
+- [x] Keep `env-example` limited to the scheduled-mode enable switch and point
+      timing policy to root `config.py`.
+- [x] Remove stale references to environment-controlled timing values.
+- [x] Keep this checklist updated after each completed phase.
 
 ### C9 — Clean destroy/bootstrap pilot
 
