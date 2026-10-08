@@ -493,7 +493,10 @@ Only after unit + integration gates pass:
 - [ ] Verify Q2 is not selected before cooldown expiry.
 - [ ] Verify the first scheduler tick at/after cooldown expiry selects Q2.
 - [ ] Verify no overlapping active quarter DagRuns.
-- [ ] Verify mapped task labels and human-readable defer logs remain correct.
+- [x] Verify mapped task labels and human-readable defer logs remain correct.
+- [x] Add explicit campaign decision logs for cooldown wait, eligibility,
+      quarter selection, availability wait, and campaign completion.
+- [ ] User verifies focused observability tests locally.
 - [ ] Verify no scientific/pipeline behavior changed.
 
 ---
