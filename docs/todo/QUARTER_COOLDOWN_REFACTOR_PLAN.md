@@ -482,7 +482,10 @@ Only after unit + integration gates pass:
 - [x] Verify `cds_api` pool has 1 slot.
 - [x] Verify DAG task list matches the expected mapped monthly flow.
 - [x] Verify clean metadata has no historical DagRuns.
-- [ ] Start Airflow with the approved scheduler cadence.
+- [x] Start Airflow with the approved scheduler cadence.
+- [x] Verify DAG imports cleanly with `has_import_errors=False`.
+- [x] Verify periodic timetable is active with `timetable_summary=0:10:00`.
+- [x] Verify `max_active_runs=1` and `max_active_tasks=2` before unpause.
 - [ ] Verify one DAG version is used for the whole pilot.
 - [ ] Verify Q1 runs Jan/Feb/Mar depth-first with `+0/+15/+30` earliest starts.
 - [ ] Verify Q1 becomes complete + valid in PostgreSQL.
