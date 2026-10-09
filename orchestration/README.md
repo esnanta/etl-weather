@@ -302,6 +302,18 @@ airflow dags trigger cds_era5_land_etl \
 
 A scheduled run selects the earliest eligible incomplete quarter. Its three monthly TaskGroups use +0, +15, and +30 minute earliest-start lower bounds. Existing valid artifacts are resumed; missing artifacts are retrieved and processed depth-first per month.
 
+Observed clean-pilot timings for one monthly partition were approximately:
+
+```text
+RAW checkpoint task   : 14-56 minutes
+transform + validate  : 1.7-2.1 seconds
+load + reconcile      : 1.8-2.1 seconds
+```
+
+The RAW task duration includes earliest-start deferral, five-minute CDS pacing,
+provider queue/download time, validation, and checkpoint creation, so it should
+not be interpreted as network transfer time alone.
+
 ### One month fails
 
 If February fails while January and March succeed, the successful months can complete their downstream work. The failed detail remains durable and blocks automatic progression beyond that quarter.
