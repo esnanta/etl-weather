@@ -496,7 +496,8 @@ Only after unit + integration gates pass:
 - [x] Verify mapped task labels and human-readable defer logs remain correct.
 - [x] Add explicit campaign decision logs for cooldown wait, eligibility,
       quarter selection, availability wait, and campaign completion.
-- [ ] User verifies focused observability tests locally.
+- [x] User verifies focused observability tests locally: 40 passed in 1.12s
+      on 2026-10-09.
 - [ ] Verify no scientific/pipeline behavior changed.
 
 ---
