@@ -5,18 +5,24 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+import logging
 from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from orchestration.progress.definition import PipelineProgressDefinition
 
-from orchestration.config import (
+from orchestration.scheduling.time_utils import format_wait_duration, local_iso
+
+logger = logging.getLogger(__name__)
+
+from config import (
     AVAILABILITY_LAG_DAYS,
     CAMPAIGN_END_DATE,
     CAMPAIGN_KEY,
     CAMPAIGN_START_DATE,
     CAMPAIGN_TIMEZONE,
+    QUARTER_COOLDOWN_MINUTES,
 )
 
 
@@ -72,6 +78,40 @@ class CampaignBlocked:
     reason: str
 
 
+
+
+@dataclass(frozen=True)
+class QuarterCooldownEligibility:
+    """Describe whether a completed predecessor has cleared its cooldown."""
+
+    eligible: bool
+    eligible_at: datetime
+    remaining_seconds: float
+
+
+def quarter_cooldown_eligibility(
+    completed_at: datetime,
+    current_time: datetime,
+    *,
+    cooldown_minutes: int = QUARTER_COOLDOWN_MINUTES,
+) -> QuarterCooldownEligibility:
+    """Return predecessor cooldown eligibility using timezone-aware instants."""
+    if completed_at.tzinfo is None or current_time.tzinfo is None:
+        raise ValueError("Quarter cooldown timestamps must be timezone-aware.")
+    if isinstance(cooldown_minutes, bool) or not isinstance(cooldown_minutes, int):
+        raise ValueError("cooldown_minutes must be a nonnegative integer.")
+    if cooldown_minutes < 0:
+        raise ValueError("cooldown_minutes must be a nonnegative integer.")
+
+    eligible_at = completed_at + timedelta(minutes=cooldown_minutes)
+    remaining_seconds = max(0.0, (eligible_at - current_time).total_seconds())
+    return QuarterCooldownEligibility(
+        eligible=current_time >= eligible_at,
+        eligible_at=eligible_at,
+        remaining_seconds=remaining_seconds,
+    )
+
+
 def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
     quarters = []
     for year in range(CAMPAIGN_START_DATE.year, CAMPAIGN_END_DATE.year + 1):
@@ -81,6 +121,15 @@ def iter_campaign_quarters() -> tuple[CampaignQuarter, ...]:
             if start >= CAMPAIGN_START_DATE and end <= CAMPAIGN_END_DATE:
                 quarters.append(CampaignQuarter(year, quarter))
     return tuple(quarters)
+
+
+def _next_campaign_quarter(
+    quarters: tuple[CampaignQuarter, ...],
+    index: int,
+) -> CampaignQuarter | None:
+    """Return the next configured quarter, if one exists."""
+    next_index = index + 1
+    return quarters[next_index] if next_index < len(quarters) else None
 
 
 def build_campaign_progress_definition(
@@ -153,6 +202,7 @@ def select_earliest_incomplete_quarter(
     *,
     claim_owner: str,
     current_local_date: date | None = None,
+    current_time: datetime | None = None,
 ) -> CampaignSelection | CampaignBlocked | None:
     from orchestration.repositories.pipeline_progress import (
         get_failed_progress_partitions,
@@ -160,14 +210,35 @@ def select_earliest_incomplete_quarter(
         reconcile_pipeline_progress,
         try_claim_pipeline_progress,
     )
-    today = current_local_date or datetime.now(CAMPAIGN_TIMEZONE).date()
+    now = current_time or datetime.now(CAMPAIGN_TIMEZONE)
+    if now.tzinfo is None:
+        raise ValueError("current_time must be timezone-aware.")
+    today = current_local_date or now.astimezone(CAMPAIGN_TIMEZONE).date()
     eligibility_boundary = today - timedelta(days=AVAILABILITY_LAG_DAYS)
     progress_ids = initialize_campaign_progress(engine, current_local_date=date.max)
-    for quarter, progress_id in zip(iter_campaign_quarters(), progress_ids, strict=True):
+    quarters = iter_campaign_quarters()
+
+    previous_quarter: CampaignQuarter | None = None
+    previous_progress = None
+
+    for index, (quarter, progress_id) in enumerate(
+        zip(quarters, progress_ids, strict=True)
+    ):
         if quarter.end_date > eligibility_boundary:
+            available_on = quarter.end_date + timedelta(days=AVAILABILITY_LAG_DAYS)
+            logger.info(
+                "Campaign selection waiting | reason=availability_lag | "
+                "next_quarter=%s | checked_at_local=%s | "
+                "available_on_local_date=%s | result=no_selection",
+                quarter.label,
+                local_iso(now, CAMPAIGN_TIMEZONE),
+                available_on.isoformat(),
+            )
             return None
+
         reconcile_pipeline_progress(engine, progress_id)
         progress = get_pipeline_progress_by_id(engine, progress_id)
+
         if progress.failed_partition_count:
             failed = get_failed_progress_partitions(engine, progress_id)
             months = ", ".join(
@@ -178,15 +249,84 @@ def select_earliest_incomplete_quarter(
                 quarter, progress_id,
                 f"Manual repair required for {quarter.label}: {months}",
             )
+
         if (
             progress.execution_status != "complete"
             or progress.validation_status != "valid"
         ):
+            if previous_progress is not None:
+                if (
+                    previous_progress.execution_status != "complete"
+                    or previous_progress.validation_status != "valid"
+                ):
+                    return None
+                if previous_progress.completed_at is None:
+                    assert previous_quarter is not None
+                    return CampaignBlocked(
+                        quarter,
+                        progress_id,
+                        f"{previous_quarter.label} is complete and valid but "
+                        "has no completed_at timestamp.",
+                    )
+
+                cooldown = quarter_cooldown_eligibility(
+                    previous_progress.completed_at,
+                    now,
+                )
+                assert previous_quarter is not None
+                if not cooldown.eligible:
+                    logger.info(
+                        "Campaign selection waiting | reason=quarter_cooldown | "
+                        "previous_quarter=%s | next_quarter=%s | "
+                        "previous_completed_at_local=%s | cooldown=%dm | "
+                        "eligible_at_local=%s | checked_at_local=%s | "
+                        "remaining=%s | result=no_selection",
+                        previous_quarter.label,
+                        quarter.label,
+                        local_iso(previous_progress.completed_at, CAMPAIGN_TIMEZONE),
+                        QUARTER_COOLDOWN_MINUTES,
+                        local_iso(cooldown.eligible_at, CAMPAIGN_TIMEZONE),
+                        local_iso(now, CAMPAIGN_TIMEZONE),
+                        format_wait_duration(cooldown.remaining_seconds),
+                    )
+                    return None
+                logger.info(
+                    "Campaign quarter eligible | reason=quarter_cooldown_satisfied | "
+                    "previous_quarter=%s | quarter=%s | eligible_at_local=%s | "
+                    "checked_at_local=%s | eligible_since=%s",
+                    previous_quarter.label,
+                    quarter.label,
+                    local_iso(cooldown.eligible_at, CAMPAIGN_TIMEZONE),
+                    local_iso(now, CAMPAIGN_TIMEZONE),
+                    format_wait_duration(
+                        max(0.0, (now - cooldown.eligible_at).total_seconds())
+                    ),
+                )
+
             if not try_claim_pipeline_progress(engine, progress_id, claim_owner):
                 return CampaignBlocked(
                     quarter, progress_id,
                     f"{quarter.label} is already claimed by another run.",
                 )
             specs = build_quarter_request_specs(quarter, current_local_date=today)
+            next_quarter = _next_campaign_quarter(quarters, index)
+            logger.info(
+                "Campaign quarter selected | quarter=%s | progress_id=%d | "
+                "months=%s | selected_at_local=%s | next_quarter=%s",
+                quarter.label,
+                progress_id,
+                ",".join(str(spec["start_date"])[:7] for spec in specs),
+                local_iso(now, CAMPAIGN_TIMEZONE),
+                next_quarter.label if next_quarter is not None else "none",
+            )
             return CampaignSelection(quarter, progress_id, tuple(specs))
+
+        previous_quarter = quarter
+        previous_progress = progress
+
+    logger.info(
+        "Campaign selection complete | checked_at_local=%s | "
+        "result=no_selection | reason=campaign_complete",
+        local_iso(now, CAMPAIGN_TIMEZONE),
+    )
     return None

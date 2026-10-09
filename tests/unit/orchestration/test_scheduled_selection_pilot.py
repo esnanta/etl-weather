@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from orchestration.campaign import policy as campaign
-from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
@@ -67,6 +67,11 @@ def test_scheduled_selection_recovery_and_terminal_noop(
             failed_partition_count=int(status == "failed"),
             execution_status=status,
             validation_status="valid" if status == "complete" else "pending",
+            completed_at=(
+                datetime(2026, 10, 1, tzinfo=timezone.utc)
+                if status == "complete"
+                else None
+            ),
         )
 
     def claim(unused_engine, progress_id, owner):

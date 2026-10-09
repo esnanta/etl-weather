@@ -1,4 +1,9 @@
-"""Guarded maintenance command for clearing generated local Airflow runtime state."""
+"""Guarded maintenance command for clearing generated local Airflow runtime state.
+
+The reset may terminate residual LocalExecutor worker processes after the main
+Airflow services have stopped. Scheduler, API server, triggerer, and DAG
+processor processes are never terminated automatically.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,11 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
+from scripts.airflow_processes import (
+    list_airflow_services,
+    list_localexecutor_workers,
+    terminate_processes,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +45,51 @@ RUNTIME_FILENAMES = (
     "simple_auth_manager_passwords.json.generated",
 )
 
+# Reset policy remains local to this command: main Airflow services are blockers,
+# while residual LocalExecutor workers may be stopped after services are absent.
+
+
+def blocking_airflow_services(
+    proc_root: Path = Path("/proc"),
+) -> list[tuple[int, str]]:
+    """Return main Airflow services that block guarded runtime reset."""
+    return list_airflow_services(proc_root=proc_root)
+
+
+def local_executor_workers(
+    proc_root: Path = Path("/proc"),
+) -> list[tuple[int, str]]:
+    """Return residual LocalExecutor workers eligible for runtime cleanup."""
+    return list_localexecutor_workers(proc_root=proc_root)
+
+
+def stop_local_executor_workers(
+    *,
+    proc_root: Path = Path("/proc"),
+    grace_seconds: float = 2.0,
+    sleep_fn: Callable[[float], None] | None = None,
+    kill_fn: Callable[[int, int], None] | None = None,
+) -> list[int]:
+    """Stop residual LocalExecutor workers only when main services are absent."""
+    blocking = blocking_airflow_services(proc_root)
+    if blocking:
+        rendered = "; ".join(
+            f"pid={pid} cmd={command}" for pid, command in blocking
+        )
+        raise RuntimeError(
+            "Refusing to terminate LocalExecutor workers while main Airflow "
+            "services are still running: " + rendered
+        )
+
+    workers = local_executor_workers(proc_root)
+    return terminate_processes(
+        workers,
+        remaining_processes_fn=lambda: local_executor_workers(proc_root),
+        grace_seconds=grace_seconds,
+        sleep_fn=sleep_fn,
+        kill_fn=kill_fn,
+    )
+
 
 def clear_airflow_runtime_state(
     orchestration_directory: Path = ORCHESTRATION_DIRECTORY,
@@ -55,11 +110,22 @@ def clear_airflow_runtime_state(
     return removed
 
 
+def reset_airflow_runtime_state() -> dict[str, int]:
+    """Stop residual LocalExecutor workers and clear generated runtime files."""
+    stopped_workers = stop_local_executor_workers()
+    removed_files = clear_airflow_runtime_state()
+    return {
+        "stopped_local_executor_workers": len(stopped_workers),
+        "removed_files": len(removed_files),
+    }
+
+
 def _confirmation(input_fn: Callable[[str], str] = input) -> bool:
     while True:
         answer = input_fn(
-            "Delete generated Airflow SQLite/auth/PID runtime state while "
-            "preserving orchestration/airflow.cfg? [y/n]: "
+            "Stop residual LocalExecutor workers and delete generated Airflow "
+            "SQLite/auth/PID runtime state while preserving "
+            "orchestration/airflow.cfg? [y/n]: "
         ).strip().lower()
         if answer in {"y", "yes"}:
             return True
@@ -71,14 +137,16 @@ def _confirmation(input_fn: Callable[[str], str] = input) -> bool:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Inspect or clear generated local Airflow SQLite/auth/PID state. "
-            "The tracked orchestration/airflow.cfg file is always preserved."
+            "Inspect or clear generated local Airflow runtime state. Residual "
+            "LocalExecutor workers are stopped only after main Airflow services "
+            "are confirmed absent. The tracked orchestration/airflow.cfg file "
+            "is always preserved."
         )
     )
     parser.add_argument(
         "--execute",
         action="store_true",
-        help="Allow the interactive deletion prompt when APP_ENV=dev.",
+        help="Allow the interactive reset prompt when APP_ENV=dev.",
     )
     return parser.parse_args(argv)
 
@@ -98,15 +166,52 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("Airflow runtime reset target | directory=%s", ORCHESTRATION_DIRECTORY)
     logger.info("Preserved tracked config | path=%s", PRESERVED_AIRFLOW_CONFIG)
+
+    try:
+        blocking = blocking_airflow_services()
+        workers = local_executor_workers()
+    except RuntimeError as error:
+        logger.warning("Airflow runtime reset preflight failed | %s", error)
+        return 4
+
+    logger.info(
+        "Airflow runtime process preflight | blocking_services=%d | "
+        "localexecutor_workers=%d",
+        len(blocking),
+        len(workers),
+    )
+    if blocking:
+        rendered = "; ".join(
+            f"pid={pid} cmd={command}" for pid, command in blocking
+        )
+        logger.warning(
+            "Airflow runtime reset blocked | stop main Airflow services first: %s",
+            rendered,
+        )
+        return 4
+
     if not args.execute:
-        logger.info("Inspect-only mode | no Airflow runtime files were deleted.")
+        logger.info(
+            "Inspect-only mode | no LocalExecutor workers were stopped and no "
+            "Airflow runtime files were deleted."
+        )
         return 0
     if not _confirmation():
         logger.info("Airflow runtime reset cancelled by operator.")
         return 0
 
-    removed = clear_airflow_runtime_state()
-    logger.info("Airflow runtime reset complete | removed_files=%d", len(removed))
+    try:
+        result = reset_airflow_runtime_state()
+    except RuntimeError as error:
+        logger.warning("Airflow runtime reset failed | %s", error)
+        return 4
+
+    logger.info(
+        "Airflow runtime reset complete | stopped_localexecutor_workers=%d | "
+        "removed_files=%d",
+        result["stopped_local_executor_workers"],
+        result["removed_files"],
+    )
     return 0
 
 

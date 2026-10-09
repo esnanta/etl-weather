@@ -160,6 +160,41 @@ def test_execute_reset_uses_verified_components_in_safe_order(monkeypatch) -> No
     }
 
 
+
+
+def test_preflight_uses_strict_runtime_guard(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_static_guards",
+        lambda config: calls.append("static"),
+    )
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_runtime_guards",
+        lambda config: calls.append("runtime"),
+    )
+
+    reset_all._run_preflight(_config())
+
+    assert calls == ["static", "runtime"]
+
+
+def test_preflight_propagates_deferred_task_block(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.reset_all.recreate_postgres_database._validate_runtime_guards",
+        lambda config: (_ for _ in ()).throw(
+            RuntimeError("Airflow task instances can still run or resume: deferred=2")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="deferred=2"):
+        reset_all._run_preflight(_config())
+
+
+
 def test_database_failure_prevents_local_cleanup(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.reset_all.recreate_postgres_database._recreate_database",

@@ -87,12 +87,12 @@ Only Airflow-related paths are shown here:
 
 ```text
 etl-weather/
+├── config.py                        # single shared lightweight project config
 ├── activate-airflow.sh
 ├── generate-airflow-jwt-secret.sh
 ├── airflow-jwt-key.txt              # generated locally; ignored by Git
 ├── orchestration/
 │   ├── airflow.cfg
-│   ├── config.py
 │   ├── campaign/
 │   ├── dags/
 │   │   └── cds_era5_land_etl.py
@@ -101,11 +101,13 @@ etl-weather/
 │   ├── progress/
 │   ├── repositories/
 │   ├── scheduling/
-│   ├── tasks/
-│   └── docs/
+│   └── tasks/
 └── scripts/
+    ├── destroy_all.py
     ├── inspect_campaign_capacity.py
-    └── report_campaign_progress.py
+    ├── report_campaign_progress.py
+    ├── reset_all.py
+    └── reset_airflow_runtime.py
 ```
 
 The ETL implementation itself remains under `pipeline/` and is documented from the project root.
@@ -143,38 +145,39 @@ airflow dags trigger cds_era5_land_etl \
 
 Manual execution is useful for explicit historical work and for repairing a failed campaign month. A whole-month repair that matches the campaign configuration can reconcile that month back into campaign progress.
 
-## Scheduler Cadence and CDS Submission Pacing
+## Orchestration Timing Policy
 
-These settings control different things.
-
-`ERA5_CAMPAIGN_SCHEDULE_CADENCE` controls how often Airflow creates an opportunity for scheduled campaign work. Supported values are:
+Timing values are source-controlled in root `config.py`:
 
 ```text
-30m
-1h
-2h
+CAMPAIGN_SCHEDULE_INTERVAL_MINUTES = 10
+QUARTER_COOLDOWN_MINUTES           = 10
+MONTHLY_SLOT_SPACING_MINUTES       = 15
+SUBMISSION_INTERVAL_MINUTES        = 5
 ```
 
-For example:
+Meaning:
 
-```env
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
-ERA5_CAMPAIGN_SCHEDULE_CADENCE=2h
+- every 10 minutes Airflow checks whether scheduled campaign work is eligible;
+- after one quarter becomes `complete + valid`, the next quarter waits 10 minutes;
+- the three months inside one quarter use earliest-start offsets `+0/+15/+30`;
+- actual CDS submission POST requests remain at least 5 minutes apart.
+
+Example:
+
+```text
+21:00  Q1 selected
+       Jan +0m, Feb +15m, Mar +30m
+
+21:47  Q1 complete + valid
+21:57  quarter cooldown ends
+
+22:00  next scheduler check
+       Q2 may be selected
 ```
 
-This means Airflow evaluates scheduled campaign work every two Jakarta-local hours. It does **not** mean that three months will be downloaded every two hours.
-
-`SUBMISSION_INTERVAL_SECONDS` controls the minimum spacing between actual CDS submission POST requests:
-
-```env
-SUBMISSION_INTERVAL_SECONDS=1800
-```
-
-The default value of `1800` represents a 30-minute operational pacing interval. It is separate from scheduler cadence.
-
-A monthly partition may require more than one CDS submission because the UTC+7 daily boundary can require a previous-day context chunk. Pacing therefore applies to every actual submission, not only once per mapped month.
-
-When the pacing slot is not ready, the extraction operator defers instead of occupying a worker. Completed retrieval chunks are reused when the task wakes again.
+`ERA5_CAMPAIGN_SCHEDULE_ENABLED` remains in `.env` only as the scheduled-mode
+on/off switch. Waiting tasks defer without occupying a worker.
 
 ## Campaign Progress
 
@@ -223,12 +226,12 @@ python scripts/report_campaign_progress.py
 
 ## Monthly Start Slots and Retry Behavior
 
-For a scheduled quarter, the three monthly extraction maps receive earliest-start lower bounds separated by one hour:
+For a scheduled quarter, the three monthly TaskGroups receive earliest-start lower bounds separated by 15 minutes:
 
 ```text
 month 1 → selection time
-month 2 → selection time + 1 hour
-month 3 → selection time + 2 hours
+month 2 → selection time + 15 minutes
+month 3 → selection time + 30 minutes
 ```
 
 These are earliest-start limits, not promises that tasks will begin or finish at those times. Worker availability, CDS pacing, provider queueing, and retries may delay actual execution.
@@ -241,12 +244,14 @@ A terminal failed monthly detail blocks automatic advancement to later campaign 
 
 ## Task Flow
 
-The active DAG uses this monthly flow:
+The active DAG uses one depth-first mapped TaskGroup per month:
 
 ```text
 manual dates or selected scheduled quarter
                  ↓
        build_monthly_requests
+                 ↓
+       monthly_etl[YYYY-MM]
                  ↓
       attempt_raw_checkpoint
                  ↓
@@ -257,7 +262,9 @@ manual dates or selected scheduled quarter
                 load
 ```
 
-Mapped task instances use the month as the Airflow display label, for example `2016-01`. The display label is only for observability; it does not change request identity or artifact paths.
+A month may transform and load as soon as its RAW checkpoint is ready, even
+while sibling months are still deferred or waiting. Mapped task instances use
+the month as the Airflow display label, for example `2016-01`. The display label is only for observability; it does not change request identity or artifact paths.
 
 Airflow exchanges small metadata between tasks. NetCDF, Parquet, xarray, and Pandas payloads remain in shared storage rather than XCom.
 
@@ -293,7 +300,7 @@ airflow dags trigger cds_era5_land_etl \
 
 ### Normal scheduled quarter
 
-A scheduled run selects the earliest eligible incomplete quarter. Its three months are mapped with one-hour earliest-start spacing. Existing valid artifacts are resumed; missing artifacts are retrieved and processed.
+A scheduled run selects the earliest eligible incomplete quarter. Its three monthly TaskGroups use +0, +15, and +30 minute earliest-start lower bounds. Existing valid artifacts are resumed; missing artifacts are retrieved and processed depth-first per month.
 
 ### One month fails
 
@@ -410,19 +417,75 @@ The integration suite must use the isolated `TEST_POSTGRES_*` database configure
 
 Detailed test contracts remain in [`tests/README.md`](../tests/README.md).
 
-## Cleanup and Local State
+## Maintenance, Reset, and Clean-Slate Destroy
 
-Stop `airflow standalone` with `Ctrl+C`. Confirm that no Airflow process is still using local metadata before maintenance.
+The project intentionally separates conservative recovery from intentional destruction.
 
-Local Airflow runtime state includes:
+Use `reset_all.py` for guarded maintenance only after Airflow is fully inactive:
 
-```text
-orchestration/airflow.db
-orchestration/logs/
-PID/runtime files
-airflow-jwt-key.txt
+```bash
+source activate-airflow.sh -q
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python scripts/reset_all.py
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+python scripts/reset_all.py --execute
 ```
 
-These files are not canonical climate data.
+The command is inspect-only unless `--execute` is supplied. It refuses active or resumable Airflow state, including queued/running/deferred tasks, queued/running DagRuns, scheduler/API/triggerer/DAG-processor processes, and active workers. It does not kill those processes for the operator.
 
-Do not remove `orchestration/airflow.db` while Airflow services are running. Database reset, artifact reset, and campaign-progress reset are deliberate maintenance/recovery operations and are not part of normal shutdown, retry, or resume behavior.
+Use `destroy_all.py` only when the local development project must intentionally return to a clean state:
+
+```bash
+source activate-airflow.sh -q
+
+python scripts/destroy_all.py
+python scripts/destroy_all.py --execute
+```
+
+Destroy is available only with `APP_ENV=dev`. Inspect-only mode lists the exact PostgreSQL, data, Airflow log/runtime, and recognized process targets. Execution requires typing exactly:
+
+```text
+DESTROY
+```
+
+Unlike reset, destroy intentionally stops all recognized Airflow services/workers using SIGTERM followed by SIGKILL only for recognized processes that remain alive. If Airflow cannot be stopped, destructive database/data actions do not begin.
+
+After Airflow is stopped, destroy refuses to recreate PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
+
+The destroy order is:
+
+```text
+stop recognized Airflow runtime
+        ↓
+verify Airflow process count = 0
+        ↓
+verify PostgreSQL session safety
+        ↓
+recreate application PostgreSQL database
+        ↓
+clear project data/
+        ↓
+clear Airflow logs
+        ↓
+clear generated Airflow SQLite/auth/PID runtime state
+        ↓
+verify clean state and canonical application tables
+```
+
+Both maintenance paths preserve project configuration and source. In particular, destroy does not delete:
+
+```text
+.env
+env-example
+orchestration/airflow.cfg
+airflow-jwt-key.txt
+source code
+Git metadata
+Python virtual environment
+```
+
+Generated Airflow runtime state such as `orchestration/airflow.db`, its SQLite sidecar files, generated auth files, PID files, and `orchestration/logs/` are not canonical climate data. Do not remove them manually while Airflow is running.
+
+The root `config.py` is the single lightweight project configuration module. There is no `orchestration/config.py`; orchestration imports shared constants and pure resolvers from the root module.

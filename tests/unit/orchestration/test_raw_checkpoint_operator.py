@@ -6,7 +6,7 @@ retry, and progress contracts for genuine provider errors.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from airflow.sdk.exceptions import TaskDeferred
@@ -15,25 +15,65 @@ from orchestration.operators import raw_checkpoint
 from orchestration.scheduling.submission_gate import SubmissionDeferred
 
 
-def test_operator_exposes_month_label_from_request_spec() -> None:
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0, "0s"),
+        (29.1, "30s"),
+        (1723, "28m 43s"),
+        (3600, "1h 0m 0s"),
+        (3723, "1h 2m 3s"),
+    ],
+)
+def test_format_wait_duration(seconds: float, expected: str) -> None:
+    assert raw_checkpoint.format_wait_duration(seconds) == expected
+
+
+def test_operator_exposes_month_label_after_runtime_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        lambda *args, **kwargs: {"boundary": "ensure_raw_checkpoint"},
+    )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="label_test",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
     )
 
     assert operator.month_label == "2016-02"
+    operator.execute({})
 
 
-def test_operator_rejects_missing_month_label_source() -> None:
+def test_operator_rejects_missing_month_label_source_at_runtime() -> None:
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="invalid_label",
+        request_spec={},
+        month_label="2016-02",
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
     with pytest.raises(ValueError, match="request_spec.start_date"):
-        raw_checkpoint.RawCheckpointOperator(
-            task_id="invalid_label",
-            request_spec={},
-            progress_id=42,
-            run_mode="scheduled",
-        )
+        operator.execute({})
+
+
+def test_operator_rejects_mismatched_explicit_month_label() -> None:
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="invalid_label_mismatch",
+        request_spec={"start_date": "2016-02-01"},
+        month_label="2016-03",
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
+    with pytest.raises(ValueError, match="month_label"):
+        operator.execute({})
 
 
 def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,7 +91,7 @@ def test_operator_defers_then_rechecks_submission(monkeypatch: pytest.MonkeyPatc
     )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="paced_test", request_spec={"start_date": "2024-01-01"},
-        progress_id=42, run_mode="manual",
+        month_label="2024-01", progress_id=42, run_mode="manual",
     )
     with pytest.raises(TaskDeferred) as deferred:
         operator.execute({})
@@ -81,6 +121,7 @@ def test_successful_first_result_passes_through_without_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_success",
         request_spec={"start_date": "2016-01-01"},
+        month_label="2016-01",
         progress_id=42,
         run_mode="scheduled",
         first_result=first_result,
@@ -105,6 +146,7 @@ def test_failed_first_result_defers_until_first_pass_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_failed_waiting",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
         first_result={"first_attempt_failed": True},
@@ -143,6 +185,7 @@ def test_failed_first_result_retries_after_first_pass_barrier(
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="resolve_failed_ready",
         request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
         progress_id=42,
         run_mode="scheduled",
         first_result={"first_attempt_failed": True},
@@ -168,9 +211,65 @@ def test_final_retry_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     )
     operator = raw_checkpoint.RawCheckpointOperator(
         task_id="terminal", request_spec={"start_date": "2016-01-01"},
-        progress_id=42, run_mode="scheduled", first_result={"first_attempt_failed": True},
+        month_label="2016-01", progress_id=42, run_mode="scheduled",
+        first_result={"first_attempt_failed": True},
         retries=1,
     )
     assert operator.retries == 1
     with pytest.raises(RuntimeError, match="terminal"):
         operator.execute({})
+
+
+
+def test_earliest_start_defer_logs_human_readable_wait(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    earliest = datetime.now(timezone.utc) + timedelta(minutes=15)
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="earliest_log",
+        request_spec={"start_date": "2016-02-01"},
+        month_label="2016-02",
+        progress_id=42,
+        run_mode="scheduled",
+        earliest_start_at=earliest.isoformat(),
+    )
+
+    with pytest.raises(TaskDeferred):
+        operator.execute({})
+
+    output = capsys.readouterr().out
+    assert "RAW earliest-start deferred" in output
+    assert "month=2016-02" in output
+    assert "wait=" in output
+    assert "resume_at_local=" in output
+
+
+def test_submission_pacing_defer_logs_human_readable_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    next_allowed_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    def defer_submission(spec, progress_id, mode, *, paced):
+        raise SubmissionDeferred(next_allowed_at)
+
+    monkeypatch.setattr(
+        "orchestration.operators.raw_checkpoint.ensure_raw_checkpoint_with_progress",
+        defer_submission,
+    )
+    operator = raw_checkpoint.RawCheckpointOperator(
+        task_id="pacing_log",
+        request_spec={"start_date": "2016-01-01"},
+        month_label="2016-01",
+        progress_id=42,
+        run_mode="scheduled",
+    )
+
+    with pytest.raises(TaskDeferred):
+        operator.execute({})
+
+    output = capsys.readouterr().out
+    assert "RAW CDS pacing deferred" in output
+    assert "month=2016-01" in output
+    assert "wait=" in output
+    assert "next_allowed_at_local=" in output

@@ -1,7 +1,8 @@
-"""Map one selected ERA5-Land range through progress-aware ETL boundaries.
+"""Map one selected ERA5-Land quarter through depth-first monthly ETL chains.
 
-Extraction uses a deferrable operator so CDS pacing remains independent of
-the eventual scheduler cadence and never occupies a worker while waiting.
+Each calendar month is one dynamically mapped TaskGroup so a RAW-complete month
+can transform and load while sibling months are still deferred for scheduled
+start limits, provider pacing, or bounded extraction retry.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import logging
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import DAG, get_current_context, task
+from airflow.sdk import DAG, get_current_context, task, task_group
 from airflow.sdk.definitions.param import Param, ParamsDict
 
 from config import validate_and_log_app_environment
@@ -18,30 +19,14 @@ from orchestration.scheduling.schedule import campaign_schedule
 from orchestration.tasks.build_monthly_requests import prepare_monthly_jobs
 from orchestration.operators.raw_checkpoint import RawCheckpointOperator
 from orchestration.tasks.load import load_with_progress
-from orchestration.tasks.transformed_checkpoint import ensure_transformed_checkpoint_with_progress
+from orchestration.tasks.transformed_checkpoint import (
+    ensure_transformed_checkpoint_with_progress,
+)
 
 DAG_ID = "cds_era5_land_etl"
 
 logger = logging.getLogger(__name__)
 validate_and_log_app_environment(logger)
-
-
-def prepare_resolve_raw_checkpoint_kwargs(
-    attempt_raw_checkpoint_result: dict[str, object],
-) -> dict[str, object]:
-    """Build one resolver mapping payload from one first-attempt result."""
-    request_spec = attempt_raw_checkpoint_result.get(
-        "request_spec",
-        attempt_raw_checkpoint_result.get("request"),
-    )
-    if not isinstance(request_spec, dict):
-        raise ValueError("RAW resolver requires first-attempt request metadata.")
-    return {
-        "request_spec": request_spec,
-        "progress_id": attempt_raw_checkpoint_result["progress_id"],
-        "run_mode": attempt_raw_checkpoint_result["run_mode"],
-        "first_result": attempt_raw_checkpoint_result,
-    }
 
 
 with DAG(
@@ -85,71 +70,107 @@ with DAG(
 
     @task(
         task_id="ensure_transformed_checkpoint",
-        map_index_template="{{ month_label }}",
+        map_index_template="{{ mapped_month_label }}",
         retries=0,
         execution_timeout=timedelta(hours=2),
     )
     def ensure_transformed_checkpoint(
         raw_checkpoint_result: dict[str, object],
+        month_label: str,
     ) -> dict[str, object]:
-        context = get_current_context()
-        request = raw_checkpoint_result.get("request", raw_checkpoint_result.get("request_spec"))
-        if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
+        request = raw_checkpoint_result.get(
+            "request", raw_checkpoint_result.get("request_spec")
+        )
+        if not isinstance(request, dict) or not isinstance(
+            request.get("start_date"), str
+        ):
             raise ValueError(
                 "Mapped transformation requires request.start_date "
                 "for the Airflow month label."
             )
-        context["month_label"] = str(request["start_date"])[:7]
+        if month_label != str(request["start_date"])[:7]:
+            raise ValueError(
+                "Mapped transformation month_label must match request.start_date."
+            )
+        context = get_current_context()
+        context["mapped_month_label"] = month_label
         return ensure_transformed_checkpoint_with_progress(raw_checkpoint_result)
 
     @task(
         task_id="load",
-        map_index_template="{{ month_label }}",
+        map_index_template="{{ mapped_month_label }}",
         retries=1,
         retry_delay=timedelta(minutes=5),
         retry_exponential_backoff=True,
         max_retry_delay=timedelta(minutes=30),
         execution_timeout=timedelta(hours=2),
     )
-    def load(transformed_checkpoint_result: dict[str, object]) -> dict[str, object]:
-        context = get_current_context()
-        request = transformed_checkpoint_result.get("request", transformed_checkpoint_result.get("request_spec"))
-        if not isinstance(request, dict) or not isinstance(request.get("start_date"), str):
+    def load(
+        transformed_checkpoint_result: dict[str, object],
+        month_label: str,
+    ) -> dict[str, object]:
+        request = transformed_checkpoint_result.get(
+            "request", transformed_checkpoint_result.get("request_spec")
+        )
+        if not isinstance(request, dict) or not isinstance(
+            request.get("start_date"), str
+        ):
             raise ValueError(
                 "Mapped load requires request.start_date "
                 "for the Airflow month label."
             )
-        context["month_label"] = str(request["start_date"])[:7]
+        if month_label != str(request["start_date"])[:7]:
+            raise ValueError(
+                "Mapped load month_label must match request.start_date."
+            )
+        context = get_current_context()
+        context["mapped_month_label"] = month_label
         return load_with_progress(transformed_checkpoint_result)
 
+    @task_group(group_id="monthly_etl")
+    def monthly_etl(
+        request_spec: dict[str, object],
+        month_label: str,
+        progress_id: int,
+        run_mode: str,
+        earliest_start_at: str | None,
+    ) -> None:
+        attempt_raw_checkpoint = RawCheckpointOperator(
+            task_id="attempt_raw_checkpoint",
+            request_spec=request_spec,
+            month_label=month_label,
+            progress_id=progress_id,
+            run_mode=run_mode,
+            earliest_start_at=earliest_start_at,
+            map_index_template="{{ task.month_label }}",
+            pool="cds_api",
+            retries=0,
+            first_pass=True,
+            execution_timeout=timedelta(hours=6),
+        )
+
+        resolve_raw_checkpoint = RawCheckpointOperator(
+            task_id="resolve_raw_checkpoint",
+            request_spec=request_spec,
+            month_label=month_label,
+            progress_id=progress_id,
+            run_mode=run_mode,
+            earliest_start_at=earliest_start_at,
+            first_result=attempt_raw_checkpoint.output,
+            map_index_template="{{ task.month_label }}",
+            pool="cds_api",
+            retries=1,
+            retry_delay=timedelta(minutes=10),
+            retry_exponential_backoff=True,
+            max_retry_delay=timedelta(hours=1),
+            execution_timeout=timedelta(hours=6),
+        )
+
+        transformed_checkpoint = ensure_transformed_checkpoint(
+            resolve_raw_checkpoint.output,
+            month_label,
+        )
+        load(transformed_checkpoint, month_label)
+
     monthly_jobs = build_monthly_requests()
-    attempt_raw_checkpoint_results = RawCheckpointOperator.partial(
-        task_id="attempt_raw_checkpoint",
-        map_index_template="{{ task.month_label }}",
-        pool="cds_api",
-        retries=0,
-        first_pass=True,
-        execution_timeout=timedelta(hours=6),
-    ).expand_kwargs(monthly_jobs)
-
-    resolve_raw_checkpoint_inputs = attempt_raw_checkpoint_results.output.map(
-        prepare_resolve_raw_checkpoint_kwargs
-    )
-    resolve_raw_checkpoint_results = RawCheckpointOperator.partial(
-        task_id="resolve_raw_checkpoint",
-        map_index_template="{{ task.month_label }}",
-        pool="cds_api",
-        retries=1,
-        retry_delay=timedelta(minutes=10),
-        retry_exponential_backoff=True,
-        max_retry_delay=timedelta(hours=1),
-        execution_timeout=timedelta(hours=6),
-    ).expand_kwargs(resolve_raw_checkpoint_inputs)
-
-    ensure_transformed_checkpoint_results = ensure_transformed_checkpoint.expand(
-        raw_checkpoint_result=resolve_raw_checkpoint_results.output
-    )
-    load_results = load.expand(
-        transformed_checkpoint_result=ensure_transformed_checkpoint_results
-    )
-
+    monthly_etl.expand_kwargs(monthly_jobs)

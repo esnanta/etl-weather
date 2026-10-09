@@ -70,6 +70,7 @@ def _display_targets(config: DatabaseConfig) -> None:
 
 
 def _run_preflight(config: DatabaseConfig) -> None:
+    """Require a fully inactive runtime before conservative reset."""
     recreate_postgres_database._validate_static_guards(config)
     recreate_postgres_database._validate_runtime_guards(config)
 
@@ -92,7 +93,7 @@ def _confirmation(
 
 
 def execute_reset(config: DatabaseConfig) -> dict[str, int]:
-    """Execute verified reset components in failure-safe order."""
+    """Reset only after preflight proved that no Airflow work can resume."""
     recreate_postgres_database._recreate_database(config)
     data_removed = reset_data.clear_data_contents()
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()

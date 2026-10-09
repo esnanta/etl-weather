@@ -10,16 +10,25 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from orchestration.config import (
+from config import (
+    CAMPAIGN_START_DATE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
+)
+from orchestration.campaign import policy as campaign_policy
+from orchestration.campaign.policy import (
+    CampaignQuarter,
+    CampaignSelection,
+    build_campaign_progress_definition,
+    build_quarter_request_specs,
+    select_earliest_incomplete_quarter,
 )
 from orchestration.progress.definition import PipelineProgressDefinition, ProgressPartition
 from orchestration.repositories.pipeline_progress import (
@@ -40,6 +49,191 @@ from pipeline.database import (
 )
 
 pytestmark = pytest.mark.integration
+
+
+
+
+def test_durable_completed_at_controls_next_quarter_cooldown(monkeypatch) -> None:
+    """Prove PostgreSQL completion evidence gates the next campaign quarter."""
+    load_dotenv()
+    names = (
+        "TEST_POSTGRES_HOST",
+        "TEST_POSTGRES_PORT",
+        "TEST_POSTGRES_DATABASE",
+        "TEST_POSTGRES_USER",
+        "TEST_POSTGRES_PASSWORD",
+    )
+    if any(not os.getenv(name) for name in names):
+        pytest.skip("Isolated TEST_POSTGRES_* connection is required.")
+    if "test" not in os.environ["TEST_POSTGRES_DATABASE"].lower():
+        pytest.fail("TEST_POSTGRES_DATABASE must name an isolated test database.")
+
+    config = DatabaseConfig(
+        host=os.environ["TEST_POSTGRES_HOST"],
+        port=int(os.environ["TEST_POSTGRES_PORT"]),
+        database=os.environ["TEST_POSTGRES_DATABASE"],
+        user=os.environ["TEST_POSTGRES_USER"],
+        password=os.environ["TEST_POSTGRES_PASSWORD"],
+        schema="climate_data",
+    )
+    engine = create_engine(config.url, future=True)
+
+    year = CAMPAIGN_START_DATE.year
+    q1 = CampaignQuarter(year, 1)
+    q2 = CampaignQuarter(year, 2)
+    q1_specs = build_quarter_request_specs(q1, current_local_date=date.max)
+    q2_specs = build_quarter_request_specs(q2, current_local_date=date.max)
+    q1_definition = build_campaign_progress_definition(q1_specs)
+    q2_definition = build_campaign_progress_definition(q2_specs)
+
+    q1_id = None
+    q2_id = None
+    persisted_request_keys: list[str] = []
+
+    try:
+        create_schema(engine, config)
+        create_daily_climate_table(engine, config)
+        create_daily_climate_detail_table(engine, config)
+        create_pipeline_progress_tables(engine)
+
+        q1_id = initialize_pipeline_progress(engine, q1_definition)
+        q2_id = initialize_pipeline_progress(engine, q2_definition)
+
+        timestamp = datetime(year, 7, 1, tzinfo=UTC)
+        for number, partition in enumerate(q1_definition.partitions, start=1):
+            path = f"cooldown/{number}.parquet"
+            sha = f"cooldown-sha-{number}"
+            update_pipeline_progress_detail(
+                engine,
+                q1_id,
+                partition.request_key,
+                extract_status="complete",
+                transform_status="complete",
+                load_status="complete",
+                validation_status="valid",
+                transformed_artifact_path=path,
+                transformed_sha256=sha,
+                row_count=1,
+            )
+            persisted_request_keys.append(partition.request_key)
+
+            local_midnight = datetime.fromisoformat(partition.start_date)
+            utc_instant = local_midnight - timedelta(hours=7)
+            with engine.begin() as connection:
+                daily_climate_id = connection.execute(
+                    text(
+                        """
+                        INSERT INTO climate_data.daily_climate
+                        (request_key, dataset_name, source, start_date, end_date,
+                         variable_signature, north_lat, south_lat, east_lon, west_lon,
+                         downloaded_at, transformed_artifact_path,
+                         transformed_sha256, transformed_at)
+                        VALUES (:key, 'reanalysis-era5-land', 'cds', :start, :end,
+                                'tp', 6.1, 1.9, 98.3, 94.9, :timestamp,
+                                :path, :sha, :timestamp)
+                        RETURNING id
+                        """
+                    ),
+                    {
+                        "key": partition.request_key,
+                        "start": partition.start_date,
+                        "end": partition.end_date,
+                        "timestamp": timestamp,
+                        "path": path,
+                        "sha": sha,
+                    },
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO climate_data.daily_climate_detail
+                        (daily_climate_id, valid_time, valid_time_local,
+                         latitude, longitude)
+                        VALUES (:id, :utc_instant, :local_midnight, 4.0, 96.0)
+                        """
+                    ),
+                    {
+                        "id": daily_climate_id,
+                        "utc_instant": utc_instant,
+                        "local_midnight": local_midnight,
+                    },
+                )
+
+        reconcile_pipeline_progress(engine, q1_id)
+        q1_progress = get_pipeline_progress_by_id(engine, q1_id)
+        assert q1_progress.execution_status == "complete"
+        assert q1_progress.validation_status == "valid"
+        assert q1_progress.completed_at is not None
+        completed_at = q1_progress.completed_at
+
+        monkeypatch.setattr(
+            campaign_policy,
+            "iter_campaign_quarters",
+            lambda: (q1, q2),
+        )
+        monkeypatch.setattr(
+            campaign_policy,
+            "initialize_campaign_progress",
+            lambda unused_engine, **kwargs: (q1_id, q2_id),
+        )
+
+        before = select_earliest_incomplete_quarter(
+            engine,
+            claim_owner="scheduled__before-cooldown",
+            current_local_date=date.max,
+            current_time=completed_at + timedelta(minutes=9, seconds=59),
+        )
+        assert before is None
+
+        with engine.connect() as connection:
+            owner_before = connection.execute(
+                text(
+                    f"SELECT selection_owner FROM {PIPELINE_PROGRESS_SCHEMA}."
+                    f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                ),
+                {"id": q2_id},
+            ).scalar_one()
+        assert owner_before is None
+
+        after = select_earliest_incomplete_quarter(
+            engine,
+            claim_owner="scheduled__after-cooldown",
+            current_local_date=date.max,
+            current_time=completed_at + timedelta(minutes=10),
+        )
+        assert isinstance(after, CampaignSelection)
+        assert after.quarter == q2
+        assert after.progress_id == q2_id
+
+        with engine.connect() as connection:
+            owner_after = connection.execute(
+                text(
+                    f"SELECT selection_owner FROM {PIPELINE_PROGRESS_SCHEMA}."
+                    f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                ),
+                {"id": q2_id},
+            ).scalar_one()
+        assert owner_after == "scheduled__after-cooldown"
+    finally:
+        with engine.begin() as connection:
+            for request_key in persisted_request_keys:
+                connection.execute(
+                    text(
+                        "DELETE FROM climate_data.daily_climate "
+                        "WHERE request_key = :key"
+                    ),
+                    {"key": request_key},
+                )
+            for progress_id in (q1_id, q2_id):
+                if progress_id is not None:
+                    connection.execute(
+                        text(
+                            f"DELETE FROM {PIPELINE_PROGRESS_SCHEMA}."
+                            f"{PIPELINE_PROGRESS_TABLE} WHERE id = :id"
+                        ),
+                        {"id": progress_id},
+                    )
+        engine.dispose()
 
 
 def test_completion_requires_matching_persisted_partition() -> None:

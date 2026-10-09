@@ -1,4 +1,9 @@
-"""Verify the mapped Airflow DAG graph and execution policy."""
+"""Verify the mapped monthly TaskGroup graph and Airflow execution policy.
+
+These tests cover orchestration structure only. They parse the production DAG
+without running CDS, PostgreSQL, or scientific pipeline logic. Pipeline
+scientific behavior remains owned by dedicated pipeline unit/integration tests.
+"""
 
 from datetime import timedelta
 
@@ -12,6 +17,11 @@ from airflow.models import DagBag
 
 DAG_ID = "cds_era5_land_etl"
 DAG_FOLDER = REPOSITORY_ROOT / "orchestration" / "dags"
+
+ATTEMPT_TASK_ID = "monthly_etl.attempt_raw_checkpoint"
+RESOLVE_TASK_ID = "monthly_etl.resolve_raw_checkpoint"
+TRANSFORM_TASK_ID = "monthly_etl.ensure_transformed_checkpoint"
+LOAD_TASK_ID = "monthly_etl.load"
 
 
 @pytest.fixture(scope="module")
@@ -30,39 +40,52 @@ def test_etl_dag_policy(dag) -> None:
     assert dag.timezone.name == "Asia/Jakarta"
 
 
-def test_etl_dag_task_graph(dag) -> None:
+def test_etl_dag_uses_one_mapped_monthly_task_group(dag) -> None:
     assert set(dag.task_ids) == {
         "build_monthly_requests",
-        "attempt_raw_checkpoint",
-        "resolve_raw_checkpoint",
-        "ensure_transformed_checkpoint",
-        "load",
+        ATTEMPT_TASK_ID,
+        RESOLVE_TASK_ID,
+        TRANSFORM_TASK_ID,
+        LOAD_TASK_ID,
     }
+
+    task_group = dag.task_group.children.get("monthly_etl")
+    assert task_group is not None
+    assert type(task_group).__name__ == "MappedTaskGroup"
+
+
+def test_etl_dag_monthly_chain_is_depth_first(dag) -> None:
     assert dag.get_task("build_monthly_requests").downstream_task_ids == {
-        "attempt_raw_checkpoint"
+        ATTEMPT_TASK_ID,
+        RESOLVE_TASK_ID,
+        TRANSFORM_TASK_ID,
+        LOAD_TASK_ID,
     }
-    assert dag.get_task("attempt_raw_checkpoint").downstream_task_ids == {
-        "resolve_raw_checkpoint"
+    assert dag.get_task(ATTEMPT_TASK_ID).downstream_task_ids == {
+        RESOLVE_TASK_ID
     }
-    assert dag.get_task("resolve_raw_checkpoint").downstream_task_ids == {
-        "ensure_transformed_checkpoint"
+    assert dag.get_task(RESOLVE_TASK_ID).downstream_task_ids == {
+        TRANSFORM_TASK_ID
     }
-    assert dag.get_task("ensure_transformed_checkpoint").downstream_task_ids == {"load"}
+    assert dag.get_task(TRANSFORM_TASK_ID).downstream_task_ids == {LOAD_TASK_ID}
+    assert dag.get_task(LOAD_TASK_ID).downstream_task_ids == set()
 
 
 def test_etl_dag_boundary_policies(dag) -> None:
-    attempt_raw_checkpoint_task = dag.get_task("attempt_raw_checkpoint")
-    resolve_raw_checkpoint_task = dag.get_task("resolve_raw_checkpoint")
-    ensure_transformed_checkpoint_task = dag.get_task(
-        "ensure_transformed_checkpoint"
-    )
-    load_task = dag.get_task("load")
+    attempt_raw_checkpoint_task = dag.get_task(ATTEMPT_TASK_ID)
+    resolve_raw_checkpoint_task = dag.get_task(RESOLVE_TASK_ID)
+    ensure_transformed_checkpoint_task = dag.get_task(TRANSFORM_TASK_ID)
+    load_task = dag.get_task(LOAD_TASK_ID)
 
     assert attempt_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
     assert resolve_raw_checkpoint_task.map_index_template == "{{ task.month_label }}"
-    assert dag.get_task("ensure_transformed_checkpoint").map_index_template == "{{ month_label }}"
-    assert dag.get_task("load").map_index_template == "{{ month_label }}"
+    assert ensure_transformed_checkpoint_task.map_index_template == (
+        "{{ mapped_month_label }}"
+    )
+    assert load_task.map_index_template == "{{ mapped_month_label }}"
 
+    assert attempt_raw_checkpoint_task.pool == "cds_api"
+    assert attempt_raw_checkpoint_task.retries == 0
     assert resolve_raw_checkpoint_task.pool == "cds_api"
     assert resolve_raw_checkpoint_task.retries == 1
     assert resolve_raw_checkpoint_task.execution_timeout == timedelta(hours=6)
@@ -80,10 +103,9 @@ def test_pipeline_package_does_not_import_airflow() -> None:
         assert "from airflow" not in source
 
 
-
 def test_successful_raw_attempt_flows_directly_to_resolver(dag) -> None:
-    attempt_raw_checkpoint_task = dag.get_task("attempt_raw_checkpoint")
-    resolve_raw_checkpoint_task = dag.get_task("resolve_raw_checkpoint")
+    attempt_raw_checkpoint_task = dag.get_task(ATTEMPT_TASK_ID)
+    resolve_raw_checkpoint_task = dag.get_task(RESOLVE_TASK_ID)
 
     assert attempt_raw_checkpoint_task.retries == 0
     assert (
@@ -92,6 +114,6 @@ def test_successful_raw_attempt_flows_directly_to_resolver(dag) -> None:
         == "cds_api"
     )
     assert attempt_raw_checkpoint_task.downstream_task_ids == {
-        "resolve_raw_checkpoint"
+        RESOLVE_TASK_ID
     }
     assert resolve_raw_checkpoint_task.retries == 1

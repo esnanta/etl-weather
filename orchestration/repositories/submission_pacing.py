@@ -6,19 +6,13 @@ between provider calls, so this repository uses one durable singleton row.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from orchestration.config import (
-    DEFAULT_INTERVAL_SECONDS,
-    INTERVAL_ENV,
-    PACING_SCHEMA,
-    PACING_TABLE,
-)
+from config import PACING_SCHEMA, PACING_TABLE, SUBMISSION_INTERVAL_MINUTES
 
 
 @dataclass(frozen=True)
@@ -31,15 +25,14 @@ class SubmissionDecision:
 
 
 def submission_interval_seconds() -> int:
-    """Read the independent operational interval; reject malformed settings."""
-    raw = os.getenv(INTERVAL_ENV, str(DEFAULT_INTERVAL_SECONDS))
-    try:
-        seconds = int(raw)
-    except ValueError as exc:
-        raise ValueError(f"{INTERVAL_ENV} must be a nonnegative integer.") from exc
-    if seconds < 0:
-        raise ValueError(f"{INTERVAL_ENV} must be a nonnegative integer.")
-    return seconds
+    """Return the fixed provider pacing interval converted to seconds."""
+    if (
+        isinstance(SUBMISSION_INTERVAL_MINUTES, bool)
+        or not isinstance(SUBMISSION_INTERVAL_MINUTES, int)
+        or SUBMISSION_INTERVAL_MINUTES < 0
+    ):
+        raise ValueError("SUBMISSION_INTERVAL_MINUTES must be a nonnegative integer.")
+    return SUBMISSION_INTERVAL_MINUTES * 60
 
 
 def create_submission_pacing_table(engine: Engine) -> None:

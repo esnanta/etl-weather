@@ -8,7 +8,7 @@ is covered by orchestration integration tests.
 
 from calendar import monthrange
 from collections.abc import Generator
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -24,12 +24,14 @@ from orchestration.campaign.policy import (
     initialize_campaign_progress,
     iter_campaign_quarters,
     matching_campaign_progress_definition,
+    quarter_cooldown_eligibility,
     select_earliest_incomplete_quarter,
 )
 
 CAMPAIGN_START_YEAR = CAMPAIGN_START_DATE.year
 CAMPAIGN_END_YEAR = CAMPAIGN_END_DATE.year
 CAMPAIGN_QUARTER_COUNT = len(iter_campaign_quarters())
+COMPLETED_AT = datetime(2026, 10, 7, 10, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -168,6 +170,9 @@ def progress_selection(monkeypatch):
             validation_status=(
                 "valid" if statuses.get(progress_id) == "complete" else "pending"
             ),
+            completed_at=(
+                COMPLETED_AT if statuses.get(progress_id) == "complete" else None
+            ),
         ),
     )
     monkeypatch.setattr(
@@ -189,6 +194,161 @@ def progress_selection(monkeypatch):
         ),
     )
     return statuses, reconciled
+
+
+
+
+def test_quarter_cooldown_helper_enforces_exact_boundary() -> None:
+    before = quarter_cooldown_eligibility(
+        COMPLETED_AT,
+        COMPLETED_AT + timedelta(minutes=9, seconds=59),
+    )
+    assert before.eligible is False
+    assert before.remaining_seconds == 1
+
+    exact = quarter_cooldown_eligibility(
+        COMPLETED_AT,
+        COMPLETED_AT + timedelta(minutes=10),
+    )
+    assert exact.eligible is True
+    assert exact.remaining_seconds == 0
+    assert exact.eligible_at == COMPLETED_AT + timedelta(minutes=10)
+
+
+def test_quarter_cooldown_rejects_naive_timestamps() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        quarter_cooldown_eligibility(
+            COMPLETED_AT.replace(tzinfo=None),
+            COMPLETED_AT,
+        )
+
+
+def test_selection_does_not_claim_next_quarter_before_cooldown(
+    progress_selection, monkeypatch, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+    claims: list[int] = []
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.try_claim_pipeline_progress",
+        lambda engine, progress_id, owner: claims.append(progress_id) or True,
+    )
+
+    selected = select_earliest_incomplete_quarter(
+        dummy_engine,
+        claim_owner="scheduled__cooldown",
+        current_local_date=date.max,
+        current_time=COMPLETED_AT + timedelta(minutes=9, seconds=59),
+    )
+
+    assert selected is None
+    assert claims == []
+
+
+def test_selection_allows_next_quarter_at_cooldown_boundary(
+    progress_selection, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    selected = select_earliest_incomplete_quarter(
+        dummy_engine,
+        claim_owner="scheduled__after-cooldown",
+        current_local_date=date.max,
+        current_time=COMPLETED_AT + timedelta(minutes=10),
+    )
+
+    assert isinstance(selected, CampaignSelection)
+    assert selected.quarter == CampaignQuarter(CAMPAIGN_START_YEAR, 2)
+    assert selected.progress_id == 2
+
+
+def test_selection_blocks_next_quarter_when_predecessor_completion_time_is_missing(
+    progress_selection, monkeypatch, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    def progress_without_completion(engine, progress_id):
+        status = statuses.get(progress_id, "pending")
+        return PipelineProgress(
+            id=progress_id,
+            pipeline_name="cds_era5_land_etl",
+            source="cds",
+            dataset_name="reanalysis-era5-land",
+            start_date=date(CAMPAIGN_START_YEAR, 1, 1),
+            end_date=date(CAMPAIGN_START_YEAR, 3, 31),
+            configuration_identity="test-campaign",
+            expected_partition_count=3,
+            completed_partition_count=3 if status == "complete" else 0,
+            failed_partition_count=0,
+            execution_status=status,
+            validation_status="valid" if status == "complete" else "pending",
+            completed_at=None,
+        )
+
+    monkeypatch.setattr(
+        "orchestration.repositories.pipeline_progress.get_pipeline_progress_by_id",
+        progress_without_completion,
+    )
+    selected = select_earliest_incomplete_quarter(
+        dummy_engine,
+        claim_owner="scheduled__missing-completion",
+        current_local_date=date.max,
+        current_time=COMPLETED_AT + timedelta(hours=1),
+    )
+
+    assert isinstance(selected, CampaignBlocked)
+    assert selected.quarter == CampaignQuarter(CAMPAIGN_START_YEAR, 2)
+    assert "completed_at" in selected.reason
+
+
+
+
+def test_cooldown_wait_log_explains_next_eligible_time(
+    progress_selection, caplog, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    with caplog.at_level("INFO"):
+        selected = select_earliest_incomplete_quarter(
+            dummy_engine,
+            claim_owner="scheduled__cooldown-log",
+            current_local_date=date.max,
+            current_time=COMPLETED_AT + timedelta(minutes=9, seconds=59),
+        )
+
+    assert selected is None
+    assert "reason=quarter_cooldown" in caplog.text
+    assert "previous_quarter=2016 Q1" in caplog.text
+    assert "next_quarter=2016 Q2" in caplog.text
+    assert "eligible_at_local=" in caplog.text
+    assert "checked_at_local=" in caplog.text
+    assert "remaining=1s" in caplog.text
+    assert "result=no_selection" in caplog.text
+
+
+def test_selection_log_identifies_selected_and_next_quarter(
+    progress_selection, caplog, dummy_engine: Engine
+) -> None:
+    statuses, _ = progress_selection
+    statuses[1] = "complete"
+
+    with caplog.at_level("INFO"):
+        selected = select_earliest_incomplete_quarter(
+            dummy_engine,
+            claim_owner="scheduled__selection-log",
+            current_local_date=date.max,
+            current_time=COMPLETED_AT + timedelta(minutes=10),
+        )
+
+    assert isinstance(selected, CampaignSelection)
+    assert "Campaign quarter selected" in caplog.text
+    assert "quarter=2016 Q2" in caplog.text
+    assert "months=2016-04,2016-05,2016-06" in caplog.text
+    assert "selected_at_local=" in caplog.text
+    assert "next_quarter=2016 Q3" in caplog.text
 
 
 def test_selection_starts_at_first_incomplete_quarter(

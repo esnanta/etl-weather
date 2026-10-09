@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
-from orchestration.config import AVAILABILITY_LAG_DAYS, PIPELINE_TIMEZONE
+from config import AVAILABILITY_LAG_DAYS, PIPELINE_TIMEZONE
 
 # Preserve the historical orchestration task logger identity after module movement.
 logger = logging.getLogger("orchestration.tasks.era5_land")

@@ -251,3 +251,79 @@ def test_direct_script_execution_resolves_root_config_without_shadowing() -> Non
     assert result.returncode == 3
     assert "database recreation is disabled when APP_ENV=prod" in result.stderr
     assert "ImportError" not in result.stderr
+
+
+
+def _patch_idle_runtime(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.recreate_postgres_database.campaign_schedule",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_TASK_STATES},
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {state: 0 for state in maintenance.BLOCKING_DAGRUN_STATES},
+    )
+    monkeypatch.setattr(maintenance, "list_airflow_processes", lambda: [])
+    monkeypatch.setattr(maintenance, "_database_session_count", lambda config: 0)
+
+
+def test_runtime_guard_accepts_fully_inactive_runtime(monkeypatch) -> None:
+    _patch_idle_runtime(monkeypatch)
+
+    maintenance._validate_runtime_guards(_database_config())
+
+
+def test_runtime_guard_rejects_deferred_task(monkeypatch) -> None:
+    _patch_idle_runtime(monkeypatch)
+    task_counts = {state: 0 for state in maintenance.BLOCKING_TASK_STATES}
+    task_counts["deferred"] = 2
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_task_state_counts",
+        lambda path: task_counts,
+    )
+
+    with pytest.raises(RuntimeError, match="deferred=2"):
+        maintenance._validate_runtime_guards(_database_config())
+
+
+def test_runtime_guard_rejects_running_dagrun(monkeypatch) -> None:
+    _patch_idle_runtime(monkeypatch)
+    monkeypatch.setattr(
+        maintenance,
+        "_airflow_dag_run_state_counts",
+        lambda path: {"queued": 0, "running": 1},
+    )
+
+    with pytest.raises(RuntimeError, match="running=1"):
+        maintenance._validate_runtime_guards(_database_config())
+
+
+def test_runtime_guard_rejects_residual_localexecutor_worker(monkeypatch) -> None:
+    _patch_idle_runtime(monkeypatch)
+    monkeypatch.setattr(
+        maintenance,
+        "list_airflow_processes",
+        lambda: [(501, "airflow worker -- LocalExecutor: <idle>")],
+    )
+
+    with pytest.raises(RuntimeError, match="still running"):
+        maintenance._validate_runtime_guards(_database_config())
+
+
+def test_runtime_guard_rejects_main_airflow_service(monkeypatch) -> None:
+    _patch_idle_runtime(monkeypatch)
+    monkeypatch.setattr(
+        maintenance,
+        "list_airflow_processes",
+        lambda: [(502, "airflow scheduler")],
+    )
+
+    with pytest.raises(RuntimeError, match="still running"):
+        maintenance._validate_runtime_guards(_database_config())

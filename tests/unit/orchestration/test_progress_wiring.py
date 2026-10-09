@@ -21,7 +21,7 @@ from orchestration.campaign.policy import (
     CampaignQuarter,
     CampaignSelection,
 )
-from orchestration.config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
 from orchestration.repositories.load_evidence import persisted_row_count
 from orchestration.scheduling.requests import build_historical_request_specs
 from orchestration.scheduling.submission_gate import SubmissionDeferred
@@ -74,6 +74,7 @@ def test_manual_run_initializes_exact_progress_and_maps_one_month(monkeypatch) -
     first_job = jobs[0]
     assert first_job["progress_id"] == 42
     assert first_job["run_mode"] == "manual"
+    assert first_job["month_label"] == "2024-01"
     first_request_spec = first_job["request_spec"]
     assert isinstance(first_request_spec, Mapping)
     assert first_request_spec["start_date"] == "2024-01-01"
@@ -113,6 +114,9 @@ def test_scheduled_run_maps_only_selected_quarter(monkeypatch) -> None:
     assert len(jobs) == 3
     assert all(job["progress_id"] == 19 for job in jobs)
     assert all(job["run_mode"] == "scheduled" for job in jobs)
+    assert [job["month_label"] for job in jobs] == [
+        f"{year}-01", f"{year}-02", f"{year}-03"
+    ]
     start_dates: list[object] = []
     for job in jobs:
         request_spec = job["request_spec"]
@@ -448,7 +452,8 @@ def test_scheduled_earliest_slots_share_one_anchor(monkeypatch) -> None:
         "scheduled", {}, "scheduled__one", slot_anchor=anchor
     )
     assert [job["earliest_start_at"] for job in jobs] == [
-        (anchor + timedelta(hours=offset)).isoformat() for offset in range(3)
+        (anchor + timedelta(minutes=15 * offset)).isoformat()
+        for offset in range(3)
     ]
     assert len({job["progress_id"] for job in jobs}) == 1
 

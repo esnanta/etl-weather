@@ -4,22 +4,22 @@ from __future__ import annotations
 
 import pytest
 
-from orchestration import config as orchestration_config
+import config as orchestration_config
 
 
-def test_required_campaign_environment_rejects_missing_value(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("CAMPAIGN_KEY", raising=False)
+def test_required_campaign_environment_rejects_missing_value() -> None:
     with pytest.raises(RuntimeError, match="CAMPAIGN_KEY is required"):
-        orchestration_config._required_environment("CAMPAIGN_KEY")
+        orchestration_config._required_environment("CAMPAIGN_KEY", {})
 
 
-def test_required_campaign_environment_strips_whitespace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("CAMPAIGN_KEY", "  era5_land_test  ")
-    assert orchestration_config._required_environment("CAMPAIGN_KEY") == "era5_land_test"
+def test_required_campaign_environment_strips_whitespace() -> None:
+    assert (
+        orchestration_config._required_environment(
+            "CAMPAIGN_KEY",
+            {"CAMPAIGN_KEY": "  era5_land_test  "},
+        )
+        == "era5_land_test"
+    )
 
 
 def test_loaded_campaign_years_define_full_calendar_years() -> None:
@@ -34,12 +34,12 @@ def test_loaded_campaign_years_define_full_calendar_years() -> None:
     assert orchestration_config.CAMPAIGN_END_DATE.day == 31
 
 
-def test_campaign_year_rejects_non_four_digit_value(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("CAMPAIGN_START_YEAR", "16")
+def test_campaign_year_rejects_non_four_digit_value() -> None:
     with pytest.raises(RuntimeError, match="four-digit year"):
-        orchestration_config._campaign_year("CAMPAIGN_START_YEAR")
+        orchestration_config._campaign_year(
+            "CAMPAIGN_START_YEAR",
+            {"CAMPAIGN_START_YEAR": "16"},
+        )
 
 
 def test_campaign_years_reject_inverted_range() -> None:
@@ -49,3 +49,30 @@ def test_campaign_years_reject_inverted_range() -> None:
 
 def test_campaign_years_allow_one_full_year() -> None:
     orchestration_config._validate_campaign_years(2016, 2016)
+
+
+
+def test_root_config_import_does_not_require_campaign_environment() -> None:
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env.pop("CAMPAIGN_KEY", None)
+    env.pop("CAMPAIGN_START_YEAR", None)
+    env.pop("CAMPAIGN_END_YEAR", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import config; print(config.APPLICATION_SCHEMA)",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "climate_data"

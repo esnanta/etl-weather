@@ -30,22 +30,31 @@ storage, or loading.
 ## 2. Task Boundaries
 
 The Airflow DAG keeps retry control separate from pipeline checkpoint
-postconditions:
+postconditions and maps one depth-first TaskGroup per calendar month:
 
 ```text
 build_monthly_requests
-        ↓
-attempt_raw_checkpoint [YYYY-MM]
-        ↓
-resolve_raw_checkpoint [YYYY-MM]
-        ↓
-ensure_transformed_checkpoint [YYYY-MM]
-        ↓
-load [YYYY-MM]
+        |
+        +--> monthly_etl[YYYY-MM]
+                  |
+                  v
+        attempt_raw_checkpoint
+                  |
+                  v
+        resolve_raw_checkpoint
+                  |
+                  v
+        ensure_transformed_checkpoint
+                  |
+                  v
+                 load
 ```
 
-Successful RAW attempts pass through the resolver immediately. Only failed
-first attempts wait for the durable first-pass extraction barrier before retry.
+A RAW-complete month may transform and load while sibling months are still
+waiting for an earliest-start limit, CDS pacing, provider queueing, or bounded
+extraction retry. Successful RAW attempts pass through the resolver immediately.
+Only failed first attempts wait for the durable first-pass extraction barrier
+before retry.
 The pipeline runtime beneath those orchestration tasks still owns the three
 postcondition boundaries:
 
@@ -268,7 +277,7 @@ Core pipeline tests remain Airflow-independent and follow `tests/AGENTS.md`.
 
 Before enabling a DAG, confirm all of the following:
 
-- [ ] The Airflow graph uses `attempt_raw_checkpoint → resolve_raw_checkpoint → ensure_transformed_checkpoint → load`, while pipeline runtime retains `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`.
+- [ ] The Airflow graph maps one monthly TaskGroup with `attempt_raw_checkpoint → resolve_raw_checkpoint → ensure_transformed_checkpoint → load`, while pipeline runtime retains `ensure_raw_checkpoint → ensure_transformed_checkpoint → load`.
 - [ ] Validation has not been split out of pipeline runtime boundaries.
 - [ ] `Asia/Jakarta` and interval conversion are explicit and tested.
 - [ ] The six-day availability lag is configurable and logged.
