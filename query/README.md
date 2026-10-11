@@ -30,10 +30,31 @@ pairs at 0.1° grid spacing; that is **not** a guaranteed observation count.
 Null climate values may be legitimate missing observations and must not be
 coalesced to zero by diagnostics.
 
+## Recommended inspection sequence
+
+Start with `00_connection__01_database_context.sql` to verify that the SQL
+editor is connected to **weather**, not the administrative `postgres` database.
+The target name is intentionally explicit for the current development host;
+change that documented expectation for a differently named database.
+Next run `01_schema__*`, `02_daily_climate__*`, and then the nine
+`03_daily_climate_detail__*` files in numeric order. Q2's anomaly queries
+usually return zero rows on a consistent dataset; counts and previews are
+informational, not independent scientific certification. The timestamp query
+uses the implemented UTC+7 local midnight contract. The geometric bbox check
+uses 0.1° coordinate alignment but never assumes that all 1,505 candidate
+points are populated. The null-count query does not replace missing values
+with zero. The value-sanity query reports negative accumulations as INFO,
+because the pipeline retains and warns about these values.
+
+These scripts were authored against the `dev` source schema; **Q2 execution
+results and isolated database tests have not yet been recorded**. Run checks
+in the intended database and report unexpected output before closing Q2.
+
 ## Filename taxonomy
 
 `<category-number>_<table-or-domain>__<task-number>_<action>.sql`
 
+- `00_connection`: verify current PostgreSQL database and session context.
 - `01_schema`: schema, columns, keys, constraints and indexes.
 - `02_daily_climate`: request-partition metadata.
 - `03_daily_climate_detail`: persisted daily observations.
