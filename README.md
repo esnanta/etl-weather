@@ -1,6 +1,6 @@
 # ETL Weather
 
-ETL Weather converts Copernicus Climate Data Store (CDS) ERA5-Land hourly data into daily climate observations for the project's local UTC+7 day, preserves reproducible NetCDF and Parquet artifacts, and stores canonical daily observations in PostgreSQL.
+ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations, then derives complete local-calendar monthly statistics from validated daily Parquet. It preserves reproducible NetCDF/Parquet artifacts and stores daily and monthly observations separately in PostgreSQL.
 
 The ETL pipeline can run directly from the command line or be coordinated by Apache Airflow. Airflow remains an orchestration layer; the scientific processing and persistence behavior stay in `pipeline/`.
 
@@ -20,6 +20,65 @@ input              : hourly NetCDF
 transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
+
+## Environment Setup
+
+Create and activate the local Python environment:
+
+```bash
+python3 -m venv myvenv
+source myvenv/bin/activate
+```
+
+The project uses one dependency manifest, `requirements.txt`. Install the pinned Airflow version first with its matching official constraints, then install the complete project manifest:
+
+```bash
+AIRFLOW_VERSION=3.3.2
+PYTHON_VERSION=3.12
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
+pip install -r requirements.txt
+pip check
+```
+
+Copy `env-example` to `.env` and replace the placeholder values with the local configuration:
+
+```env
+APP_ENV=dev
+
+CDSAPI_URL=https://cds.climate.copernicus.eu/api
+CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
+
+STANDALONE_PIPELINE_START_DATE=2024-01-01
+STANDALONE_PIPELINE_END_DATE=2024-01-31
+
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=your_database_name
+POSTGRES_USER=your_username
+POSTGRES_PASSWORD=your_password
+
+TEST_POSTGRES_HOST=localhost
+TEST_POSTGRES_PORT=5432
+TEST_POSTGRES_DATABASE=weather_test
+TEST_POSTGRES_USER=your_test_username
+TEST_POSTGRES_PASSWORD=your_test_password
+
+CAMPAIGN_KEY=era5_land_2016_2025
+CAMPAIGN_START_YEAR=2016
+CAMPAIGN_END_YEAR=2016
+
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
+```
+
+`APP_ENV` selects the application environment. Orchestration timing intervals are source-controlled in root `config.py`; only the scheduled-mode enable switch remains environment-controlled. `STANDALONE_PIPELINE_START_DATE` and `STANDALONE_PIPELINE_END_DATE` provide the default inclusive period for standalone pipeline execution. `POSTGRES_*` configures the canonical application database, while `TEST_POSTGRES_*` identifies the isolated PostgreSQL database used by integration tests.
+
+The root `config.py` is the single lightweight configuration module shared by pipeline, scripts, and orchestration. There is no separate `orchestration/config.py`. The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, maintenance, reset, and clean-slate destroy semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
+
+Never commit real CDS or PostgreSQL credentials.
+
+
 
 ## How It Works
 
@@ -77,7 +136,7 @@ Then the precipitation assigned to local day 2024-05-01 is:
 
 The values above are only an arithmetic example of the implemented boundary calculation.
 
-Daily means for `t2m`, `d2m`, and `swvl1` require the complete hourly samples belonging to the local day. Missing observations remain missing rather than being converted to zero. The transformed data retains both `valid_time` and `valid_time_local`.
+Daily means for `t2m`, `d2m`, and `swvl1` require the complete hourly samples belonging to the local day. Missing observations remain missing rather than being converted to zero. Each transformed row records the local day as a half-open period `[start, end)` using four explicit boundaries: `valid_time_start`, `valid_time_end`, `valid_time_local_start`, and `valid_time_local_end`. The UTC and UTC+7 boundary pairs denote the same instants.
 
 ## Pipeline Architecture
 
@@ -126,74 +185,80 @@ etl-weather/
 
 The root README documents the project as a whole. Airflow-specific runtime files, authentication setup, scheduling behavior, and operational recovery are documented in [`orchestration/README.md`](./orchestration/README.md).
 
-## Environment Setup
-
-Create and activate the local Python environment:
-
-```bash
-python3 -m venv myvenv
-source myvenv/bin/activate
-```
-
-The project uses one dependency manifest, `requirements.txt`. Install the pinned Airflow version first with its matching official constraints, then install the complete project manifest:
-
-```bash
-AIRFLOW_VERSION=3.3.2
-PYTHON_VERSION=3.12
-CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-
-pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
-pip install -r requirements.txt
-pip check
-```
-
-Copy `env-example` to `.env` and replace the placeholder values with the local configuration:
-
-```env
-APP_ENV=dev
-
-CDSAPI_URL=https://cds.climate.copernicus.eu/api
-CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
-
-CDS_START_DATE=2022-01-01
-CDS_END_DATE=2022-01-03
-
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DATABASE=your_database_name
-POSTGRES_USER=your_username
-POSTGRES_PASSWORD=your_password
-
-TEST_POSTGRES_HOST=localhost
-TEST_POSTGRES_PORT=5432
-TEST_POSTGRES_DATABASE=weather_test
-TEST_POSTGRES_USER=your_test_username
-TEST_POSTGRES_PASSWORD=your_test_password
-
-CAMPAIGN_KEY=era5_land_2016_2025
-CAMPAIGN_START_YEAR=2016
-CAMPAIGN_END_YEAR=2016
-
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
-```
-
-`APP_ENV` selects the application environment. Orchestration timing intervals are source-controlled in root `config.py`; only the scheduled-mode enable switch remains environment-controlled. `CDS_START_DATE` and `CDS_END_DATE` provide the default inclusive period for standalone pipeline execution. `POSTGRES_*` configures the canonical application database, while `TEST_POSTGRES_*` identifies the isolated PostgreSQL database used by integration tests.
-
-The root `config.py` is the single lightweight configuration module shared by pipeline, scripts, and orchestration. There is no separate `orchestration/config.py`. The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, maintenance, reset, and clean-slate destroy semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
-
-Never commit real CDS or PostgreSQL credentials.
-
 ## Running the Pipeline
 
-Run the standalone ERA5-Land pipeline with:
+Run the daily and monthly stages together:
 
 ```bash
-python scripts/run_pipeline_cds.py
+source activate-airflow.sh -q
+STANDALONE_PIPELINE_START_DATE=2024-01-01 \\
+STANDALONE_PIPELINE_END_DATE=2024-01-31 \\
+python -m scripts.run_pipeline
 ```
 
-The active dataset, variables, and Aceh bounding box are defined by project configuration. The default standalone period comes from `CDS_START_DATE` and `CDS_END_DATE` in `.env`. Longer periods are processed as monthly request partitions while preserving the same ETL behavior.
+**Clean-slate development run (destructive):** If you need to discard all existing generated data and restart from zero, first inspect the targets:
 
-For Airflow scheduling, manual recovery, and campaign operation, see [`orchestration/README.md`](./orchestration/README.md).
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all
+```
+
+After confirming the displayed PostgreSQL database, data directory, and Airflow runtime/log targets are correct, run:
+
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
+```
+
+Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **It is broader than a weather-data-only reset.** It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
+
+The combined runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; the existing daily and monthly Parquet artifacts are validated and reused on later runs.
+
+### Checkpoint stages
+
+A **checkpoint** is a saved, validated artifact at a processing stage that can be reused after interruption or retry. It is not an additional download or a separate file format.
+
+- **RAW checkpoint:** hourly ERA5-Land data stored as NetCDF in `raw/YYYY/`.
+- **Daily transformed checkpoint:** UTC+7 daily observations stored as Parquet in `transformed/YYYY/daily/`.
+- **Monthly transformed checkpoint:** complete UTC+7 monthly observations stored as Parquet in `transformed/YYYY/monthly/`.
+
+The combined `pipeline/runtime.py` runs `pipeline/daily.py` and then `pipeline/monthly.py` for every complete calendar month. The combined terminal command is `python -m scripts.run_pipeline`. Use `scripts/run_monthly_climate.py` to process existing daily Parquet files separately.
+
+### Monthly climate: processing and statistics
+
+Monthly climate data is calculated from **daily observations in UTC+7**. The processing steps are:
+
+| Step | What happens | Saved result |
+|---|---|---|
+| 1. Download | Retrieve hourly weather data from CDS. | RAW NetCDF: `raw/YYYY/*.nc` |
+| 2. Daily processing | Convert hourly data into daily observations and validate the results. | Daily Parquet: `transformed/YYYY/daily/*.parquet` |
+| 3. Monthly processing | Combine all daily observations for one complete calendar month, separately for each grid point. | Monthly Parquet: `transformed/YYYY/monthly/YYYY_MM_<sorted_variables>.parquet` |
+| 4. Database loading | Save validated daily and monthly observations in their respective PostgreSQL tables. | PostgreSQL observations |
+
+**What do the daily values mean?**
+
+Each daily observation covers one local calendar day (UTC+7), separately for each grid point.
+
+| Daily output column | Meaning | How it is calculated |
+|---|---|---|
+| `tp_daily_total_mm` | Total rainfall during the day (mm). | Add the hourly precipitation contributions for the local day. |
+| `ssrd_daily_total_j_m2` | Total solar energy reaching the surface during the day (J/m²). | Add the hourly radiation contributions for the local day. |
+| `t2m_daily_mean_c` | Average air temperature during the day (°C). | Average hourly temperatures for the local day. |
+| `d2m_daily_mean_c` | Average dew-point temperature during the day (°C). | Average hourly dew-point temperatures for the local day. |
+| `swvl1_daily_mean_m3_m3` | Average moisture in the top soil layer during the day (m³/m³). | Average hourly soil-moisture values for the local day. |
+
+The daily results become the input for monthly calculations. Each daily Parquet row corresponds to one day and one grid point; it is not an average over Aceh.
+
+**What do the monthly values mean?**
+
+| Monthly output column | Meaning | How it is calculated |
+|---|---|---|
+| `tp_monthly_total_mm` | Total rainfall for the month (mm). | Add all daily rainfall totals. |
+| `tp_monthly_daily_mean_mm` | Average rainfall per day (mm/day). | Monthly rainfall total ÷ number of days in the month. |
+| `ssrd_monthly_total_j_m2` | Total surface solar radiation for the month (J/m²). | Add all daily radiation totals. |
+| `ssrd_monthly_daily_mean_j_m2` | Average daily solar radiation (J/m²/day). | Monthly radiation total ÷ number of days in the month. |
+| `t2m_monthly_mean_c` | Average air temperature (°C). | Average the daily mean temperatures. |
+| `d2m_monthly_mean_c` | Average dew-point temperature (°C). | Average the daily mean dew-point temperatures. |
+| `swvl1_monthly_mean_m3_m3` | Average soil moisture in the top layer (m³/m³). | Average the daily mean soil-moisture values. |
+
 
 ## Data Layout
 
@@ -215,7 +280,7 @@ The dataset and bounding-box directories keep different requests separate. RAW h
 
 ## Persistence and Modelling Access
 
-PostgreSQL stores the canonical daily climate observations. Reprocessing the same logical request does not create another copy of the same partition.
+PostgreSQL stores canonical daily observations and separately stores UTC+7-derived monthly observations in `climate_data.monthly_climate` and `climate_data.monthly_climate_detail`. Idempotent loading does not create duplicate logical partitions.
 
 For example, if January 2024 has already been processed and the identical January request is run again, the pipeline validates and reuses the same logical partition rather than appending duplicate daily grid observations.
 
