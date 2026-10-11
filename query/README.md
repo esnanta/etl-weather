@@ -26,6 +26,26 @@ The existing connection may report `transaction_read_only=off` even though
 these files contain SELECT statements only. Never run them against the
 administrative `postgres` database by mistake.
 
+## Large-dataset result limits
+
+**Use `LIMIT 1000` for any query that displays individual observation
+records (a SELECT-all-style preview).** Apply an explicit deterministic
+`ORDER BY` before `LIMIT`; use a selective date/request scope and indexed
+keys for efficient inspection. Never use an unrestricted `SELECT *` over
+`daily_climate_detail` as the campaign grows to millions of rows.
+
+**Do not limit the input rows of aggregate or integrity checks.** Partition
+counts, duplicate detection, missing-day checks, load reconciliation and
+campaign totals must examine all relevant records so a problem after the first
+1,000 rows is not concealed. These six operational queries return compact
+summaries, rather than individual observations; a blanket `LIMIT 1000`
+on them would hide later partitions when the campaign grows.
+
+For any future detailed inspection query, use `ORDER BY ... LIMIT 1000`
+at the final result stage and document that the result is a **sample**, not
+a complete validation. Large aggregate checks should be reviewed with
+`EXPLAIN` and appropriate indexes as data volume increases.
+
 ## Output interpretation
 
 - `PASS`: the query's stated invariant holds in its declared scope.
