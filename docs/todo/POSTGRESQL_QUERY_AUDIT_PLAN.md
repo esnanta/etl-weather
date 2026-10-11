@@ -2,7 +2,7 @@
 
 Date: 2026-10-11 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: **Q0 source audit and standards completed; live PostgreSQL version not yet verified.** No diagnostic SQL scripts implemented and no database queried.
+Status: **Q1 SQL implementation completed; PostgreSQL execution/integration validation pending.** Q0 live PostgreSQL version/permissions remain unverified.
 
 ## 1. Purpose and limits
 
@@ -140,10 +140,16 @@ run by the operator. Q0 did not execute SQL and cannot certify the live host.
 
 ### Q1 — Schema and daily-climate metadata
 
-- [ ] Build schema/table inventory and PK/FK/unique/check index inventory.
-- [ ] Preview partition metadata and count requests grouped by date/source.
-- [ ] Check duplicate `request_key` and inspect bbox/variable/provenance
-      metadata without imposing one global request shape on all records.
+- [x] Build schema/table inventory and PK/FK/unique/check index inventory (`01_schema__01_inventory.sql`, `01_schema__02_constraints.sql`).
+- [x] Preview partition metadata and count requests grouped by start-year/quarter/source/dataset (`02_daily_climate__01_preview.sql`, `02_daily_climate__02_count_by_period.sql`).
+- [x] Check duplicate `request_key` and inspect bbox/variable/provenance
+      metadata without imposing one global request shape on all records (`02_daily_climate__03_duplicate_request_key.sql`, `02_daily_climate__04_request_metadata.sql`).
+
+**Q1 verification still pending:** Run all six SQL scripts on the intended
+PostgreSQL database and capture observed results. Q1 completion above denotes
+file implementation and source review, not proven database execution; Q4 owns
+isolated test database verification. No live database has been queried by the
+assistant.
 
 ### Q2 — Daily observation integrity
 
