@@ -2,7 +2,7 @@
 
 Date: 2026-10-11 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: **Q1 SQL implementation completed; PostgreSQL execution/integration validation pending.** Q0 live PostgreSQL version/permissions remain unverified.
+Status: **Q1 executed by operator against weather; Q2 SQL files implemented, execution/isolated integration validation pending.** Live PostgreSQL version/read-only permissions remain unverified.
 
 ## 1. Purpose and limits
 
@@ -61,7 +61,8 @@ Implement under the existing root `query/` directory. One task = one file.
 
 ```text
 query/
-├── daily_climate_verification.sql       # existing legacy script: review/replace
+├── 00_connection__01_database_context.sql
+├── daily_climate_verification.sql       # legacy; replace during Q4 cleanup
 ├── 01_schema__01_inventory.sql
 ├── 01_schema__02_constraints.sql
 ├── 02_daily_climate__01_preview.sql
@@ -145,26 +146,35 @@ run by the operator. Q0 did not execute SQL and cannot certify the live host.
 - [x] Check duplicate `request_key` and inspect bbox/variable/provenance
       metadata without imposing one global request shape on all records (`02_daily_climate__03_duplicate_request_key.sql`, `02_daily_climate__04_request_metadata.sql`).
 
-**Q1 verification still pending:** Run all six SQL scripts on the intended
-PostgreSQL database and capture observed results. Q1 completion above denotes
-file implementation and source review, not proven database execution; Q4 owns
-isolated test database verification. No live database has been queried by the
-assistant.
+**Q1 operator evidence (2026-10-11):** Screenshots show all five schema
+inventory checks PASS on the `weather` database, 28 constraint/index inventory
+rows, 9 monthly partitions (3 each in 2016 Q1, Q2 and Q3), zero duplicate
+request keys, and 9 metadata rows in the selected 2016 period. Detailed
+constraint-by-constraint verification and Q4 isolated testing remain pending.
+The first two runs mistakenly targeted `postgres`; reruns on `weather`
+resolved those false failures. `00_connection__01_database_context.sql`
+now checks the target explicitly before subsequent queries.
 
 ### Q2 — Daily observation integrity
 
-- [ ] Preview a bounded range of daily observations.
-- [ ] Count by `daily_climate_id` and date; distinguish **expected** from
-      **observed** grid coverage.
-- [ ] Check duplicate observation composite keys.
-- [ ] Check orphaned children and metadata partitions with zero details.
-- [ ] Check UTC versus UTC+7 timestamps, period boundaries and local-day counts.
-- [ ] Check latitude/longitude within **each partition's bbox** and regular
-      grid coordinates, without demanding that all 1,505 cells exist.
-- [ ] Count NULLs for each variable; do not convert NULL to zero.
-- [ ] Report suspicious/nonfinite/impossible ranges as diagnostic candidates.
-      Scientific plausibility thresholds need explicit approval and must not
-      silently reject valid ERA5-Land outputs.
+- [x] Preview a bounded range of daily observations (`03_daily_climate_detail__01_preview.sql`).
+- [x] Count by `daily_climate_id` and date; distinguish **expected** from
+      **observed** grid coverage (`03_daily_climate_detail__02_count_by_partition.sql`, `__06_day_grid_coverage.sql`).
+- [x] Check duplicate observation composite keys (`__03_duplicate_observation_key.sql`).
+- [x] Check orphaned children and metadata partitions with zero details (`__04_orphan_or_missing_parent.sql`).
+- [x] Check UTC versus UTC+7 timestamps, period boundaries and local-day counts (`__05_temporal_utc7_alignment.sql`, `__06_day_grid_coverage.sql`).
+- [x] Check latitude/longitude within **each partition's bbox** and regular
+      grid coordinates, without demanding that all 1,505 cells exist (`__07_bbox_and_grid_spacing.sql`).
+- [x] Count NULLs for each variable; do not convert NULL to zero (`__08_null_value_counts.sql`).
+- [x] Report suspicious/nonfinite/impossible ranges as diagnostic candidates (`__09_value_sanity.sql`).
+      Scientific plausibility thresholds must not silently reject valid ERA5-Land outputs.
+
+**Q2 implementation note:** Nine daily-detail queries are committed but have
+not been executed on the operator database or an isolated integration fixture.
+Zero-result anomaly queries may be expected; inspect `INFO` warnings before
+concluding any scientific data are invalid. The connection query uses
+`weather` as its documented development target; adapt it when auditing a
+separately named database.
 
 ### Q3 — Progress and pacing evidence
 
