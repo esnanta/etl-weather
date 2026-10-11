@@ -53,14 +53,3 @@ CAMPAIGN_END_YEAR=2016
 # false: manual DAG runs only; no automatic campaign tick.
 # true: enable the bounded historical campaign schedule.
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
-
-# Orchestration timing policy is source-controlled in root config.py:
-# - CAMPAIGN_SCHEDULE_INTERVAL_MINUTES=10
-# - QUARTER_COOLDOWN_MINUTES=10
-# - MONTHLY_SLOT_SPACING_MINUTES=15
-# - SUBMISSION_INTERVAL_MINUTES=5
-# Keep timing values out of .env unless configuration policy changes.
-
-# Shared Airflow JWT secret is managed outside .env.
-# Keep using the existing airflow-jwt-key.txt setup documented in
-# orchestration/README.md.
