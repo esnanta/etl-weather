@@ -2,7 +2,7 @@
 
 Date: 2026-10-11 (Asia/Jakarta)  
 Branch: `dev` only  
-Status: **planning only**; no SQL scripts implemented and no database queried.
+Status: **Q0 source audit and standards completed; live PostgreSQL version not yet verified.** No diagnostic SQL scripts implemented and no database queried.
 
 ## 1. Purpose and limits
 
@@ -120,14 +120,23 @@ embedded in scripts. Avoid server-side artifact-file access.
 
 ### Q0 — Confirm coverage and conventions
 
-- [ ] Recheck current `dev` DDL and repository reads/writes before coding.
-- [ ] Inspect the existing `query/daily_climate_verification.sql`: it assumes
+- [x] Recheck current `dev` DDL and repository reads/writes before coding (2026-10-11; confirmed five application tables, two foreign-key relationships, unique identities, per-request load evidence, and singleton pacing).
+- [x] Inspect the existing `query/daily_climate_verification.sql`: it assumes
       `daily_climate_id = 1` and a fixed **747** observations for an old
-      sanity run; replace or supersede those brittle assumptions.
-- [ ] Confirm target PostgreSQL version and read-only execution method.
-- [ ] Keep a single task and a complete SQL documentation comment per file.
-- [ ] Define the consistent meaning of `PASS`, `FAIL`, `INFO` and
-      `NOT_EVALUATED` for diagnostic results.
+      sanity run. This legacy script is unsuitable for a general campaign; its
+      replacement/removal remains part of Q1–Q2 implementation.
+- [ ] Confirm **live target PostgreSQL version** (requires operator database
+      access; not inferred from Python code). A read-only transaction and
+      SELECT-only role are documented in `query/README.md`; verify them on the
+      target database before actual query execution.
+- [x] Define the one-task-per-file naming and English SQL documentation
+      contract (see `query/README.md`); verify each implementation against it.
+- [x] Define the consistent meaning of `PASS`, `FAIL`, `INFO` and
+      `NOT_EVALUATED` for diagnostic results in `query/README.md`.
+
+**Q0 remaining verification:** Obtain `SHOW server_version;` and verify the
+actual PostgreSQL connection target/read-only permissions when the SQL work is
+run by the operator. Q0 did not execute SQL and cannot certify the live host.
 
 ### Q1 — Schema and daily-climate metadata
 
