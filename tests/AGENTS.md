@@ -83,8 +83,8 @@ Expected scientific values must be traceable to accumulation rules, unit convers
 Canonical climate tables:
 
 ```text
-climate_data.daily_climate
-climate_data.daily_climate_detail
+climate_data.t_daily_climate
+climate_data.t_daily_climate_detail
 ```
 
 Canonical detail foreign key:
@@ -135,9 +135,9 @@ Do not add wet-day labels, scaling, anomaly features, rolling features, clusteri
 The durable operational tables are:
 
 ```text
-climate_data.pipeline_progress
-climate_data.pipeline_progress_detail
-climate_data.submission_pacing
+climate_data.t_pipeline_progress
+climate_data.t_pipeline_progress_detail
+climate_data.t_submission_pacing
 ```
 
 Tests must keep progress persistence independent from scheduler cadence. Progress identity is based on configured date ranges and configuration identity rather than quarter number.
