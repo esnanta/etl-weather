@@ -123,7 +123,7 @@ def test_durable_completed_at_controls_next_quarter_cooldown(monkeypatch) -> Non
                 daily_climate_id = connection.execute(
                     text(
                         """
-                        INSERT INTO climate_data.daily_climate
+                        INSERT INTO climate_data.t_daily_climate
                         (request_key, dataset_name, source, start_date, end_date,
                          variable_signature, north_lat, south_lat, east_lon, west_lon,
                          downloaded_at, transformed_artifact_path,
@@ -146,7 +146,7 @@ def test_durable_completed_at_controls_next_quarter_cooldown(monkeypatch) -> Non
                 connection.execute(
                     text(
                         """
-                        INSERT INTO climate_data.daily_climate_detail
+                        INSERT INTO climate_data.t_daily_climate_detail
                         (daily_climate_id, valid_time, valid_time_local,
                          latitude, longitude)
                         VALUES (:id, :utc_instant, :local_midnight, 4.0, 96.0)
@@ -219,7 +219,7 @@ def test_durable_completed_at_controls_next_quarter_cooldown(monkeypatch) -> Non
             for request_key in persisted_request_keys:
                 connection.execute(
                     text(
-                        "DELETE FROM climate_data.daily_climate "
+                        "DELETE FROM climate_data.t_daily_climate "
                         "WHERE request_key = :key"
                     ),
                     {"key": request_key},
@@ -321,7 +321,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
             daily_climate_id = connection.execute(
                 text(
                     """
-                    INSERT INTO climate_data.daily_climate
+                    INSERT INTO climate_data.t_daily_climate
                     (request_key, dataset_name, source, start_date, end_date,
                      variable_signature, north_lat, south_lat, east_lon, west_lon,
                      downloaded_at, transformed_artifact_path, transformed_sha256,
@@ -340,7 +340,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
                 connection.execute(
                     text(
                         """
-                        INSERT INTO climate_data.daily_climate_detail
+                        INSERT INTO climate_data.t_daily_climate_detail
                         (daily_climate_id, valid_time, valid_time_local,
                          latitude, longitude)
                         VALUES (:id, '2023-12-31 17:00:00',
@@ -371,7 +371,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "UPDATE climate_data.daily_climate "
+                    "UPDATE climate_data.t_daily_climate "
                     "SET transformed_sha256 = 'different-sha' WHERE id = :id"
                 ),
                 {"id": daily_climate_id},
@@ -381,7 +381,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "UPDATE climate_data.daily_climate "
+                    "UPDATE climate_data.t_daily_climate "
                     "SET transformed_sha256 = 'test-sha' WHERE id = :id"
                 ),
                 {"id": daily_climate_id},
@@ -392,7 +392,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "DELETE FROM climate_data.daily_climate_detail "
+                    "DELETE FROM climate_data.t_daily_climate_detail "
                     "WHERE daily_climate_id = :id AND latitude = 4.1"
                 ),
                 {"id": daily_climate_id},
@@ -403,7 +403,7 @@ def test_completion_requires_matching_persisted_partition() -> None:
         if tables_ready:
             with engine.begin() as connection:
                 connection.execute(
-                    text("DELETE FROM climate_data.daily_climate WHERE request_key = :key"),
+                    text("DELETE FROM climate_data.t_daily_climate WHERE request_key = :key"),
                     {"key": request_key},
                 )
                 if progress_id is not None:
@@ -510,7 +510,7 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
                 metadata_id = connection.execute(
                     text(
                         """
-                        INSERT INTO climate_data.daily_climate
+                        INSERT INTO climate_data.t_daily_climate
                         (request_key, dataset_name, source, start_date, end_date,
                          variable_signature, north_lat, south_lat, east_lon, west_lon,
                          downloaded_at, transformed_artifact_path,
@@ -533,7 +533,7 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
                 connection.execute(
                     text(
                         """
-                        INSERT INTO climate_data.daily_climate_detail
+                        INSERT INTO climate_data.t_daily_climate_detail
                         (daily_climate_id, valid_time, valid_time_local,
                          latitude, longitude)
                         VALUES (:id, :utc_instant, :local_midnight, 4.0, 96.0)
@@ -560,7 +560,7 @@ def test_manual_month_repair_completes_only_after_all_three_months() -> None:
                 for partition in partitions:
                     connection.execute(
                         text(
-                            "DELETE FROM climate_data.daily_climate "
+                            "DELETE FROM climate_data.t_daily_climate "
                             "WHERE request_key = :key"
                         ),
                         {"key": partition.request_key},
