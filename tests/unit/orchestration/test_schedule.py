@@ -37,7 +37,7 @@ def test_enabled_dag_preserves_jakarta_and_serial_execution(
     dag_bag = DagBag(dag_folder=folder, include_examples=False)
     dag_bag.process_file(str(folder / "cds_era5_land_etl.py"), only_if_updated=False, safe_mode=False)
     assert dag_bag.import_errors == {}
-    dag = dag_bag.dags["cds_era5_land_etl"]
+    dag = dag_bag.dags["cds-era5-land"]
     assert dag.schedule == timedelta(minutes=10)
     assert dag.timezone.name == "Asia/Jakarta"
     assert dag.catchup is False
