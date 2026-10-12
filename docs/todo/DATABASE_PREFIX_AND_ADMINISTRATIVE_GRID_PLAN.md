@@ -219,6 +219,13 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
 - [ ] Run offline unit/orchestration tests and PostgreSQL integration tests; compare behavior with baseline.
 
+### P2 actual pilot evidence (12 October 2026)
+
+- First standalone run: CDS retrieval in two chunks (30 April context; 1–3 May target), RAW 96 complete hourly steps, 43 x 35 = 1,505 bbox grid positions, validated RAW NetCDF and transformed Parquet, 530 output points per local day, 1,590 rows written to PostgreSQL. Total 166.04s (extract 165.58s, transform 0.17s, load 0.29s).
+- Second identical run: both checkpoints resumed, no CDS download, Parquet validated, metadata parent ID remained 1; matching request identity, checksum, artifact path and expected/database rows (1,590); PostgreSQL write skipped, zero rows processed, total 0.45s.
+- Client-side SQL checks were issued for parent count, detail count, per-day counts, orphan rows and duplicates. Pasted output confirms the duplicates query returned zero rows, but does not show scalar COUNT values from the other queries.
+- Caveats: existing database `weather` was reused, so empty-database recreation was not exercised. The user's logs do not independently establish Airflow scheduler/DagRun inactivity. P2 acceptance remains conditional on these checks and missing SQL count outputs.
+
 ### P2 — Standalone three-day CDS smoke test (mandatory gate before administrative implementation)
 
 - [ ] Keep Airflow scheduled DAG paused during the standalone test; no Airflow tasks should participate.
