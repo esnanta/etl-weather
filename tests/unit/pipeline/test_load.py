@@ -120,8 +120,8 @@ class _RecordingConnection:
 def test_database_config_uses_daily_climate_table_names() -> None:
     config = _config()
 
-    assert config.daily_climate_table == "daily_climate"
-    assert config.daily_climate_detail_table == "daily_climate_detail"
+    assert config.daily_climate_table == "t_daily_climate"
+    assert config.daily_climate_detail_table == "t_daily_climate_detail"
 
 
 def test_prepare_observation_dataframe_uses_daily_database_columns() -> None:
@@ -186,7 +186,7 @@ def test_upsert_daily_climate_metadata_builds_identity_and_provenance(
     assert daily_climate_id == 42
     assert len(connection.statements) == 1
     statement_text = connection.statements[0]
-    assert "INSERT INTO climate_data.daily_climate" in statement_text
+    assert "INSERT INTO climate_data.t_daily_climate" in statement_text
     assert "ON CONFLICT (request_key)" in statement_text
     assert "RETURNING id" in statement_text
 
@@ -216,7 +216,7 @@ def test_upsert_daily_climate_observations_builds_grid_time_conflict_upsert() ->
     assert rows_processed == 1
     assert len(connection.statements) == 1
     statement_text = connection.statements[0]
-    assert "INSERT INTO climate_data.daily_climate_detail" in statement_text
+    assert "INSERT INTO climate_data.t_daily_climate_detail" in statement_text
     assert (
         "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)"
         in statement_text
