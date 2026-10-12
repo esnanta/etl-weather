@@ -17,11 +17,8 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from config import (
-    CAMPAIGN_START_DATE,
-    PIPELINE_PROGRESS_SCHEMA,
-    PIPELINE_PROGRESS_TABLE,
-)
+from config import CAMPAIGN_START_DATE
+from pipeline.database.config import PIPELINE_PROGRESS_SCHEMA, PIPELINE_PROGRESS_TABLE
 from orchestration.campaign import policy as campaign_policy
 from orchestration.campaign.policy import (
     CampaignQuarter,
