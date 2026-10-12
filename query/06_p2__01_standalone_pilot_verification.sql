@@ -58,17 +58,17 @@ orphans AS (
     WHERE p.id IS NULL
 ),
 totals AS (
-    SELECT COUNT(*) AS total_observations FROM observations
+    SELECT COUNT(*) AS total_observations,\n           COUNT(DISTINCT valid_time_local::date) AS total_local_days\n    FROM observations
 )
 SELECT p.id AS daily_climate_id, p.start_date, p.end_date, p.request_key,
        p.transformed_artifact_path, p.transformed_sha256,
-       t.total_observations, d.local_date, d.observation_count,
+       t.total_observations, t.total_local_days, d.local_date, d.observation_count,
        d.distinct_grid_points, d.time_errors, d.tp_nulls, d.t2m_nulls,
        d.d2m_nulls, d.swvl1_nulls, d.ssrd_nulls,
        dup.duplicate_keys, o.orphan_count,
        CASE WHEN p.start_date = DATE '2024-05-01'
                  AND p.end_date = DATE '2024-05-03'
-                 AND t.total_observations = 1590
+                 AND t.total_observations = 1590\n                 AND t.total_local_days = 3
                  AND d.observation_count = 530
                  AND d.distinct_grid_points = 530
                  AND d.time_errors = 0
