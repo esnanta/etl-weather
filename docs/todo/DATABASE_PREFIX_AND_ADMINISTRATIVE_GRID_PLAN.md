@@ -20,6 +20,7 @@ Repository: `esnanta/etl-weather`
 - Pipeline and Airflow changes must be limited to database object names/references and absolutely necessary column-reference changes. Preserve scientific transformations, CDS requests, scheduling enable behavior, interval cadence, deferral, retries, pacing, XCom, idempotency, and logging behavior.
 - `/AGENTS.md` remains authoritative. It establishes single active CDS ERA5-Land path, immutable RAW, UTC+7 daily rules, independent pipeline logic, read-only repository behavior, and deterministic persistence.
 - Change only branch `dev`; do not touch other branches.
+- **Strict code boundary:** inside `/pipeline` and `/orchestration`, only edit physical database table/view naming and directly required SQL references (including index/constraint/FK names or SQL column identifiers verified as conflicting). No alterations to control flow, ETL stages, CDS requests, transformations, Airflow DAG graphs, task dependencies, schedules, retry, deferrals, pacing, or request construction. If a non-naming modification appears necessary, stop and request a new design decision first.
 
 ## 2. Confirmed administrative table naming and key convention
 
@@ -64,6 +65,8 @@ A point with no region match remains nullable; ambiguous matches must be reporte
 
 `t_province` and `t_district` use `id` as primary key, explicit `province_name` and `district_name`, and `province_id` only as a foreign key in `t_district`. Official codes remain nullable until reliable codes are available; store the provider feature identity under `source_feature_ref` (not a database FK or official administrative code), with source dataset/version context, geometry in SRID 4326 and spatial indexes. For dissolved province geometry, `source_feature_ref` may be NULL or omitted because a single upstream feature identifier may not exist. `district` means kabupaten/kota in this provider, **not kecamatan**.
 
+**Repository source of truth for district boundary import:** `/indonesia/districts/Aceh.geojson` (verified as a path on branch `dev` on 2026-10-12). This is the input to the future independent administrative loader, not a source for the existing climate ETL or Airflow DAG. The current repository copy has not yet undergone feature-count, property, CRS, and geometry-validity inspection; validate it during P4. The previously uploaded files are background references, not the import path.
+
 GeoJSON observations from earlier inspection: `Aceh.geojson` comprises Aceh kabupaten/kota records with `WADMPR`, `WADMKK`, `OBJECTID`; `Aceh_Barat.geojson` is a single kabupaten/kota feature. Neither establishes kecamatan-level coverage. Revalidate geometry CRS/validity and feature count when implementing. Map GeoJSON `OBJECTID` to a normalized string `source_feature_ref` for district imports, keeping the associated source dataset/version; do not treat `OBJECTID` as an official government code or a foreign key.
 
 No direct administrative FK is required on canonical daily/monthly records initially; first test views joining the normalized grid mapping using consistent coordinate types. Do not assume the coordinate-bearing records are the partition-parent tables: current `pipeline/database/schema.py` places latitude and longitude in `daily_climate_detail`. Review monthly schema accordingly.
@@ -89,6 +92,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [x] Record prior prefix commits and their incomplete state above.
 - [x] Confirm grid mapping table name: `t_grid_region` and primary key `id` on all new administrative tables.
 - [x] Confirm GeoJSON provenance column `source_feature_ref` instead of `source_object_id` (non-FK, not an official area code).
+- [x] Confirm the repository source file path `/indonesia/districts/Aceh.geojson` exists on `dev` (content validation pending P4).
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures.
@@ -100,11 +104,11 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 ### P1 — Global naming refactor (only after P0 approval)
 
 - [ ] Update central constants in root `config.py` to use the approved `GRID_REGION_TABLE = table_name("grid_region")`; remove obsolete `REGION_TABLE`.
-- [ ] Ensure all existing climate, progress, and pacing SQL uses centralized table identifiers.
+- [ ] Ensure all existing climate, progress, and pacing SQL uses centralized table identifiers, **without changing any ETL or Airflow execution/control flow**.
 - [ ] Update index, constraint, FK, reset/destroy/recreate and operational queries that reference physical table names.
 - [ ] Review SQL keywords/identifier naming; rename only documented conflicts or newly designed fields, preserving scientific data contracts.
 - [ ] Review `DatabaseConfig`, imports, fixture overrides, tests and documentation for consistent names.
-- [ ] Do not change DAG topology, schedule enable switch, schedule interval, retry/pacing behavior, climate formulas, or loader semantics.
+- [ ] Do not change DAG topology, schedule enable switch, schedule interval, retry/pacing behavior, climate formulas, loader semantics, or any control flow inside `/pipeline` and `/orchestration`. Stop and report if a non-database-naming change seems required.
 - [ ] Validate that the development reset path addresses only the intended database and does not unexpectedly delete immutable RAW artifacts.
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
 - [ ] Run offline unit/orchestration tests and PostgreSQL integration tests; compare behavior with baseline.
@@ -123,7 +127,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 
 ### P3 — Airflow schedule contract regression (no configuration removal)
 
-- [ ] **Retain** `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and root config `ENABLED_ENV` as-is.
+- [ ] **Retain** `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and root config `ENABLED_ENV` as-is; P3 is verification-only, not an Airflow scheduling refactor.
 - [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` keeps the DAG manually triggerable without automatic scheduling (`schedule=None`).
 - [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` preserves the current fixed campaign scheduling interval, bounded by `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`.
 - [ ] Keep terminal standalone `CDS_START_DATE` and `CDS_END_DATE` behavior separate from Airflow campaign settings.
@@ -135,9 +139,11 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Check PostGIS extension availability on isolated test database.
 - [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance; use `source_feature_ref` in source-derived records, never `source_object_id`.
 - [ ] Document and test `OBJECTID` → `source_feature_ref` conversion (e.g. numeric 113.0 to canonical text `"113"`), source dataset/version scope, null handling for dissolved provinces, and idempotent conflict identity.
-- [ ] Keep administration data loading outside Airflow and outside scientific transformation stages.
+- [ ] Use `/indonesia/districts/Aceh.geojson` as the authoritative import input. Do not rely on a separately uploaded one-district sample.
+- [ ] Inspect the repository GeoJSON for feature count, attributes (`OBJECTID`, `WADMPR`, `WADMKK`), actual CRS, geometry dimensions/type and validity before assuming the prior uploaded-file profile applies.
+- [ ] Keep administration data loading in a separate component outside Airflow and outside scientific transformation stages; do not add an administrative task to the existing DAG.
 - [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties (`OBJECTID`, `WADMKK`, `WADMPR`), geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities. Report missing or duplicate `source_feature_ref` values within a source dataset.
-- [ ] Import Aceh kabupaten/kota boundaries; reconcile expected counts and report anomalies.
+- [ ] Import Aceh kabupaten/kota boundaries from `/indonesia/districts/Aceh.geojson`; reconcile actual feature counts and report anomalies.
 - [ ] Prevent a partial one-kabupaten file load from deleting other imported administrative records.
 - [ ] Include tests for re-import, invalid geometry, missing fields, CRS, transaction rollback, and unmatched features.
 
@@ -160,8 +166,20 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Record actual run output, performance, remaining caveats and final checklist status.
 - [ ] Require explicit sign-off before closing this todo.
 
-## 6. Stop conditions
+## 6. Stage-by-stage delivery and acceptance
 
-Stop implementation and return to design review if: the proposed schema introduces a second application schema; any scientific or Airflow scheduling behavior must change; polygon data does not match the assumed administrative level; ambiguous spatial assignment is silently resolved; destructive target cannot be confirmed; or automated integration tests indicate regressions.
+| Stage | Work | Acceptance evidence |
+| --- | --- | --- |
+| P0 — Audit | Inventory table/view/column references and baseline tests; confirm one schema and naming scope. | Reviewed impacted-file inventory and baseline results. |
+| P1 — Prefix | Centralize `t_` and `vw_` names; change only database object references in existing pipeline/orchestration; recreate empty dev database safely. | Database tables and schema references correct; SQL/unit/integration tests pass. |
+| P2 — Standalone pilot | Run exactly three local days via `CDS_START_DATE`/`CDS_END_DATE`; validate RAW → Parquet → PostgreSQL and rerun. | Correct observations in prefixed tables, complete grid/day contract, no duplicates after rerun. |
+| P3 — Airflow checks | Verify schedule-flag `true`/`false`, manual/scheduled modes, progress/pacing naming, with no DAG flow edits. | DAG parsing, scheduling and persistence tests pass; no behavior drift. |
+| P4 — GeoJSON import | Load `indonesia/districts/Aceh.geojson` using a separate, idempotent administrative loader into province/district polygons. | Source properties/geometry validated, rows loaded and re-import safe. |
+| P5 — Grid association | One-time grid-to-polygon mapping and read-only prefixed daily/monthly views. | Match/unmatched/ambiguous report; views preserve rows and permit district/province queries. |
+| P6 — Final verification | Regression suites, documentation and signed checklist. | Recorded test evidence and consistent docs. |
+
+## 7. Stop conditions
+
+Stop implementation and return to design review if: changes to `/pipeline` or `/orchestration` require any program-flow modification (not solely database identifiers); the proposed schema introduces a second application schema; any scientific or Airflow scheduling behavior must change; polygon data does not match the assumed administrative level; ambiguous spatial assignment is silently resolved; destructive target cannot be confirmed; or automated integration tests indicate regressions.
 
 **Current authorization:** documentation and planning only. No further code edits or database/data operations. The Airflow schedule enable flag remains part of the existing contract; do not replace it with unconditional scheduling.
