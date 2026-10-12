@@ -226,6 +226,14 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 - Client-side SQL checks were issued for parent count, detail count, per-day counts, orphan rows and duplicates. Pasted output confirms the duplicates query returned zero rows, but does not show scalar COUNT values from the other queries.
 - Caveats: existing database `weather` was reused, so empty-database recreation was not exercised. The user's logs do not independently establish Airflow scheduler/DagRun inactivity. P2 acceptance remains conditional on these checks and missing SQL count outputs.
 
+### P2 next verification step (prepared, not yet run)
+
+- Added `query/06_p2__01_standalone_pilot_verification.sql`: single read-only, request-key-scoped report returning three rows (one per local day) with date bounds, grid count, UTC+7 consistency, duplicates, orphan count and per-variable NULL counts. Its expected outputs are three `PASS` rows, 530 observations per day, total 1,590 and zero duplicate/orphan/time errors. No actual database query results have been returned yet.
+- Before using the SQL file in PhpStorm, verify the connection is the intended `weather` database (use `query/00_connection__01_database_context.sql`); open query 06 and record the actual output rows, rather than reporting only that queries executed.
+- Independently inspect Airflow status (read-only): `airflow dags list-runs cds-era5-land` and `airflow dags details cds-era5-land` where supported by the installed Airflow version; do not pause/unpause, reset, or clear DagRuns as part of this evidence capture. An environment-switch log line alone is not proof of scheduler inactivity.
+- Existing pilot was run against a database that already existed. Fresh bootstrap after isolated recreation remains unverified and **must not be simulated by deleting the current database** without a separate controlled plan.
+- P2 currently has successful extraction/transform/load and unchanged-state idempotency evidence, but final acceptance remains open until independent SQL results and environmental checks are recorded.
+
 ### P2 — Standalone three-day CDS smoke test (mandatory gate before administrative implementation)
 
 - [ ] Keep Airflow scheduled DAG paused during the standalone test; no Airflow tasks should participate.
