@@ -1,5 +1,5 @@
 -- P4.2 PostGIS capability check (read-only).
--- Run this against a dedicated isolated TEST database in PhpStorm.
+-- Run this against the existing application database weather in PhpStorm.
 -- No CREATE EXTENSION, schema modification, or Airflow interaction.
 WITH extension_state AS (
     SELECT
@@ -32,8 +32,9 @@ SELECT
     e.installed_version,
     c.can_create_in_database,
     CASE
-        WHEN c.database_name IN ('weather', 'postgres', 'template0', 'template1')
+        WHEN c.database_name IN ('postgres', 'template0', 'template1')
             THEN 'STOP_USE_ISOLATED_TEST_DB'
+        WHEN c.database_name <> 'weather' THEN 'CHECK_APPLICATION_DATABASE'
         WHEN NOT e.package_available
             THEN 'POSTGIS_PACKAGE_NOT_AVAILABLE'
         WHEN e.installed_version IS NULL
@@ -44,7 +45,7 @@ FROM database_context c
 CROSS JOIN extension_state e;
 
 -- If the status says POSTGIS_INSTALLED, run this separate read-only
--- geometry check against the SAME isolated test database:
+-- geometry check against the SAME weather database:
 -- SELECT postgis_full_version(), ST_AsEWKT(
 --     ST_GeomFromEWKT('SRID=4326;MULTIPOLYGON Z (((95 2 0, 96 2 0, 96 3 0, 95 2 0)))')
 -- ) AS round_trip_xyz;
