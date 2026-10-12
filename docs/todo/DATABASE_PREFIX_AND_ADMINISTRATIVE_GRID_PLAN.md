@@ -219,6 +219,12 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
 - [ ] Run offline unit/orchestration tests and PostgreSQL integration tests; compare behavior with baseline.
 
+### Execution priority update — 2026-10-12
+
+The user approved completing administrative geography (P4) and grid mapping (P5) before returning to Airflow (P3). **P3 is deferred, not cancelled.** Keep administrative imports and spatial mapping independent from the meteorological ETL and Airflow DAG; existing and future climate observations must be able to join the grid-to-region mapping without rewriting source observations. Newly encountered grid points must be eligible for a separate idempotent mapping refresh.
+
+P2 acceptance evidence: the standalone run produced three local days (2024-05-01..03), 530 complete-variable grid points daily and 1,590 observations; the repeat run resumed checkpoints and skipped database writes. The SQL pilot verification returned three rows with `validation_status=PASS`, duplicate_keys=0 and orphan_count=0 (user screenshot). Fresh isolated DB recreation was **not** established by this pilot; retain that limitation explicitly and use independent integration/bootstrap checks rather than clearing the successful `weather` database. No Airflow process was reported in the user's process check; Airflow SQLite metadata does not contain the `dag` table and will be addressed when P3 resumes.
+
 ### P2 actual pilot evidence (12 October 2026)
 
 - First standalone run: CDS retrieval in two chunks (30 April context; 1–3 May target), RAW 96 complete hourly steps, 43 x 35 = 1,505 bbox grid positions, validated RAW NetCDF and transformed Parquet, 530 output points per local day, 1,590 rows written to PostgreSQL. Total 166.04s (extract 165.58s, transform 0.17s, load 0.29s).
@@ -240,11 +246,11 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 - [x] Run the standalone target period 2024-05-01 through 2024-05-03 using `PIPELINE_START_DATE` and `PIPELINE_END_DATE`.
 - [x] Use the active Aceh bounding box (N6.1, S1.9, W94.9, E98.3) and five CDS variables without scientific behavior changes.
 - [ ] After isolated database recreation, run the existing standalone entrypoint and verify retrieval, RAW NetCDF validation, transformed Parquet and successful PostgreSQL writes.
-- [ ] Verify prefixed parent/detail tables (`t_daily_climate`, `t_daily_climate_detail`), FK integrity, correct request partition and `valid_time_local` boundaries.
+- [x] Verify prefixed parent/detail tables, FK integrity, partition identity and UTC+7 local-day boundaries; SQL pilot returned three PASS rows with zero duplicate and orphan counts.
 - [x] Reconcile 1,505 RAW bbox locations with 530 complete-variable grid points per local day (1,590 transformed rows for three days). Do not assume all RAW bbox locations are valid complete-variable output; missing values are not zero.
 - [x] Rerun the same standalone period: RAW and Parquet checkpoints resumed; request key, checksum, path, and 1,590-row count matched; database writes skipped (0 rows processed); second run completed in 0.45s.
 - [ ] Record the exact CLI, database count queries, timings, artifacts, observed warnings and all test evidence.
-- [ ] **Gate:** do not begin administrative tables/importer until three-day download → transformation → load and rerun-idempotency succeed.
+- [x] **Gate:** three-day download → transform → load and rerun-idempotency succeeded; proceed to spatial P4/P5 before deferred Airflow P3.
 
 ### P3 — Airflow schedule contract regression (no configuration removal)
 
