@@ -14,6 +14,7 @@ Repository: `esnanta/etl-weather`
 - Exactly one application schema: `climate_data`. Do **not** recreate a separate `climate` schema.
 - Global table prefix from root `/config.py`: `TABLE_PREFIX = "t_"` (changeable to `"sk_"` only as a separately approved naming decision).
 - Global view prefix: `VIEW_PREFIX = "vw_"`.
+- **Planned standalone period rename:** replace `CDS_START_DATE` / `CDS_END_DATE` with provider-neutral `PIPELINE_START_DATE` / `PIPELINE_END_DATE` in configuration, environment examples, standalone entrypoints, tests and documentation. This is a naming-only change; do not change request date semantics or Airflow campaign years.
 - No `adm_` prefix. Examples: `t_province`, `t_district`.
 - New field names should be explicit: `province_name`, `district_name`; inspect genuinely problematic SQL identifiers before renaming existing columns.
 - Database and application data will be recreated, **not migrated** from the old naming convention. Destructive execution requires separate controlled preflight on the intended development database; this plan does not run deletion.
@@ -96,6 +97,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures.
+- [ ] Audit usage of `CDS_START_DATE`, `CDS_END_DATE`, their root `config.py` constant aliases/resolvers, standalone entrypoints, `.env`/`env-example`, CLI examples, tests and docs before renaming.
 - [ ] Audit actual monthly parent/detail schema and its coordinate-bearing table.
 - [ ] Run and record baseline offline tests with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
 - [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
@@ -108,6 +110,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Update index, constraint, FK, reset/destroy/recreate and operational queries that reference physical table names.
 - [ ] Review SQL keywords/identifier naming; rename only documented conflicts or newly designed fields, preserving scientific data contracts.
 - [ ] Review `DatabaseConfig`, imports, fixture overrides, tests and documentation for consistent names.
+- [ ] Rename standalone period settings to `PIPELINE_START_DATE` and `PIPELINE_END_DATE`; update root `config.py` env-key definitions and resolver names as appropriate, all read sites, tests, `env-example` and documentation. Preserve the inclusive period, UTC+7 daily boundaries, and existing standalone behavior. Remove obsolete `CDS_*DATE` aliases only once all references are updated; do not add fallback compatibility for discarded development config.
 - [ ] Do not change DAG topology, schedule enable switch, schedule interval, retry/pacing behavior, climate formulas, loader semantics, or any control flow inside `/pipeline` and `/orchestration`. Stop and report if a non-database-naming change seems required.
 - [ ] Validate that the development reset path addresses only the intended database and does not unexpectedly delete immutable RAW artifacts.
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
@@ -116,7 +119,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 ### P2 — Standalone three-day CDS smoke test (mandatory gate before administrative implementation)
 
 - [ ] Keep Airflow scheduled DAG paused during the standalone test; no Airflow tasks should participate.
-- [ ] Use `CDS_START_DATE=2024-05-01` and `CDS_END_DATE=2024-05-03` as an illustrative three-local-day period (finalize available dates at execution).
+- [ ] Use `PIPELINE_START_DATE=2024-05-01` and `PIPELINE_END_DATE=2024-05-03` as an illustrative three-local-day period (finalize available dates at execution).
 - [ ] Use the active `ACEH_BBOX_COORDINATES` and the five existing CDS variables without changing any scientific request/transformation behavior.
 - [ ] After isolated database recreation, run the existing standalone entrypoint and verify retrieval, RAW NetCDF validation, transformed Parquet and successful PostgreSQL writes.
 - [ ] Verify prefixed parent/detail tables (`t_daily_climate`, `t_daily_climate_detail`), FK integrity, correct request partition and `valid_time_local` boundaries.
@@ -130,7 +133,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] **Retain** `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and root config `ENABLED_ENV` as-is; P3 is verification-only, not an Airflow scheduling refactor.
 - [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` keeps the DAG manually triggerable without automatic scheduling (`schedule=None`).
 - [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` preserves the current fixed campaign scheduling interval, bounded by `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`.
-- [ ] Keep terminal standalone `CDS_START_DATE` and `CDS_END_DATE` behavior separate from Airflow campaign settings.
+- [ ] Keep terminal standalone `PIPELINE_START_DATE` and `PIPELINE_END_DATE` behavior separate from Airflow campaign settings.
 - [ ] Verify scheduled/manual DagRun handling and existing pause/unpause, reset, pacing, retry, and idempotency tests.
 - [ ] Do not change `orchestration/scheduling/schedule.py` or remove related environment/documentation entries except to fix a proven regression introduced by table prefix naming.
 
@@ -171,8 +174,8 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 | Stage | Work | Acceptance evidence |
 | --- | --- | --- |
 | P0 — Audit | Inventory table/view/column references and baseline tests; confirm one schema and naming scope. | Reviewed impacted-file inventory and baseline results. |
-| P1 — Prefix | Centralize `t_` and `vw_` names; change only database object references in existing pipeline/orchestration; recreate empty dev database safely. | Database tables and schema references correct; SQL/unit/integration tests pass. |
-| P2 — Standalone pilot | Run exactly three local days via `CDS_START_DATE`/`CDS_END_DATE`; validate RAW → Parquet → PostgreSQL and rerun. | Correct observations in prefixed tables, complete grid/day contract, no duplicates after rerun. |
+| P1 — Prefix and standalone config names | Centralize `t_` and `vw_` names, rename terminal date settings to `PIPELINE_START_DATE` / `PIPELINE_END_DATE` without logic changes; change only database object references in existing pipeline/orchestration; recreate empty dev database safely. | Database tables and schema references correct; SQL/unit/integration tests pass. |
+| P2 — Standalone pilot | Run exactly three local days via `PIPELINE_START_DATE`/`PIPELINE_END_DATE`; validate RAW → Parquet → PostgreSQL and rerun. | Correct observations in prefixed tables, complete grid/day contract, no duplicates after rerun. |
 | P3 — Airflow checks | Verify schedule-flag `true`/`false`, manual/scheduled modes, progress/pacing naming, with no DAG flow edits. | DAG parsing, scheduling and persistence tests pass; no behavior drift. |
 | P4 — GeoJSON import | Load `indonesia/districts/Aceh.geojson` using a separate, idempotent administrative loader into province/district polygons. | Source properties/geometry validated, rows loaded and re-import safe. |
 | P5 — Grid association | One-time grid-to-polygon mapping and read-only prefixed daily/monthly views. | Match/unmatched/ambiguous report; views preserve rows and permit district/province queries. |
