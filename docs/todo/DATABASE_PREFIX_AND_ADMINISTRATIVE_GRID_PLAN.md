@@ -23,7 +23,7 @@ Repository: `esnanta/etl-weather`
 
 ## 2. Confirmed administrative table naming and key convention
 
-**Approved:** the grid-point-to-administrative-area mapping table is `climate_data.t_grid_region`. Do not use `t_region` or `t_lat_lon_region`. All new administrative tables use a uniform primary key column named `id`; relationship columns remain explicit foreign keys (`province_id`, `district_id`). This convention applies to `t_province`, `t_district`, and `t_grid_region`. Existing canonical climate table primary keys remain `id`; existing FK contracts such as `daily_climate_id` are preserved.
+**Approved:** the grid-point-to-administrative-area mapping table is `climate_data.t_grid_region`. Do not use `t_region` or `t_lat_lon_region`. All new administrative tables use a uniform primary key column named `id`; relationship columns remain explicit foreign keys (`province_id`, `district_id`). GeoJSON source feature identifiers use `source_feature_ref`, not `source_object_id`, and are **not** foreign keys. This convention applies to `t_province`, `t_district`, and `t_grid_region`. Existing canonical climate table primary keys remain `id`; existing FK contracts such as `daily_climate_id` are preserved.
 
 Approved config entry (not yet implemented):
 
@@ -62,9 +62,9 @@ A point with no region match remains nullable; ambiguous matches must be reporte
 | Daily region view | `climate_data.vw_daily_climate_region` |
 | Monthly region view | `climate_data.vw_monthly_climate_region` |
 
-`t_province` and `t_district` use `id` as primary key, explicit `province_name` and `district_name`, and `province_id` only as a foreign key in `t_district`. Official codes remain nullable until reliable codes are available; retain provider identity/provenance, geometry in SRID 4326 and spatial indexes. `district` means kabupaten/kota in this provider, **not kecamatan**.
+`t_province` and `t_district` use `id` as primary key, explicit `province_name` and `district_name`, and `province_id` only as a foreign key in `t_district`. Official codes remain nullable until reliable codes are available; store the provider feature identity under `source_feature_ref` (not a database FK or official administrative code), with source dataset/version context, geometry in SRID 4326 and spatial indexes. For dissolved province geometry, `source_feature_ref` may be NULL or omitted because a single upstream feature identifier may not exist. `district` means kabupaten/kota in this provider, **not kecamatan**.
 
-GeoJSON observations from earlier inspection: `Aceh.geojson` comprises Aceh kabupaten/kota records with `WADMPR`, `WADMKK`, `OBJECTID`; `Aceh_Barat.geojson` is a single kabupaten/kota feature. Neither establishes kecamatan-level coverage. Revalidate geometry CRS/validity and feature count when implementing. Do not treat `OBJECTID` as an official government code.
+GeoJSON observations from earlier inspection: `Aceh.geojson` comprises Aceh kabupaten/kota records with `WADMPR`, `WADMKK`, `OBJECTID`; `Aceh_Barat.geojson` is a single kabupaten/kota feature. Neither establishes kecamatan-level coverage. Revalidate geometry CRS/validity and feature count when implementing. Map GeoJSON `OBJECTID` to a normalized string `source_feature_ref` for district imports, keeping the associated source dataset/version; do not treat `OBJECTID` as an official government code or a foreign key.
 
 No direct administrative FK is required on canonical daily/monthly records initially; first test views joining the normalized grid mapping using consistent coordinate types. Do not assume the coordinate-bearing records are the partition-parent tables: current `pipeline/database/schema.py` places latitude and longitude in `daily_climate_detail`. Review monthly schema accordingly.
 
@@ -88,6 +88,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [x] Review actual root `/config.py` and `pipeline/database/config.py` status on `dev`.
 - [x] Record prior prefix commits and their incomplete state above.
 - [x] Confirm grid mapping table name: `t_grid_region` and primary key `id` on all new administrative tables.
+- [x] Confirm GeoJSON provenance column `source_feature_ref` instead of `source_object_id` (non-FK, not an official area code).
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures.
@@ -132,9 +133,10 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 ### P4 — Administrative reference schema and importer
 
 - [ ] Check PostGIS extension availability on isolated test database.
-- [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance.
+- [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance; use `source_feature_ref` in source-derived records, never `source_object_id`.
+- [ ] Document and test `OBJECTID` → `source_feature_ref` conversion (e.g. numeric 113.0 to canonical text `"113"`), source dataset/version scope, null handling for dissolved provinces, and idempotent conflict identity.
 - [ ] Keep administration data loading outside Airflow and outside scientific transformation stages.
-- [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties, geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities.
+- [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties (`OBJECTID`, `WADMKK`, `WADMPR`), geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities. Report missing or duplicate `source_feature_ref` values within a source dataset.
 - [ ] Import Aceh kabupaten/kota boundaries; reconcile expected counts and report anomalies.
 - [ ] Prevent a partial one-kabupaten file load from deleting other imported administrative records.
 - [ ] Include tests for re-import, invalid geometry, missing fields, CRS, transaction rollback, and unmatched features.
