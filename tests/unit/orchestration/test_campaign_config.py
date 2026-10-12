@@ -66,7 +66,7 @@ def test_root_config_import_does_not_require_campaign_environment() -> None:
         [
             sys.executable,
             "-c",
-            "import config; print(config.APPLICATION_SCHEMA)",
+            "import config; print(config.APP_ENV_KEY)",
         ],
         env=env,
         capture_output=True,
@@ -75,4 +75,31 @@ def test_root_config_import_does_not_require_campaign_environment() -> None:
     )
 
     assert result.returncode == 0
+    assert result.stdout.strip() == "APP_ENV"
+
+
+def test_database_schema_import_does_not_require_campaign_environment() -> None:
+    """Import the actual database configuration with campaign settings absent."""
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    for key in ("CAMPAIGN_KEY", "CAMPAIGN_START_YEAR", "CAMPAIGN_END_YEAR"):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from pipeline.database.config import APPLICATION_SCHEMA; "
+            "print(APPLICATION_SCHEMA)",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "climate_data"
