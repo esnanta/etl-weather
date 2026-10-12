@@ -8,7 +8,7 @@ from typing import Any, Mapping
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from config import (
+from pipeline.database.config import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
