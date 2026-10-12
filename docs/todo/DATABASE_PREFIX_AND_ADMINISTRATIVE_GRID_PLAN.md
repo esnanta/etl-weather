@@ -184,14 +184,28 @@ Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit
 - [x] Review representative unit/integration coverage quality and boundaries; results documented above.
 - [x] Inspect real PostgreSQL integration tests and document proven versus missing FK/unique/cascade cases; targeted check B above.
 
+### P1 execution log — 2026-10-12 (code changed; local verification pending)
+
+Changes applied on `dev`, **without modifying ETL scientific logic or DAG control flow**:
+- `config.py`: replace obsolete `REGION_TABLE` with `GRID_REGION_TABLE`; rename only standalone date environment keys and resolver to `PIPELINE_START_DATE`, `PIPELINE_END_DATE`, `resolve_pipeline_period()`.
+- `pipeline/requests/factory.py`, `tests/conftest.py`, `tests/unit/pipeline/test_config_requests.py`, `env-example`: update references to the renamed standalone date settings; keep CDS provider request processing unchanged.
+- `scripts/destroy_all.py`: use centrally defined prefixed application-table constants in final-state check.
+- `query/01_schema__01_inventory.sql` through `query/05_pipeline_progress_detail__01_load_verification.sql`: update object identifiers to prefixed tables, leaving query meaning unchanged.
+- Root and testing `AGENTS.md`: update documented physical table names. Airflow README commands now use `source activate-airflow.sh -q`.
+- `tests/integration/pipeline/test_postgresql_idempotency.py`: add real database checks of orphan detail FK rejection, duplicate grid/time rejection and parent-delete cascade (rollback preserves fixtures); invokes the existing production loader and isolated `TEST_POSTGRES_*` configuration.
+
+**Not yet verified:** no local pytest or PostgreSQL integration execution was possible from GitHub-only code-edit access. Do not claim P1 complete or green. Confirm target test database is isolated/disposable before running integration tests. Do not drop or recreate application database without separately confirmed destructive preflight.
+
+**Remaining P1 acceptance:** run unit/integration suites locally, review failures without changing pipeline/orchestration flow, confirm final project-wide old-table/name scan, inspect object existence and constraints in isolated test PostgreSQL, and document results. Historical P0 notes above describe *the earlier state* and remain preserved for audit traceability.
+
 ### P1 — Global naming refactor (only after P0 approval)
 
-- [ ] Update central constants in root `config.py` to use the approved `GRID_REGION_TABLE = table_name("grid_region")`; remove obsolete `REGION_TABLE`.
+- [x] Update central constants in root `config.py` to use the approved `GRID_REGION_TABLE = table_name("grid_region")`; remove obsolete `REGION_TABLE`.
 - [ ] Ensure all existing climate, progress, and pacing SQL uses centralized table identifiers, **without changing any ETL or Airflow execution/control flow**.
-- [ ] Update index, constraint, FK, reset/destroy/recreate and operational queries that reference physical table names.
+- [x] Update identified operational SQL `query/` and destroy-state table inventory, using the existing central prefix constants where Python exposes them; core FK/index naming already used configured names. Final audit/check still pending.
 - [ ] Review SQL keywords/identifier naming; rename only documented conflicts or newly designed fields, preserving scientific data contracts.
-- [ ] Review `DatabaseConfig`, imports, fixture overrides, tests and documentation for consistent names.
-- [ ] Rename standalone period settings to `PIPELINE_START_DATE` and `PIPELINE_END_DATE`; update root `config.py` env-key definitions and resolver names as appropriate, all read sites, tests, `env-example` and documentation. Preserve the inclusive period, UTC+7 daily boundaries, and existing standalone behavior. Remove obsolete `CDS_*DATE` aliases only once all references are updated; do not add fallback compatibility for discarded development config.
+- [ ] Review remaining `DatabaseConfig`, imports, fixture overrides, tests and documentation for consistent names; P1 changes listed above are applied but not runtime-verified.
+- [x] Rename standalone period settings to `PIPELINE_START_DATE` and `PIPELINE_END_DATE`; update root `config.py` env-key definitions and resolver names as appropriate, all read sites, tests, `env-example` and documentation. Preserve the inclusive period, UTC+7 daily boundaries, and existing standalone behavior. Remove obsolete `CDS_*DATE` aliases only once all references are updated; do not add fallback compatibility for discarded development config.
 - [ ] Do not change DAG topology, schedule enable switch, schedule interval, retry/pacing behavior, climate formulas, loader semantics, or any control flow inside `/pipeline` and `/orchestration`. Stop and report if a non-database-naming change seems required.
 - [ ] Validate that the development reset path addresses only the intended database and does not unexpectedly delete immutable RAW artifacts.
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
