@@ -35,7 +35,7 @@ An available version with `installed_version IS NULL` means PostGIS is installed
 CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
-Start with an isolated test database, not the existing `weather` database holding validated pilot observations. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow.
+For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow.
 
 ## Active Dataset
 
