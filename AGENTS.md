@@ -32,6 +32,11 @@ Do not add another provider path without an explicit design decision, isolated a
 - Put Airflow orchestration in `orchestration/`.
 - Put thin DAG declarations in `orchestration/dags/` and Airflow task wrappers in `orchestration/tasks/`.
 - Put ETL logic in `pipeline/`.
+- Put geospatial source datasets, validation, importers, persistence, and grid-to-region mapping in `geospatial/`, separate from `pipeline/` and `orchestration/`.
+- The `geospatial/` module must run independently of Airflow; do not import Airflow into geospatial code or add geospatial work to the current ETL DAG.
+- Treat GeoJSON files under `geospatial/sources/` as immutable source inputs. Importers must read and validate them without modifying, replacing, or deleting the source files.
+- Store Indonesian sources under `geospatial/sources/id/` (ISO 3166-1 alpha-2, lowercase); for Aceh district boundaries use `geospatial/sources/id/districts/Aceh.geojson`.
+
 - Use `scripts/` only for thin entrypoints and wrappers.
 - Keep the active provider and dataset identity explicit in requests, artifacts, logs, and database metadata.
 - Do not restore ARCO entrypoints, dependencies, artifacts, or runtime branches without an approved design and dedicated tests.
