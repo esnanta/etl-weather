@@ -222,11 +222,11 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 ### P2 — Standalone three-day CDS smoke test (mandatory gate before administrative implementation)
 
 - [ ] Keep Airflow scheduled DAG paused during the standalone test; no Airflow tasks should participate.
-- [ ] Use `PIPELINE_START_DATE=2024-05-01` and `PIPELINE_END_DATE=2024-05-03` as an illustrative three-local-day period (finalize available dates at execution).
-- [ ] Use the active `ACEH_BBOX_COORDINATES` and the five existing CDS variables without changing any scientific request/transformation behavior.
+- [x] Run the standalone target period 2024-05-01 through 2024-05-03 using `PIPELINE_START_DATE` and `PIPELINE_END_DATE`.
+- [x] Use the active Aceh bounding box (N6.1, S1.9, W94.9, E98.3) and five CDS variables without scientific behavior changes.
 - [ ] After isolated database recreation, run the existing standalone entrypoint and verify retrieval, RAW NetCDF validation, transformed Parquet and successful PostgreSQL writes.
 - [ ] Verify prefixed parent/detail tables (`t_daily_climate`, `t_daily_climate_detail`), FK integrity, correct request partition and `valid_time_local` boundaries.
-- [ ] Verify expected 3 × 1,505 = 4,515 day/grid coordinate combinations **where the grid is complete**; account for missing meteorological values separately and never reinterpret missing as zero.
+- [x] Reconcile 1,505 RAW bbox locations with 530 complete-variable grid points per local day (1,590 transformed rows for three days). Do not assume all RAW bbox locations are valid complete-variable output; missing values are not zero.
 - [x] Rerun the same standalone period: RAW and Parquet checkpoints resumed; request key, checksum, path, and 1,590-row count matched; database writes skipped (0 rows processed); second run completed in 0.45s.
 - [ ] Record the exact CLI, database count queries, timings, artifacts, observed warnings and all test evidence.
 - [ ] **Gate:** do not begin administrative tables/importer until three-day download → transformation → load and rerun-idempotency succeed.
