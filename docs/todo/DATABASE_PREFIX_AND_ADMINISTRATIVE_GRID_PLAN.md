@@ -21,13 +21,11 @@ Repository: `esnanta/etl-weather`
 - `/AGENTS.md` remains authoritative. It establishes single active CDS ERA5-Land path, immutable RAW, UTC+7 daily rules, independent pipeline logic, read-only repository behavior, and deterministic persistence.
 - Change only branch `dev`; do not touch other branches.
 
-## 2. Table naming decision pending confirmation
+## 2. Confirmed administrative table naming and key convention
 
-The user's new preference is a name such as `lat_long_region` because the records are Copernicus latitude/longitude locations.
+**Approved:** the grid-point-to-administrative-area mapping table is `climate_data.t_grid_region`. Do not use `t_region` or `t_lat_lon_region`. All new administrative tables use a uniform primary key column named `id`; relationship columns remain explicit foreign keys (`province_id`, `district_id`). This convention applies to `t_province`, `t_district`, and `t_grid_region`. Existing canonical climate table primary keys remain `id`; existing FK contracts such as `daily_climate_id` are preserved.
 
-**Recommendation: `grid_region`**, physical table `climate_data.t_grid_region`. It represents the grid-point-to-administration mapping more precisely than the generic `region`, and is not tied to a particular coordinate naming shorthand. Alternative: `t_lat_lon_region`. Do not implement this rename before the final naming review.
-
-Proposed config entry (not implemented):
+Approved config entry (not yet implemented):
 
 ```python
 GRID_REGION_TABLE = table_name("grid_region")
@@ -36,7 +34,7 @@ GRID_REGION_TABLE = table_name("grid_region")
 Proposed columns (subject to verification of climate coordinate types):
 
 ```text
-grid_region_id (PK)
+id (PK)
 latitude
 longitude
 province_id (nullable FK)
@@ -54,7 +52,7 @@ A point with no region match remains nullable; ambiguous matches must be reporte
 | --- | --- |
 | Province | `climate_data.t_province` |
 | Kabupaten/kota | `climate_data.t_district` |
-| Grid-to-region mapping | `climate_data.t_grid_region` (recommended, unapproved) |
+| Grid-to-region mapping | `climate_data.t_grid_region` (approved) |
 | Daily partitions | `climate_data.t_daily_climate` |
 | Daily observations | `climate_data.t_daily_climate_detail` |
 | Monthly tables | `climate_data.t_monthly_climate` and `t_monthly_climate_detail` (verify actual definitions) |
@@ -64,7 +62,7 @@ A point with no region match remains nullable; ambiguous matches must be reporte
 | Daily region view | `climate_data.vw_daily_climate_region` |
 | Monthly region view | `climate_data.vw_monthly_climate_region` |
 
-`t_province` and `t_district` should have explicit `province_id/province_name`, `district_id/district_name`, official codes nullable until reliable codes are available, provider identity/provenance, geometry in SRID 4326 and spatial indexes. `district` means kabupaten/kota in this provider, **not kecamatan**.
+`t_province` and `t_district` use `id` as primary key, explicit `province_name` and `district_name`, and `province_id` only as a foreign key in `t_district`. Official codes remain nullable until reliable codes are available; retain provider identity/provenance, geometry in SRID 4326 and spatial indexes. `district` means kabupaten/kota in this provider, **not kecamatan**.
 
 GeoJSON observations from earlier inspection: `Aceh.geojson` comprises Aceh kabupaten/kota records with `WADMPR`, `WADMKK`, `OBJECTID`; `Aceh_Barat.geojson` is a single kabupaten/kota feature. Neither establishes kecamatan-level coverage. Revalidate geometry CRS/validity and feature count when implementing. Do not treat `OBJECTID` as an official government code.
 
@@ -89,7 +87,8 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
 - [x] Review actual root `/config.py` and `pipeline/database/config.py` status on `dev`.
 - [x] Record prior prefix commits and their incomplete state above.
-- [ ] Confirm naming: `grid_region` versus `lat_lon_region`; confirm `t_` versus `sk_` final value before any reset.
+- [x] Confirm grid mapping table name: `t_grid_region` and primary key `id` on all new administrative tables.
+- [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures.
 - [ ] Audit actual monthly parent/detail schema and its coordinate-bearing table.
@@ -99,7 +98,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 
 ### P1 — Global naming refactor (only after P0 approval)
 
-- [ ] Update central constants in root `config.py`, including `GRID_REGION_TABLE` if confirmed.
+- [ ] Update central constants in root `config.py` to use the approved `GRID_REGION_TABLE = table_name("grid_region")`; remove obsolete `REGION_TABLE`.
 - [ ] Ensure all existing climate, progress, and pacing SQL uses centralized table identifiers.
 - [ ] Update index, constraint, FK, reset/destroy/recreate and operational queries that reference physical table names.
 - [ ] Review SQL keywords/identifier naming; rename only documented conflicts or newly designed fields, preserving scientific data contracts.
@@ -133,7 +132,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 ### P4 — Administrative reference schema and importer
 
 - [ ] Check PostGIS extension availability on isolated test database.
-- [ ] Define/create `t_province`, `t_district`, `t_grid_region` (name pending), constraints, indexes, and provenance.
+- [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance.
 - [ ] Keep administration data loading outside Airflow and outside scientific transformation stages.
 - [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties, geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities.
 - [ ] Import Aceh kabupaten/kota boundaries; reconcile expected counts and report anomalies.
@@ -148,7 +147,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Persist one mapping per grid point and rerun mapping idempotently.
 - [ ] Create `vw_daily_climate_region` and `vw_monthly_climate_region` from centrally prefixed identifiers; use actual detail tables for coordinates.
 - [ ] Verify `LEFT JOIN` preserves every original climate observation, including unmapped points.
-- [ ] Compare query execution plans and indexes; only then decide whether direct `grid_region_id` FKs on climate records are justified.
+- [ ] Compare query execution plans and indexes; only then decide whether a direct FK referencing `t_grid_region.id` on climate records is justified; do not add one initially.
 - [ ] Distinguish point-assignment statistics from area-weighted administrative statistics in documentation.
 
 ### P6 — Final validation and documentation
