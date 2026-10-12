@@ -184,6 +184,14 @@ Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit
 - [x] Review representative unit/integration coverage quality and boundaries; results documented above.
 - [x] Inspect real PostgreSQL integration tests and document proven versus missing FK/unique/cascade cases; targeted check B above.
 
+### P1 requested configuration separation — 2026-10-12
+
+At the user's request, the single source of database naming configuration is now `pipeline/database/config.py`: `TABLE_PREFIX`, `VIEW_PREFIX`, `table_name()`, `view_name()`, daily/monthly table names, province/district/grid-region table names, regional view names, plus operational progress/pacing naming and schema aliases. These definitions were removed from root `config.py`. Root `APPLICATION_SCHEMA` remains the common schema constant imported into database config, to avoid cyclic imports and retain the existing schema contract.
+
+Updated import sites: pipeline database config and request importers as applicable; orchestration progress/pacing repositories and campaign reporting; inspection/destroy scripts; affected unit/integration tests. Added a direct configuration contract test using production database identifiers. This is an import/configuration relocation, not a change to physical table names or runtime algorithms. The changes require full user-local unit/integration verification before P1 can close.
+
+User-reported immediately prior to this relocation: **327 unit tests passed in 7.79s; 11 integration tests passed in 1.57s**. These results do **not** verify the new configuration relocation. Use `source activate-airflow.sh -q` for subsequent tests.
+
 ### P1 execution log — 2026-10-12 (code changed; local verification pending)
 
 Changes applied on `dev`, **without modifying ETL scientific logic or DAG control flow**:
