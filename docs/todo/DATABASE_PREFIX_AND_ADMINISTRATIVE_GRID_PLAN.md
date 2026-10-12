@@ -66,7 +66,7 @@ A point with no region match remains nullable; ambiguous matches must be reporte
 
 `t_province` and `t_district` use `id` as primary key, explicit `province_name` and `district_name`, and `province_id` only as a foreign key in `t_district`. Official codes remain nullable until reliable codes are available; store the provider feature identity under `source_feature_ref` (not a database FK or official administrative code), with source dataset/version context, geometry in SRID 4326 and spatial indexes. For dissolved province geometry, `source_feature_ref` may be NULL or omitted because a single upstream feature identifier may not exist. `district` means kabupaten/kota in this provider, **not kecamatan**.
 
-**Repository source of truth for district boundary import:** `/indonesia/districts/Aceh.geojson` (verified as a path on branch `dev` on 2026-10-12). This is the input to the future independent administrative loader, not a source for the existing climate ETL or Airflow DAG. The current repository copy has not yet undergone feature-count, property, CRS, and geometry-validity inspection; validate it during P4. The previously uploaded files are background references, not the import path.
+**Repository source of truth for district boundary import:** `/geospatial/sources/id/districts/Aceh.geojson` (verified as a path on branch `dev` on 2026-10-12). This is the input to the future independent administrative loader, not a source for the existing climate ETL or Airflow DAG. The current repository copy has not yet undergone feature-count, property, CRS, and geometry-validity inspection; validate it during P4. The previously uploaded files are background references, not the import path.
 
 GeoJSON observations from earlier inspection: `Aceh.geojson` comprises Aceh kabupaten/kota records with `WADMPR`, `WADMKK`, `OBJECTID`; `Aceh_Barat.geojson` is a single kabupaten/kota feature. Neither establishes kecamatan-level coverage. Revalidate geometry CRS/validity and feature count when implementing. Map GeoJSON `OBJECTID` to a normalized string `source_feature_ref` for district imports, keeping the associated source dataset/version; do not treat `OBJECTID` as an official government code or a foreign key.
 
@@ -103,7 +103,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 | Actual terminal entrypoint | `scripts/run_pipeline_cds.py` | Use `python -m scripts.run_pipeline_cds` for P2; old documentation examples using `scripts.run_pipeline` must be corrected. |
 | Monthly scope | `pipeline/database/schema.py`, `pipeline/runtime.py` | No monthly database schema creator found in database module. `run_monthly_batch` means monthly partition execution, **not proof that monthly climate statistics are persisted**. Treat monthly-view work as blocked pending confirmed schema. |
 | Schedule flag | `orchestration/scheduling/schedule.py` | Retain flag-controlled `schedule=None` versus fixed interval. |
-| Boundary dataset | `indonesia/districts/Aceh.geojson` | File exists on dev; contents/geometry were not fully validated in P0. |
+| Boundary dataset | `geospatial/sources/id/districts/Aceh.geojson` | File exists on dev; contents/geometry were not fully validated in P0. |
 
 **Important caveat:** This is a *source-code audit*, not a completed P0 pass. No runtime tests were run, no PostgreSQL database was contacted, no dataset was downloaded, and file-by-file inventory remains incomplete. Prior commits `a9047ec`/`61e0300` remain partially integrated.
 
@@ -171,7 +171,7 @@ Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit
 - [x] Record prior prefix commits and their incomplete state above.
 - [x] Confirm grid mapping table name: `t_grid_region` and primary key `id` on all new administrative tables.
 - [x] Confirm GeoJSON provenance column `source_feature_ref` instead of `source_object_id` (non-FK, not an official area code).
-- [x] Confirm the repository source file path `/indonesia/districts/Aceh.geojson` exists on `dev` (content validation pending P4).
+- [x] Confirm the repository source file path `/geospatial/sources/id/districts/Aceh.geojson` exists on `dev` (content validation pending P4).
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Finish exhaustive reference audit of `/README.md`, `tests/AGENTS.md`, Airflow documentation, all SQL scripts, and tests on `dev` (core database definitions and several operational modules inspected; not exhaustive).
 - [x] Inventory known persisted object names and affected operational SQL/test paths, with limitations described in final targeted audit; require final no-stale-literals scan during P1.
@@ -266,11 +266,11 @@ P2 acceptance evidence: the standalone run produced three local days (2024-05-01
 - [ ] Check PostGIS extension availability on isolated test database.
 - [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance; use `source_feature_ref` in source-derived records, never `source_object_id`.
 - [ ] Document and test `OBJECTID` → `source_feature_ref` conversion (e.g. numeric 113.0 to canonical text `"113"`), source dataset/version scope, null handling for dissolved provinces, and idempotent conflict identity.
-- [ ] Use `/indonesia/districts/Aceh.geojson` as the authoritative import input. Do not rely on a separately uploaded one-district sample.
+- [ ] Use `/geospatial/sources/id/districts/Aceh.geojson` as the authoritative import input. Do not rely on a separately uploaded one-district sample.
 - [ ] Inspect the repository GeoJSON for feature count, attributes (`OBJECTID`, `WADMPR`, `WADMKK`), actual CRS, geometry dimensions/type and validity before assuming the prior uploaded-file profile applies.
 - [ ] Keep administration data loading in a separate component outside Airflow and outside scientific transformation stages; do not add an administrative task to the existing DAG.
 - [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties (`OBJECTID`, `WADMKK`, `WADMPR`), geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities. Report missing or duplicate `source_feature_ref` values within a source dataset.
-- [ ] Import Aceh kabupaten/kota boundaries from `/indonesia/districts/Aceh.geojson`; reconcile actual feature counts and report anomalies.
+- [ ] Import Aceh kabupaten/kota boundaries from `/geospatial/sources/id/districts/Aceh.geojson`; reconcile actual feature counts and report anomalies.
 - [ ] Prevent a partial one-kabupaten file load from deleting other imported administrative records.
 - [ ] Include tests for re-import, invalid geometry, missing fields, CRS, transaction rollback, and unmatched features.
 
@@ -301,7 +301,7 @@ P2 acceptance evidence: the standalone run produced three local days (2024-05-01
 | P1 — Prefix and standalone config names | Centralize `t_` and `vw_` names, rename terminal date settings to `PIPELINE_START_DATE` / `PIPELINE_END_DATE` without logic changes; change only database object references in existing pipeline/orchestration; recreate empty dev database safely. | Database tables and schema references correct; SQL/unit/integration tests pass. |
 | P2 — Standalone pilot | Run exactly three local days via `PIPELINE_START_DATE`/`PIPELINE_END_DATE`; validate RAW → Parquet → PostgreSQL and rerun. | Correct observations in prefixed tables, complete grid/day contract, no duplicates after rerun. |
 | P3 — Airflow checks | Verify schedule-flag `true`/`false`, manual/scheduled modes, progress/pacing naming, with no DAG flow edits. | DAG parsing, scheduling and persistence tests pass; no behavior drift. |
-| P4 — GeoJSON import | Load `indonesia/districts/Aceh.geojson` using a separate, idempotent administrative loader into province/district polygons. | Source properties/geometry validated, rows loaded and re-import safe. |
+| P4 — GeoJSON import | Load `geospatial/sources/id/districts/Aceh.geojson` using a separate, idempotent administrative loader into province/district polygons. | Source properties/geometry validated, rows loaded and re-import safe. |
 | P5 — Grid association | One-time grid-to-polygon mapping and read-only prefixed daily/monthly views. | Match/unmatched/ambiguous report; views preserve rows and permit district/province queries. |
 | P6 — Final verification | Regression suites, documentation and signed checklist. | Recorded test evidence and consistent docs. |
 
