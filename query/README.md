@@ -1,6 +1,6 @@
 # PostgreSQL Operational Audit Queries
 
-This catalog provides **six read-only checks** for the active ERA5-Land ETL.
+This catalog provides **seven read-only checks** for the active ERA5-Land ETL.
 Run each file as a separate task, in numeric order, on the intended database.
 The code and examples target the `climate_data` schema in PostgreSQL 16.
 
@@ -12,6 +12,7 @@ The code and examples target the `climate_data` schema in PostgreSQL 16.
 | 03 | `03_daily_climate_detail__01_data_quality.sql` | Are there missing local dates, duplicate observation keys, or invalid UTC+7 timestamps? |
 | 04 | `04_pipeline_progress__01_campaign_status.sql` | Which campaign batches are complete, incomplete, or failed? |
 | 05 | `05_pipeline_progress_detail__01_load_verification.sql` | Do completed load records match the persisted daily data and Parquet metadata? |
+| 06 | `06_p2__01_standalone_pilot_verification.sql` | Did the three-day May 2024 standalone pilot persist 530 grids per day without duplicate keys, orphans, or UTC+7 time errors? |
 
 ## How to run
 
@@ -90,3 +91,5 @@ The operator previously confirmed nine persisted monthly partitions for
 January–September 2016 and a healthy UTC+7 offset check. **The four newly
 consolidated files have not yet been executed against the database**; their
 results should be reviewed before closing the verification checklist.
+
+The P2 pilot query (06) is deliberately scoped to the recorded request key and returns three daily rows with NULL counts. An empty result means that the specified request key is missing; it does not mean PASS. It does not replace a fresh-database bootstrap check or independent Airflow-state verification.
