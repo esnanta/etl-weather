@@ -120,6 +120,16 @@ User baseline: `tests/unit -q` -> 315 passed, 7 failed, 5 errors; `tests/integra
 - [ ] Determine source of unexpected DAG ID and why startup log reports schedule enabled true while test invocation sets false.
 - [ ] Rerun both suites after approved P1 naming fixes.
 
+### Verified passing local test baseline — 2026-10-12
+
+User-reported results on the local `dev` checkout:
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`: **327 passed in 7.54s**.
+- `python -m pytest tests/integration -q`: **10 passed in 1.53s**.
+- Activate with `source activate-airflow.sh -q` for all future command examples.
+
+**Test quality is a separate acceptance gate from a green test count.** Read and enforce `/tests/AGENTS.md` before changes: test the real production implementation, do not duplicate or recreate the algorithm or SQL behavior under test, avoid mocks of the subject under test, use production config for config-contract tests, and keep minimal explicit fixtures for isolated logic. PostgreSQL transactional/idempotency guarantees require real isolated `TEST_POSTGRES_*` integration tests. Include meaningful negative cases, schema/FK and DAG invariants, and protect unchanged scientific and orchestration behavior. A green suite confirms only the contracts actually asserted; P0 inventory and behavioral test quality review remain separate pending work.
+
 ### P0 — Audit, freeze and baseline
 
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
@@ -133,9 +143,11 @@ User baseline: `tests/unit -q` -> 315 passed, 7 failed, 5 errors; `tests/integra
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures (partial inventory below).
 - [x] Locate primary standalone date readers: root `config.py` defines `CDS_START_DATE_ENV`/`CDS_END_DATE_ENV`, `resolve_cds_period()`; `pipeline/requests/factory.py` calls the resolver; `env-example` contains both keys; actual entrypoint is `scripts/run_pipeline_cds.py`. Full references across tests/docs still pending.
 - [x] Audit current database module for monthly tables: no `create_monthly_climate*` function in `pipeline/database/schema.py`; `pipeline/runtime.py` calls `run_monthly_batch` for monthly *partitioning*, not monthly-statistic database persistence. A separate future monthly schema is **not yet verified/implemented**. Recheck full codebase before any monthly view.
-- [ ] Run and record baseline offline tests with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` **on user's checkout/environment**; GitHub source inspection does not run pytest. Previous historical test results do not establish a passing baseline for current partially prefixed `dev`.
+- [x] Record the passing user-executed baseline: unit 327 passed (7.54s), integration 10 passed (1.53s); no assistant-side test execution.
 - [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
 - [ ] Freeze implementation scope: naming-only for existing pipeline/orchestration.
+- [x] Re-read `/tests/AGENTS.md`; apply its test construction and integration-boundary requirements.
+- [ ] Review whether prefix refactor tests cover real production SQL/schema, rejection cases, persisted FK and idempotency behavior rather than only constants or superficial string assertions.
 
 ### P1 — Global naming refactor (only after P0 approval)
 
