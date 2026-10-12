@@ -291,6 +291,14 @@ Implemented `geospatial/database/bootstrap.py` with a standalone CLI: `python -m
 
 User ran `source activate-airflow.sh -q` and `python -m geospatial.database.bootstrap`. Actual output: `INFO | PostGIS ready | database=weather | version=3.4.2` and `PostGIS ready (version 3.4.2).` This verifies the independent Python bootstrap against the configured application database. No claim is made that the importer auto-invocation is implemented (P4.4) or that schema tables already exist (P4.3). Airflow remains deferred.
 
+### P4.3 spatial table design — implemented, not yet applied to PostgreSQL
+
+- `geospatial/config.py`: typed immutable source profile for Aceh fields `WADMPR`, `WADMKK`, `OBJECTID`, CRS84, 3D geometry, country code `id`, and source dataset/version. Version is explicitly `unverified` pending provider metadata.
+- `geospatial/database/schema.py`: idempotent CREATE TABLE/INDEX for `climate_data.t_province`, `climate_data.t_district`, `climate_data.t_grid_region`. Names sourced from centralized `pipeline/database/config.py`. Province/district geometry uses `MultiPolygonZ` 4326 with validity/nonempty checks and GiST indexes. Source references are `VARCHAR(128)` and scoped by source dataset/version; parent/child constraints and unique administrative names are explicit. Province feature reference may be NULL for a dissolved geometry.
+- `t_grid_region` stores one row per latitude/longitude pair, matching status and match count, nullable IDs for unmatched/ambiguous points; composite district/province FK ensures district belongs to the assigned province. Direct FK on climate observations is intentionally deferred (P5).
+- CLI `python -m geospatial.database.schema` only previews the target; `--execute` performs CREATE TABLE/INDEX. It invokes PostGIS bootstrap, never creates/drops the database, changes climate tables, or imports GeoJSON. No DDL has been executed on the user's machine by the assistant.
+- Unit tests exercise real schema DDL generation and mapping contracts via a captured connection; server-side PostGIS constraints, FK behavior, 3D round-trip and idempotency still require integration verification against the user's database. Do not mark P4.3 runtime verification complete prematurely.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
