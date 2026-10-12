@@ -10,14 +10,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
-from config import APPLICATION_SCHEMA
+from config import APPLICATION_SCHEMA, DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE
 
 logger = logging.getLogger(__name__)
 
 # Public schema name retained for existing database callers.
 SCHEMA_NAME = APPLICATION_SCHEMA
-DAILY_CLIMATE_TABLE = "daily_climate"
-DAILY_CLIMATE_DETAIL_TABLE = "daily_climate_detail"
 
 
 @dataclass(frozen=True)
