@@ -109,6 +109,17 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 
 **P0 continuation before P1:** inventory all `pipeline/`, `orchestration/`, `scripts/`, `query/`, `tests/` references, especially raw SQL and reset safety; record exact current pytest results on local checkout; confirm application prefix is `t_`. Only then check P0 complete.
 
+### P0 test log (12 October 2026)
+
+User baseline: `tests/unit -q` -> 315 passed, 7 failed, 5 errors; `tests/integration -q` -> 7 passed, 3 failed. P0 is not green.
+
+- Five DAG fixture errors and one schedule test failure: expected `cds_era5_land_etl`, detected `cds-era5-land`. The tracked DAG source still defines `cds_era5_land_etl`. Investigate local DAG discovery without modifying the DAG.
+- Six pipeline unit failures: assertions still reference unprefixed daily table names; configured SQL now uses `t_daily_climate` and `t_daily_climate_detail`.
+- Three integration failures: `tests/integration/orchestration/test_pipeline_progress_reconciliation.py` uses literal unprefixed daily table names, leading to PostgreSQL UndefinedTable and cleanup failures.
+- Investigation-only during P0. Fix stale table assertions and SQL in P1; retain logic, DAG topology, and schedule behavior.
+- [ ] Determine source of unexpected DAG ID and why startup log reports schedule enabled true while test invocation sets false.
+- [ ] Rerun both suites after approved P1 naming fixes.
+
 ### P0 — Audit, freeze and baseline
 
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
