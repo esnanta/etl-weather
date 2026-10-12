@@ -15,7 +15,7 @@ pytest.importorskip("airflow")
 from airflow.models import DagBag
 
 
-DAG_ID = "cds_era5_land_etl"
+DAG_ID = "cds-era5-land"
 DAG_FOLDER = REPOSITORY_ROOT / "orchestration" / "dags"
 
 ATTEMPT_TASK_ID = "monthly_etl.attempt_raw_checkpoint"
