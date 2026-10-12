@@ -5,9 +5,9 @@ Context: Airflow progress details store the expected row count and transformed
     provide independent persisted load evidence for that request_key.
 Purpose: Compare each progress partition against matching daily-climate
     metadata, artifact identity and actual observation row count.
-Tables: climate_data.pipeline_progress_detail,
-    climate_data.pipeline_progress, climate_data.daily_climate,
-    climate_data.daily_climate_detail.
+Tables: climate_data.t_pipeline_progress_detail,
+    climate_data.t_pipeline_progress, climate_data.t_daily_climate,
+    climate_data.t_daily_climate_detail.
 Grain: One row per progress detail partition.
 Scope/parameters: All progress partitions associated with the ERA5-Land
     CDS dataset. Pending/running work is included.
@@ -23,7 +23,7 @@ Read-only: Yes; SELECT only.
 */
 WITH observations AS (
     SELECT daily_climate_id, COUNT(*) AS actual_rows
-    FROM climate_data.daily_climate_detail
+    FROM climate_data.t_daily_climate_detail
     GROUP BY daily_climate_id
 )
 SELECT
@@ -48,10 +48,10 @@ SELECT
           OR COALESCE(obs.actual_rows, 0) <> detail.row_count THEN 'FAIL'
         ELSE 'PASS'
     END AS verification_result
-FROM climate_data.pipeline_progress_detail AS detail
-JOIN climate_data.pipeline_progress AS progress
+FROM climate_data.t_pipeline_progress_detail AS detail
+JOIN climate_data.t_pipeline_progress AS progress
   ON progress.id = detail.pipeline_progress_id
-LEFT JOIN climate_data.daily_climate AS dc
+LEFT JOIN climate_data.t_daily_climate AS dc
   ON dc.request_key = detail.request_key
 LEFT JOIN observations AS obs
   ON obs.daily_climate_id = dc.id
