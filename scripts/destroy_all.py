@@ -22,7 +22,11 @@ from psycopg import connect
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from config import APP_ENV_DEV, resolve_app_environment
+from config import (
+    APP_ENV_DEV, DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE,
+    PIPELINE_PROGRESS_TABLE, PIPELINE_PROGRESS_DETAIL_TABLE, PACING_TABLE,
+    resolve_app_environment,
+)
 from pipeline.database import DatabaseConfig
 from scripts import recreate_postgres_database
 from scripts import reset_airflow_logs
