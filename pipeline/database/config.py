@@ -10,7 +10,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
-from config import APPLICATION_SCHEMA
+# PostgreSQL application schema shared by weather and orchestration tables.
+APPLICATION_SCHEMA = "climate_data"
 
 # Global physical database object prefixes (apply to all application tables/views).
 TABLE_PREFIX = "t_"
