@@ -35,7 +35,16 @@ An available version with `installed_version IS NULL` means PostGIS is installed
 CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
-For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow.
+For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. Spatial bootstrap can be run manually (this **changes the selected database** by enabling the extension if absent):
+
+```bash
+source activate-airflow.sh -q
+python -m geospatial.database.bootstrap
+```
+
+This command connects through the existing `POSTGRES_*` configuration, verifies the connected database name, enables PostGIS only if missing, and does **not** create or reset the database, touch climate data, or start Airflow. It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The importer has not yet been implemented (P4.3/P4.4).
+
+For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow.
 
 ## Active Dataset
 
@@ -194,6 +203,7 @@ etl-weather/
 ├── docs/                     # design decisions and project documentation
 ├── geospatial/               # independent administrative boundaries and spatial grid mapping
 │   ├── sources/id/districts/ # immutable Aceh GeoJSON source
+│   ├── database/             # PostgreSQL/PostGIS bootstrap
 │   └── sql/                  # read-only spatial capability checks
 ├── orchestration/            # Airflow orchestration layer
 │   └── README.md             # Airflow setup and operations
