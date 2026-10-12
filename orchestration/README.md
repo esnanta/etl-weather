@@ -27,7 +27,7 @@ Generate the file during initial Airflow setup. Normal activation should reuse t
 Activate the project Airflow environment:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 ```
 
 The activation script loads the project `.env`, activates `myvenv`, validates the JWT file, and configures the repository-local Airflow runtime.
@@ -220,7 +220,7 @@ Airflow task success alone is not enough to declare a campaign quarter complete.
 Inspect campaign progress with:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 python scripts/report_campaign_progress.py
 ```
 
@@ -273,7 +273,7 @@ Airflow exchanges small metadata between tasks. NetCDF, Parquet, xarray, and Pan
 Trigger one explicit manual range:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 
 airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2024-01-01","end_date":"2024-01-31"}'
@@ -408,7 +408,7 @@ Preserve Airflow metadata, PostgreSQL progress, and checkpoint files while doing
 Run orchestration regression tests with scheduling disabled:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
 python -m pytest tests/unit -q
