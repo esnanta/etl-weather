@@ -261,13 +261,24 @@ P2 acceptance evidence: the standalone run produced three local days (2024-05-01
 - [ ] Verify scheduled/manual DagRun handling and existing pause/unpause, reset, pacing, retry, and idempotency tests.
 - [ ] Do not change `orchestration/scheduling/schedule.py` or remove related environment/documentation entries except to fix a proven regression introduced by table prefix naming.
 
+### P4.1 source GeoJSON audit — 2026-10-12
+
+Read-only audit of `geospatial/sources/id/districts/Aceh.geojson`, with bytes verified against Git blob SHA `1158b116c33b27024d20e48ac84f36acbc3137fb` (22,912,586 bytes). Parsing and geometry inspection used JSON and Shapely; the source itself was not changed.
+
+- FeatureCollection name `Aceh`, declared CRS `urn:ogc:def:crs:OGC:1.3:CRS84` (longitude/latitude).
+- **23** features, all `MultiPolygon`; **18 kabupaten and five kota**; every feature includes exactly `OBJECTID`, `WADMKK`, `WADMPR`; all `WADMPR` values equal `Aceh`. There are **23 unique non-null OBJECTID** values (source JSON numbers, parsed as floats), **23 unique non-blank district names**, zero missing required property values.
+- All **23/23 polygons valid and nonempty** by Shapely, **423 total polygon parts**, 480,227 coordinate tuples; every tuple has X/Y/Z with **Z=0**. No non-finite coordinates and no holes in constituent polygons. Horizontal extent (W,S,E,N): 94.971911046, 1.977152001, 98.287444011, 6.076832204. The source bounding rectangle lies within the project's ERA5-Land retrieval bbox.
+- No pair of features had positive overlapping area above `1e-12` square degrees in a Shapely pairwise intersection inspection. This is not authoritative evidence of full provincial coverage or exact gap-free administrative topology.
+- Design implications for P4.2/P4.3: preserve immutable GeoJSON; explicitly normalize integer-valued numeric `OBJECTID` (e.g. `113.0`) to string `source_feature_ref='113'` scoped to a named/versioned source; store 2D `geometry(MultiPolygon,4326)` by stripping zero-Z from imported geometry, preserving X/Y and correct CRS84 lon/lat semantics. No importer or database schema was created during P4.1.
+- Source dataset release date, definitive license/attribution and official administrative-code provenance are **not established** by the GeoJSON content alone; verify before publication. `OBJECTID` is a source feature reference, **not** a government administrative code.
+
 ### P4 — Administrative reference schema and importer
 
 - [ ] Check PostGIS extension availability on isolated test database.
 - [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance; use `source_feature_ref` in source-derived records, never `source_object_id`.
 - [ ] Document and test `OBJECTID` → `source_feature_ref` conversion (e.g. numeric 113.0 to canonical text `"113"`), source dataset/version scope, null handling for dissolved provinces, and idempotent conflict identity.
 - [ ] Use `/geospatial/sources/id/districts/Aceh.geojson` as the authoritative import input. Do not rely on a separately uploaded one-district sample.
-- [ ] Inspect the repository GeoJSON for feature count, attributes (`OBJECTID`, `WADMPR`, `WADMKK`), actual CRS, geometry dimensions/type and validity before assuming the prior uploaded-file profile applies.
+- [x] Inspect source GeoJSON feature count, OBJECTID/WADMPR/WADMKK, CRS84, 3D MultiPolygon Z=0 and Shapely geometric validity; findings recorded above.
 - [ ] Keep administration data loading in a separate component outside Airflow and outside scientific transformation stages; do not add an administrative task to the existing DAG.
 - [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties (`OBJECTID`, `WADMKK`, `WADMPR`), geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities. Report missing or duplicate `source_feature_ref` values within a source dataset.
 - [ ] Import Aceh kabupaten/kota boundaries from `/geospatial/sources/id/districts/Aceh.geojson`; reconcile actual feature counts and report anomalies.
