@@ -18,6 +18,19 @@ from pipeline.database import (
 )
 
 
+from pipeline.database.config import (
+    TABLE_PREFIX,
+    VIEW_PREFIX,
+    table_name,
+    view_name,
+    GRID_REGION_TABLE,
+    PIPELINE_PROGRESS_TABLE,
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PACING_TABLE,
+    DAILY_CLIMATE_REGION_VIEW,
+    MONTHLY_CLIMATE_REGION_VIEW,
+)
+
 def _config() -> DatabaseConfig:
     return DatabaseConfig(
         host="localhost",
@@ -110,3 +123,18 @@ def test_daily_climate_detail_table_protects_fk_and_observation_identity() -> No
         "ON climate_data.t_daily_climate_detail "
         "(daily_climate_id, valid_time, latitude, longitude)" in sql
     )
+
+
+def test_canonical_database_names_are_owned_by_database_config() -> None:
+    """Resolve physical table and view identifiers using production configuration."""
+    config = _config()
+    assert TABLE_PREFIX == "t_"
+    assert VIEW_PREFIX == "vw_"
+    assert config.daily_climate_table == table_name("daily_climate")
+    assert config.daily_climate_detail_table == table_name("daily_climate_detail")
+    assert GRID_REGION_TABLE == table_name("grid_region")
+    assert PIPELINE_PROGRESS_TABLE == table_name("pipeline_progress")
+    assert PIPELINE_PROGRESS_DETAIL_TABLE == table_name("pipeline_progress_detail")
+    assert PACING_TABLE == table_name("submission_pacing")
+    assert DAILY_CLIMATE_REGION_VIEW == view_name("daily_climate_region")
+    assert MONTHLY_CLIMATE_REGION_VIEW == view_name("monthly_climate_region")
