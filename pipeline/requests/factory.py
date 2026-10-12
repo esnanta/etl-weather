@@ -10,7 +10,7 @@ from config import (
     ACEH_BBOX_COORDINATES,
     CDS_DATASET,
     CDS_VARIABLES,
-    resolve_cds_period,
+    resolve_pipeline_period,
 )
 from pipeline.models.weather import BoundingBox, DataSource, WeatherRequest
 
@@ -29,7 +29,7 @@ def build_cds_request(
     """Build the active CDS request for an explicit or configured period."""
     load_dotenv()
     if start_date is None or end_date is None:
-        configured_start, configured_end = resolve_cds_period(os.environ)
+        configured_start, configured_end = resolve_pipeline_period(os.environ)
         start_date = start_date or configured_start
         end_date = end_date or configured_end
     if require_api_key:
