@@ -28,9 +28,6 @@ APP_ENV_DEV = "dev"
 # Production disables destructive maintenance completely.
 APP_ENV_PROD = "prod"
 
-# PostgreSQL application schema shared by weather and orchestration tables.
-APPLICATION_SCHEMA = "climate_data"
-
 # IANA timezone name used for the project's local daily semantics.
 APPLICATION_TIMEZONE_NAME = "Asia/Jakarta"
 
