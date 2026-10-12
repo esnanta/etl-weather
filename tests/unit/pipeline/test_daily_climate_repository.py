@@ -212,8 +212,8 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
     assert pd.isna(result.loc[1, "tp_daily_total_mm"])
 
     statement_text = str(captured["sql"])
-    assert "climate_data.daily_climate AS dc" in statement_text
-    assert "climate_data.daily_climate_detail AS dcd" in statement_text
+    assert "climate_data.t_daily_climate AS dc" in statement_text
+    assert "climate_data.t_daily_climate_detail AS dcd" in statement_text
     assert "dcd.daily_climate_id = dc.id" in statement_text
     assert "CAST(dc.source AS TEXT) = :source" in statement_text
     assert "dc.dataset_name = :dataset_name" in statement_text
