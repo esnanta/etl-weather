@@ -227,7 +227,7 @@ Changes applied on `dev`, **without modifying ETL scientific logic or DAG contro
 - [ ] After isolated database recreation, run the existing standalone entrypoint and verify retrieval, RAW NetCDF validation, transformed Parquet and successful PostgreSQL writes.
 - [ ] Verify prefixed parent/detail tables (`t_daily_climate`, `t_daily_climate_detail`), FK integrity, correct request partition and `valid_time_local` boundaries.
 - [ ] Verify expected 3 × 1,505 = 4,515 day/grid coordinate combinations **where the grid is complete**; account for missing meteorological values separately and never reinterpret missing as zero.
-- [ ] Rerun the same standalone period and confirm idempotency, stable observation count and deterministic artifact/checkpoint behavior.
+- [x] Rerun the same standalone period: RAW and Parquet checkpoints resumed; request key, checksum, path, and 1,590-row count matched; database writes skipped (0 rows processed); second run completed in 0.45s.
 - [ ] Record the exact CLI, database count queries, timings, artifacts, observed warnings and all test evidence.
 - [ ] **Gate:** do not begin administrative tables/importer until three-day download → transformation → load and rerun-idempotency succeed.
 
