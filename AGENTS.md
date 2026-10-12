@@ -186,8 +186,8 @@ load()
 Canonical tables:
 
 ```text
-climate_data.daily_climate
-climate_data.daily_climate_detail
+climate_data.t_daily_climate
+climate_data.t_daily_climate_detail
 ```
 
 Canonical detail foreign key:
@@ -299,7 +299,7 @@ Rules:
 
 - RAW NetCDF stores `downloaded_at` as file metadata.
 - Parquet metadata stores `raw_artifact_path`, `raw_sha256`, `downloaded_at`, and `transformed_at`.
-- PostgreSQL `daily_climate` stores `downloaded_at`, `transformed_artifact_path`, `transformed_sha256`, and `transformed_at`.
+- PostgreSQL `t_daily_climate` stores `downloaded_at`, `transformed_artifact_path`, `transformed_sha256`, and `transformed_at`.
 - RAW path/checksum do not belong in PostgreSQL.
 - Provenance values are partition metadata, not repeated observation columns.
 - A resumed transformed checkpoint must reject a changed RAW checksum.
