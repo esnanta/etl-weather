@@ -15,11 +15,11 @@ Read-only: Yes; SELECT only.
 */
 WITH expected_tables (table_name) AS (
     VALUES
-        ('daily_climate'),
-        ('daily_climate_detail'),
-        ('pipeline_progress'),
-        ('pipeline_progress_detail'),
-        ('submission_pacing')
+        ('t_daily_climate'),
+        ('t_daily_climate_detail'),
+        ('t_pipeline_progress'),
+        ('t_pipeline_progress_detail'),
+        ('t_submission_pacing')
 )
 SELECT
     'climate_data' AS schema_name,
