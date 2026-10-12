@@ -287,9 +287,13 @@ Read-only preflight SQL: `geospatial/sql/01_postgis_preflight.sql`. Execute usin
 
 Implemented `geospatial/database/bootstrap.py` with a standalone CLI: `python -m geospatial.database.bootstrap`. It verifies the configured database identity, checks the installed extension, and activates PostGIS idempotently if absent. It does not create/drop application databases or climate tables. When the GeoJSON importer is implemented in P4.4, it **must invoke the same bootstrap helper automatically before the import transaction**; this importer integration remains pending and must be tested (first-run activation and repeated import). Do not claim auto-import integration already works. The chosen application target is `weather.climate_data` via `POSTGRES_*` configuration. The CLI has not been executed on the user's host by the assistant.
 
+### P4.2 runtime evidence — 2026-10-12
+
+User ran `source activate-airflow.sh -q` and `python -m geospatial.database.bootstrap`. Actual output: `INFO | PostGIS ready | database=weather | version=3.4.2` and `PostGIS ready (version 3.4.2).` This verifies the independent Python bootstrap against the configured application database. No claim is made that the importer auto-invocation is implemented (P4.4) or that schema tables already exist (P4.3). Airflow remains deferred.
+
 ### P4 — Administrative reference schema and importer
 
-- [x] Check PostGIS package availability on PostgreSQL 16 (3.4.2 available); activate/verify extension on `weather` next.
+- [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
 - [ ] Define/create `t_province`, `t_district`, `t_grid_region` (approved), constraints, indexes, and provenance; use `source_feature_ref` in source-derived records, never `source_object_id`.
 - [ ] Document and test `OBJECTID` → `source_feature_ref` conversion (e.g. numeric 113.0 to canonical text `"113"`), source dataset/version scope, null handling for dissolved provinces, and idempotent conflict identity.
 - [ ] Use `/geospatial/sources/id/districts/Aceh.geojson` as the authoritative import input. Do not rely on a separately uploaded one-district sample.
