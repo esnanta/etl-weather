@@ -145,6 +145,25 @@ Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit
 
 **Implementation restriction:** P0 records observations only. Any strengthened tests or updated testing documentation should be scoped to the approved P1 database naming/configuration change; do not modify scientific algorithm or DAG control flow.
 
+### P0 final targeted audit — 2026-10-12
+
+**Targeted check A — database references and operational SQL (completed, source audit only):**
+
+- Already centralized: `config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, derived climate/progress/pacing names); `pipeline/database/config.py`, `pipeline/database/schema.py`, `pipeline/loaders/daily_climate_postgres.py`, `pipeline/repositories/daily_climate_reader.py`; `orchestration/repositories/pipeline_progress.py`, `submission_pacing.py`, `load_evidence.py`; `scripts/inspect_campaign_capacity.py`. These use configured object names or production DatabaseConfig, not proof all end-to-end paths have executed.
+- **Confirmed stale literals:** `scripts/destroy_all.py` (`EXPECTED_APPLICATION_TABLES` still has `daily_climate`, `daily_climate_detail`); `query/01_schema__01_inventory.sql` (unprefixed inventory); `query/02_daily_climate__01_partition_summary.sql`, `query/03_daily_climate_detail__01_data_quality.sql`, `query/04_pipeline_progress__01_campaign_status.sql`, `query/05_pipeline_progress_detail__01_load_verification.sql` (unprefixed schema-qualified SELECT/JOIN targets). Fix these in P1 as SQL/name-only edits, and preserve query meaning.
+- **Documentation drift:** `AGENTS.md`, `tests/AGENTS.md`, query SQL descriptions and relevant README files still require new physical-table nomenclature. `REGION_TABLE = table_name("region")` remains obsolete in root `config.py`; use agreed `GRID_REGION_TABLE` in P1.
+- `scripts/recreate_postgres_database.py` and other reset wrappers need guarded review for target validation. Never run destructive scripts as part of this audit. The primary code paths containing dynamic SQL have been inspected; use a final literal/name scan as a P1 acceptance check.
+
+**Targeted check B — actual PostgreSQL constraint, safety, and idempotency tests (completed, evidence-qualified):**
+
+- `tests/integration/pipeline/test_postgresql_idempotency.py` includes four real-PostgreSQL tests: repeat-load de-duplication, forced detail `IntegrityError` and rollback, missing-observation restoration, and provenance/checksum mismatch recovery. The test uses production `load_to_postgresql`, temp artifacts and isolated `TEST_POSTGRES_*` settings.
+- `tests/integration/orchestration/test_orchestration_database_bootstrap.py` executes real schema bootstrap and repeat initialization; `test_pipeline_progress_reconciliation.py` exercises actual persisted progress, completeness evidence, quarter cooldown and concurrent claim behavior; `test_submission_pacing.py` verifies real-DB submission coordination.
+- **Not established by existing assertions:** explicit direct negative database cases for invalid parent FK, duplicate detail observation unique index, and cascade behavior across the renamed climate tables; explicit name/constraint inventory for every renamed progress/pacing table. Add focused real-PostgreSQL tests only where these contracts are not already proved, and invoke production schema builders rather than recreating DDL in test logic.
+- **Safety caveat:** integration bootstrap and idempotency fixtures include `DROP SCHEMA ... CASCADE` on isolated test DB. Existing `TEST_POSTGRES_DATABASE` name-contains-`test` guard is necessary but not sufficient on its own; before rerunning integration against any shared DB ensure dedicated disposable test target and no external data. Do not perform a development/production reset in P0.
+- Reported green local baseline remains **327 unit + 10 integration passed**; this measures covered contracts only, not exhaustive code coverage or regression sensitivity.
+
+**P0 disposition:** the two targeted checks are finished and actionable P1 scope is identified. P0 is **audit-complete with documented test-coverage limitations**, not blanket proof of all DB constraints. Changes to `/pipeline` and `/orchestration` remain database-reference-only. Actual fixes, added negative integration tests and runtime verification belong to P1, not P0.
+
 ### P0 — Audit, freeze and baseline
 
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
@@ -155,15 +174,15 @@ Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit
 - [x] Confirm the repository source file path `/indonesia/districts/Aceh.geojson` exists on `dev` (content validation pending P4).
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
 - [ ] Finish exhaustive reference audit of `/README.md`, `tests/AGENTS.md`, Airflow documentation, all SQL scripts, and tests on `dev` (core database definitions and several operational modules inspected; not exhaustive).
-- [ ] Record all existing table/view/column names and all call sites, including test fixtures (partial inventory below).
+- [x] Inventory known persisted object names and affected operational SQL/test paths, with limitations described in final targeted audit; require final no-stale-literals scan during P1.
 - [x] Locate primary standalone date readers: root `config.py` defines `CDS_START_DATE_ENV`/`CDS_END_DATE_ENV`, `resolve_cds_period()`; `pipeline/requests/factory.py` calls the resolver; `env-example` contains both keys; actual entrypoint is `scripts/run_pipeline_cds.py`. Full references across tests/docs still pending.
 - [x] Audit current database module for monthly tables: no `create_monthly_climate*` function in `pipeline/database/schema.py`; `pipeline/runtime.py` calls `run_monthly_batch` for monthly *partitioning*, not monthly-statistic database persistence. A separate future monthly schema is **not yet verified/implemented**. Recheck full codebase before any monthly view.
 - [x] Record the passing user-executed baseline: unit 327 passed (7.54s), integration 10 passed (1.53s); no assistant-side test execution.
 - [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
-- [ ] Freeze implementation scope: naming-only for existing pipeline/orchestration.
+- [x] Freeze implementation scope: naming-only for existing pipeline/orchestration.
 - [x] Re-read `/tests/AGENTS.md`; apply its test construction and integration-boundary requirements.
 - [x] Review representative unit/integration coverage quality and boundaries; results documented above.
-- [ ] Complete targeted verification that real PostgreSQL negative cases and prefix consumers cover the naming changes before closing P0.
+- [x] Inspect real PostgreSQL integration tests and document proven versus missing FK/unique/cascade cases; targeted check B above.
 
 ### P1 — Global naming refactor (only after P0 approval)
 
