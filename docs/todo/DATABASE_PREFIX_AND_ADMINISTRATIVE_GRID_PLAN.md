@@ -86,6 +86,29 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 
 ## 5. Checklist — complete in order, after plan approval
 
+## 5A. P0 read-only audit findings (2026-10-12; implementation not started)
+
+**Verified on the `dev` branch by reading repository files:**
+
+| Area | File(s) / current behavior | P1 / test implication |
+| --- | --- | --- |
+| Project boundary | `/AGENTS.md` | No changes to CDS, scientific conversion, RAW, idempotent persistence, or orchestration flow. |
+| Shared naming | `/config.py` | Already includes `TABLE_PREFIX="t_"`, `VIEW_PREFIX="vw_"` and derived constants; obsolete `REGION_TABLE` still exists. |
+| Climate DB config | `pipeline/database/config.py` | Daily table names imported from root config; schema `climate_data`. |
+| Actual daily schema | `pipeline/database/schema.py` | `daily_climate` stores partition metadata; `daily_climate_detail` stores dated grid-point observations, including latitude/longitude. Keep `daily_climate_id` FK. |
+| Daily load/read | `pipeline/loaders/daily_climate_postgres.py`, `pipeline/repositories/daily_climate_reader.py` | References use configured `daily_climate_table`/detail names; inspect all SQL call sites and test overrides. |
+| Progress/pacing | `orchestration/repositories/pipeline_progress.py`, `submission_pacing.py`, `load_evidence.py` | Table names are imported from shared constants; keep progress and pacing semantics exactly unchanged. |
+| Database operations | `scripts/destroy_all.py` | `EXPECTED_APPLICATION_TABLES` still contains unprefixed daily names; adjust inventory expectation during P1. Do **not** run destructive scripts during P0. |
+| Standalone period | `config.py`, `pipeline/requests/factory.py`, `env-example` | Old `CDS_START_DATE` and `CDS_END_DATE` still active; plan rename to `PIPELINE_START_DATE`/`PIPELINE_END_DATE` without altering inclusive range logic. |
+| Actual terminal entrypoint | `scripts/run_pipeline_cds.py` | Use `python -m scripts.run_pipeline_cds` for P2; old documentation examples using `scripts.run_pipeline` must be corrected. |
+| Monthly scope | `pipeline/database/schema.py`, `pipeline/runtime.py` | No monthly database schema creator found in database module. `run_monthly_batch` means monthly partition execution, **not proof that monthly climate statistics are persisted**. Treat monthly-view work as blocked pending confirmed schema. |
+| Schedule flag | `orchestration/scheduling/schedule.py` | Retain flag-controlled `schedule=None` versus fixed interval. |
+| Boundary dataset | `indonesia/districts/Aceh.geojson` | File exists on dev; contents/geometry were not fully validated in P0. |
+
+**Important caveat:** This is a *source-code audit*, not a completed P0 pass. No runtime tests were run, no PostgreSQL database was contacted, no dataset was downloaded, and file-by-file inventory remains incomplete. Prior commits `a9047ec`/`61e0300` remain partially integrated.
+
+**P0 continuation before P1:** inventory all `pipeline/`, `orchestration/`, `scripts/`, `query/`, `tests/` references, especially raw SQL and reset safety; record exact current pytest results on local checkout; confirm application prefix is `t_`. Only then check P0 complete.
+
 ### P0 — Audit, freeze and baseline
 
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
@@ -95,11 +118,11 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [x] Confirm GeoJSON provenance column `source_feature_ref` instead of `source_object_id` (non-FK, not an official area code).
 - [x] Confirm the repository source file path `/indonesia/districts/Aceh.geojson` exists on `dev` (content validation pending P4).
 - [ ] Confirm `t_` versus `sk_` final global table prefix before any reset (currently `t_` in config).
-- [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
-- [ ] Record all existing table/view/column names and all call sites, including test fixtures.
-- [ ] Audit usage of `CDS_START_DATE`, `CDS_END_DATE`, their root `config.py` constant aliases/resolvers, standalone entrypoints, `.env`/`env-example`, CLI examples, tests and docs before renaming.
-- [ ] Audit actual monthly parent/detail schema and its coordinate-bearing table.
-- [ ] Run and record baseline offline tests with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
+- [ ] Finish exhaustive reference audit of `/README.md`, `tests/AGENTS.md`, Airflow documentation, all SQL scripts, and tests on `dev` (core database definitions and several operational modules inspected; not exhaustive).
+- [ ] Record all existing table/view/column names and all call sites, including test fixtures (partial inventory below).
+- [x] Locate primary standalone date readers: root `config.py` defines `CDS_START_DATE_ENV`/`CDS_END_DATE_ENV`, `resolve_cds_period()`; `pipeline/requests/factory.py` calls the resolver; `env-example` contains both keys; actual entrypoint is `scripts/run_pipeline_cds.py`. Full references across tests/docs still pending.
+- [x] Audit current database module for monthly tables: no `create_monthly_climate*` function in `pipeline/database/schema.py`; `pipeline/runtime.py` calls `run_monthly_batch` for monthly *partitioning*, not monthly-statistic database persistence. A separate future monthly schema is **not yet verified/implemented**. Recheck full codebase before any monthly view.
+- [ ] Run and record baseline offline tests with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` **on user's checkout/environment**; GitHub source inspection does not run pytest. Previous historical test results do not establish a passing baseline for current partially prefixed `dev`.
 - [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
 - [ ] Freeze implementation scope: naming-only for existing pipeline/orchestration.
 
