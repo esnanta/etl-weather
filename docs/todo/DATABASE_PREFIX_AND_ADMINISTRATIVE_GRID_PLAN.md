@@ -17,7 +17,7 @@ Repository: `esnanta/etl-weather`
 - No `adm_` prefix. Examples: `t_province`, `t_district`.
 - New field names should be explicit: `province_name`, `district_name`; inspect genuinely problematic SQL identifiers before renaming existing columns.
 - Database and application data will be recreated, **not migrated** from the old naming convention. Destructive execution requires separate controlled preflight on the intended development database; this plan does not run deletion.
-- Pipeline and Airflow changes must be limited to database object names/references, absolutely necessary column-reference changes, and the separately approved removal of the Airflow schedule enable switch. Preserve scientific transformations, CDS requests, interval cadence, deferral, retries, pacing, XCom, idempotency, and logging behavior.
+- Pipeline and Airflow changes must be limited to database object names/references and absolutely necessary column-reference changes. Preserve scientific transformations, CDS requests, scheduling enable behavior, interval cadence, deferral, retries, pacing, XCom, idempotency, and logging behavior.
 - `/AGENTS.md` remains authoritative. It establishes single active CDS ERA5-Land path, immutable RAW, UTC+7 daily rules, independent pipeline logic, read-only repository behavior, and deterministic persistence.
 - Change only branch `dev`; do not touch other branches.
 
@@ -93,8 +93,8 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Audit `/README.md`, `tests/AGENTS.md`, Airflow documentation, schema definitions, SQL references and scripts on `dev`.
 - [ ] Record all existing table/view/column names and all call sites, including test fixtures.
 - [ ] Audit actual monthly parent/detail schema and its coordinate-bearing table.
-- [ ] Run and record baseline offline tests with the current scheduled campaign switch disabled; after the switch is removed, use isolated DAG/scheduler test setup rather than the removed environment variable.
-- [ ] Audit all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
+- [ ] Run and record baseline offline tests with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
+- [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
 - [ ] Freeze implementation scope: naming-only for existing pipeline/orchestration.
 
 ### P1 — Global naming refactor (only after P0 approval)
@@ -104,7 +104,7 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Update index, constraint, FK, reset/destroy/recreate and operational queries that reference physical table names.
 - [ ] Review SQL keywords/identifier naming; rename only documented conflicts or newly designed fields, preserving scientific data contracts.
 - [ ] Review `DatabaseConfig`, imports, fixture overrides, tests and documentation for consistent names.
-- [ ] Do not change DAG topology, schedule interval, retry/pacing behavior, climate formulas, or loader semantics (except eliminating the approved schedule-enable conditional).
+- [ ] Do not change DAG topology, schedule enable switch, schedule interval, retry/pacing behavior, climate formulas, or loader semantics.
 - [ ] Validate that the development reset path addresses only the intended database and does not unexpectedly delete immutable RAW artifacts.
 - [ ] Test clean creation on isolated test database before any destructive operation on development.
 - [ ] Run offline unit/orchestration tests and PostgreSQL integration tests; compare behavior with baseline.
@@ -121,15 +121,14 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 - [ ] Record the exact CLI, database count queries, timings, artifacts, observed warnings and all test evidence.
 - [ ] **Gate:** do not begin administrative tables/importer until three-day download → transformation → load and rerun-idempotency succeed.
 
-### P3 — Airflow campaign schedule configuration simplification (approved design, not implemented)
+### P3 — Airflow schedule contract regression (no configuration removal)
 
-- [ ] Remove `ERA5_CAMPAIGN_SCHEDULE_ENABLED` from configuration, `.env` example, run scripts and documentation; remove `ENABLED_ENV` from root config.
-- [ ] Change `orchestration/scheduling/schedule.py` to return the existing `CAMPAIGN_SCHEDULE_INTERVAL_MINUTES` interval unconditionally; preserve the current ten-minute cadence and all selection/pacing semantics.
-- [ ] Keep `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR` defining the scheduled historical campaign period, and preserve Airflow manual trigger with explicit date range via DAG conf.
-- [ ] Keep terminal standalone period controlled by `CDS_START_DATE` and `CDS_END_DATE`; do not conflate it with campaign years.
-- [ ] Operational safety: DAG must stay **paused** until campaign execution is authorized. Starting Airflow itself does not mean automatic campaign execution is desired.
-- [ ] Update DAG schedule tests: verify active fixed cadence and manual DAG-run handling without the retired flag; remove obsolete tests relying on disabled schedule state.
-- [ ] Verify startup, pause/unpause and clean-slate workflows never accidentally launch a scheduled campaign.
+- [ ] **Retain** `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and root config `ENABLED_ENV` as-is.
+- [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` keeps the DAG manually triggerable without automatic scheduling (`schedule=None`).
+- [ ] Verify `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` preserves the current fixed campaign scheduling interval, bounded by `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`.
+- [ ] Keep terminal standalone `CDS_START_DATE` and `CDS_END_DATE` behavior separate from Airflow campaign settings.
+- [ ] Verify scheduled/manual DagRun handling and existing pause/unpause, reset, pacing, retry, and idempotency tests.
+- [ ] Do not change `orchestration/scheduling/schedule.py` or remove related environment/documentation entries except to fix a proven regression introduced by table prefix naming.
 
 ### P4 — Administrative reference schema and importer
 
@@ -164,4 +163,4 @@ Root `/config.py` (not `scripts/config.py`) is the project's actual shared light
 
 Stop implementation and return to design review if: the proposed schema introduces a second application schema; any scientific or Airflow scheduling behavior must change; polygon data does not match the assumed administrative level; ambiguous spatial assignment is silently resolved; destructive target cannot be confirmed; or automated integration tests indicate regressions.
 
-**Current authorization:** documentation and planning only. No further code edits or database/data operations. The proposed unconditional Airflow schedule requires explicit paused-DAG safeguards; the retired flag must not be replaced with implicit campaign execution on service startup.
+**Current authorization:** documentation and planning only. No further code edits or database/data operations. The Airflow schedule enable flag remains part of the existing contract; do not replace it with unconditional scheduling.
