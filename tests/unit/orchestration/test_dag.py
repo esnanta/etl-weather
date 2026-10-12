@@ -26,7 +26,7 @@ LOAD_TASK_ID = "monthly_etl.load"
 
 @pytest.fixture(scope="module")
 def dag():
-    dag_bag = DagBag(dag_folder=DAG_FOLDER, include_examples=False)
+    dag_bag = DagBag(dag_folder=DAG_FOLDER)
     dag_bag.process_file(str(DAG_FOLDER / "cds_era5_land_etl.py"), only_if_updated=False, safe_mode=False)
     assert dag_bag.import_errors == {}
     assert DAG_ID in dag_bag.dags
