@@ -14,9 +14,8 @@ from orchestration.campaign.policy import (
     build_quarter_request_specs,
     iter_campaign_quarters,
 )
-from config import (
-    CAMPAIGN_END_DATE,
-    CAMPAIGN_START_DATE,
+from config import CAMPAIGN_END_DATE, CAMPAIGN_START_DATE
+from pipeline.database.config import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
