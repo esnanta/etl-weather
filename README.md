@@ -7,9 +7,35 @@ The ETL pipeline can run directly from the command line or be coordinated by Apa
 ## Prerequisites
 
 - Python 3.12
-- PostgreSQL for canonical daily climate observations
+- PostgreSQL 16 for canonical climate observations; **PostGIS 3** extension is additionally required for administrative boundaries and spatial grid-to-region mapping (not required for the standalone climate ETL alone).
 - CDS API credentials
 - A single host, or a shared `data/` filesystem visible to every task worker
+
+## PostgreSQL and PostGIS
+
+PostGIS is an **extension installed into PostgreSQL**, not a separate database product. The existing climate ETL uses ordinary PostgreSQL tables and can run without the extension; the independent `geospatial/` component requires PostGIS for `geometry(MultiPolygonZ, 4326)`, spatial indexes, and point-in-polygon operations. The Airflow metadata database remains separate and is not involved in geospatial setup.
+
+On Ubuntu with a PostgreSQL 16 server, install the matching server-side package if needed:
+
+```bash
+sudo apt install postgresql-16-postgis-3 postgresql-16-postgis-3-scripts
+```
+
+Check package availability from a connection to the intended PostgreSQL server:
+
+```sql
+SELECT name, default_version, installed_version
+FROM pg_available_extensions
+WHERE name = 'postgis';
+```
+
+An available version with `installed_version IS NULL` means PostGIS is installed on the **server** but is not enabled in that **database**. Enable it only in the chosen database, with appropriate privileges and after confirming the target:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+Start with an isolated test database, not the existing `weather` database holding validated pilot observations. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow.
 
 ## Active Dataset
 
@@ -166,6 +192,9 @@ The important boundary is conceptual: `pipeline/` owns climate-data acquisition,
 etl-weather/
 ├── config.py                 # shared lightweight application configuration
 ├── docs/                     # design decisions and project documentation
+├── geospatial/               # independent administrative boundaries and spatial grid mapping
+│   ├── sources/id/districts/ # immutable Aceh GeoJSON source
+│   └── sql/                  # read-only spatial capability checks
 ├── orchestration/            # Airflow orchestration layer
 │   └── README.md             # Airflow setup and operations
 ├── pipeline/                 # ETL and canonical data-access implementation
