@@ -130,6 +130,21 @@ User-reported results on the local `dev` checkout:
 
 **Test quality is a separate acceptance gate from a green test count.** Read and enforce `/tests/AGENTS.md` before changes: test the real production implementation, do not duplicate or recreate the algorithm or SQL behavior under test, avoid mocks of the subject under test, use production config for config-contract tests, and keep minimal explicit fixtures for isolated logic. PostgreSQL transactional/idempotency guarantees require real isolated `TEST_POSTGRES_*` integration tests. Include meaningful negative cases, schema/FK and DAG invariants, and protect unchanged scientific and orchestration behavior. A green suite confirms only the contracts actually asserted; P0 inventory and behavioral test quality review remain separate pending work.
 
+### P0 test coverage and quality audit — 2026-10-12 (read-only)
+
+Reviewed `tests/AGENTS.md` plus representative current test modules: `tests/unit/pipeline/test_database.py`, `test_load.py`, `test_daily_climate_repository.py`, `tests/integration/pipeline/test_postgresql_idempotency.py`, `tests/integration/orchestration/test_pipeline_progress_reconciliation.py`, `tests/unit/orchestration/test_dag.py`, `test_schedule.py`, and `tests/unit/operations/test_recreate_postgres_database.py`.
+
+**Strengths confirmed in source:** schema unit tests invoke production DDL builders and inspect resulting SQL; loader unit tests exercise production preparation and UPSERT construction with an isolated SQL recording boundary; read-repository tests cover invalid selection, empty/missing/duplicate observations and generated query parameters; PostgreSQL integration exercises real persistence, idempotency and transaction rollback; DAG policy tests parse the actual DAG and assert task graph, retries and pools; maintenance tests assert safety guards and no-execution outcomes.
+
+**Limitations and outstanding checks:**
+- Capturing an emitted SQL string is an appropriate unit assertion, but does not prove that a PostgreSQL constraint, foreign key or index actually works. Ensure specific negative-case integration coverage before accepting P1.
+- Current tests often assert concrete `t_*` strings. Audit whether central `TABLE_PREFIX` configuration and all consumers remain consistent without rewriting production behavior in the test.
+- `tests/AGENTS.md` still documents unprefixed `climate_data.daily_climate`, `daily_climate_detail`, `pipeline_progress`, `pipeline_progress_detail`, and `submission_pacing`; update these *documentation contracts* during P1 without altering the testing principles.
+- A fully passing `pytest -q` result does not itself quantify mutation sensitivity or exhaustive code coverage; review negative assertions and real-DB integration around changed identifiers and operational safety.
+- This is a representative module review, not an exhaustive audit of all test cases. Do not claim full coverage or a verified production run.
+
+**Implementation restriction:** P0 records observations only. Any strengthened tests or updated testing documentation should be scoped to the approved P1 database naming/configuration change; do not modify scientific algorithm or DAG control flow.
+
 ### P0 — Audit, freeze and baseline
 
 - [x] Read `/AGENTS.md` on `dev` (2026-10-12).
@@ -147,7 +162,8 @@ User-reported results on the local `dev` checkout:
 - [ ] Verify all references to `ERA5_CAMPAIGN_SCHEDULE_ENABLED` and `ENABLED_ENV` stay intact in root config, scheduling module, env-example, startup scripts, reset tooling, docs and tests.
 - [ ] Freeze implementation scope: naming-only for existing pipeline/orchestration.
 - [x] Re-read `/tests/AGENTS.md`; apply its test construction and integration-boundary requirements.
-- [ ] Review whether prefix refactor tests cover real production SQL/schema, rejection cases, persisted FK and idempotency behavior rather than only constants or superficial string assertions.
+- [x] Review representative unit/integration coverage quality and boundaries; results documented above.
+- [ ] Complete targeted verification that real PostgreSQL negative cases and prefix consumers cover the naming changes before closing P0.
 
 ### P1 — Global naming refactor (only after P0 approval)
 
