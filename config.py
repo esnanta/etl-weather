@@ -31,6 +31,31 @@ APP_ENV_PROD = "prod"
 # PostgreSQL application schema shared by weather and orchestration tables.
 APPLICATION_SCHEMA = "climate_data"
 
+# Global physical database object prefixes (apply to all application tables/views).
+TABLE_PREFIX = "t_"
+VIEW_PREFIX = "vw_"
+
+
+def table_name(base_name: str) -> str:
+    """Build a globally prefixed table identifier from a trusted base name."""
+    return f"{TABLE_PREFIX}{base_name}"
+
+
+def view_name(base_name: str) -> str:
+    """Build a globally prefixed view identifier from a trusted base name."""
+    return f"{VIEW_PREFIX}{base_name}"
+
+
+DAILY_CLIMATE_TABLE = table_name("daily_climate")
+DAILY_CLIMATE_DETAIL_TABLE = table_name("daily_climate_detail")
+MONTHLY_CLIMATE_TABLE = table_name("monthly_climate")
+MONTHLY_CLIMATE_DETAIL_TABLE = table_name("monthly_climate_detail")
+PROVINCE_TABLE = table_name("province")
+DISTRICT_TABLE = table_name("district")
+REGION_TABLE = table_name("region")
+DAILY_CLIMATE_REGION_VIEW = view_name("daily_climate_region")
+MONTHLY_CLIMATE_REGION_VIEW = view_name("monthly_climate_region")
+
 # IANA timezone name used for the project's local daily semantics.
 APPLICATION_TIMEZONE_NAME = "Asia/Jakarta"
 
@@ -84,9 +109,9 @@ PIPELINE_PROGRESS_SCHEMA = APPLICATION_SCHEMA
 PACING_SCHEMA = APPLICATION_SCHEMA
 
 # Operational progress and pacing table names.
-PIPELINE_PROGRESS_TABLE = "pipeline_progress"
-PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
-PACING_TABLE = "submission_pacing"
+PIPELINE_PROGRESS_TABLE = table_name("pipeline_progress")
+PIPELINE_PROGRESS_DETAIL_TABLE = table_name("pipeline_progress_detail")
+PACING_TABLE = table_name("submission_pacing")
 
 # Fixed minimum interval between provider submission POST requests.
 SUBMISSION_INTERVAL_MINUTES = 5
