@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from config import PACING_SCHEMA, PACING_TABLE, SUBMISSION_INTERVAL_MINUTES
+from config import SUBMISSION_INTERVAL_MINUTES
+from pipeline.database.config import PACING_SCHEMA, PACING_TABLE
 
 
 @dataclass(frozen=True)
