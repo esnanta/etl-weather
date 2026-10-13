@@ -65,3 +65,5 @@ python -m geospatial.importers.districts --execute
 ```
 
 Then run `geospatial/sql/02_import_verification.sql` in PhpStorm, and repeat the import and verification to check idempotency. Expected initial Aceh counts: one province, 23 districts, and no grid mapping yet. The configured source version remains `unverified`; replace it only once actual release metadata is established, with a corresponding migration/identity strategy. Production geometry validity and transactional rollback still require on-server verification; no live import has been run by the assistant.
+
+The `--execute` command displays a `tqdm` progress bar for district UPSERTs (23 expected for the Aceh source). A full bar means all district statements finished; the province dissolve and transaction COMMIT may still be in progress. The importer reports success only after COMMIT. If an exception occurs, the transaction rolls back and the importer does not print its success message. The progress bar is CLI-only; library callers can omit the optional progress callback.
