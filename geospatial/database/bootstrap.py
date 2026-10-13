@@ -12,7 +12,7 @@ from pipeline.database.config import DatabaseConfig, resolve_database_config
 
 logger = logging.getLogger(__name__)
 
-POSTGIS_SCHEMA = "public"
+POSTGIS_SCHEMA = "climate_data"
 
 
 def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
@@ -23,6 +23,7 @@ def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
             raise RuntimeError(
                 f"Unexpected database: expected {expected_database!r}, got {actual!r}"
             )
+        connection.execute(text("CREATE SCHEMA IF NOT EXISTS climate_data"))
         row = connection.execute(text(
             "SELECT e.extversion, n.nspname "
             "FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace "
@@ -41,7 +42,7 @@ def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
             if available is None:
                 raise RuntimeError("PostGIS server package is not available.")
             try:
-                connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public"))
+                connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data"))
             except Exception as error:
                 raise RuntimeError(
                     "PostGIS activation failed; check CREATE EXTENSION privileges."
@@ -56,7 +57,7 @@ def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
         )).scalar_one_or_none()
         if version is None or schema != POSTGIS_SCHEMA:
             raise RuntimeError("PostGIS extension/schema verification failed.")
-    logger.info("PostGIS ready | database=%s | schema=public | version=%s", expected_database, version)
+    logger.info("PostGIS ready | database=%s | schema=climate_data | version=%s", expected_database, version)
     return str(version)
 
 
