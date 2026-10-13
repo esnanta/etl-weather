@@ -59,7 +59,7 @@ def import_districts(
     province_sql = text(f"""
         INSERT INTO {APPLICATION_SCHEMA}.{PROVINCE_TABLE}
           (country_code, province_name, source_dataset, source_version,
-           source_feature_ref, geom)
+           source_feature_ref, boundary_geometry)
         VALUES (
           :country, :province, :dataset, :version, NULL,
           ST_SetSRID(ST_GeomFromGeoJSON(:geometry), 4326)
@@ -71,19 +71,19 @@ def import_districts(
     """)
     dissolve_sql = text(f"""
         UPDATE {APPLICATION_SCHEMA}.{PROVINCE_TABLE} p
-        SET geom = boundaries.geom
+        SET boundary_geometry = boundaries.boundary_geometry
         FROM (
-          SELECT ST_Multi(ST_UnaryUnion(ST_Collect(d.geom))) AS geom
+          SELECT ST_Multi(ST_UnaryUnion(ST_Collect(d.boundary_geometry))) AS boundary_geometry
           FROM {APPLICATION_SCHEMA}.{DISTRICT_TABLE} d
           WHERE d.province_id = :province_id
         ) boundaries
         WHERE p.id = :province_id
-          AND boundaries.geom IS NOT NULL
+          AND boundaries.boundary_geometry IS NOT NULL
     """)
     district_sql = text(f"""
         INSERT INTO {APPLICATION_SCHEMA}.{DISTRICT_TABLE}
           (province_id, district_name, source_dataset, source_version,
-           source_feature_ref, geom)
+           source_feature_ref, boundary_geometry)
         VALUES (
           :province_id, :district, :dataset, :version, :ref,
           ST_SetSRID(ST_GeomFromGeoJSON(:geometry), 4326)
@@ -91,7 +91,7 @@ def import_districts(
         ON CONFLICT (source_dataset, source_version, source_feature_ref)
         DO UPDATE SET province_id = EXCLUDED.province_id,
                       district_name = EXCLUDED.district_name,
-                      geom = EXCLUDED.geom
+                      boundary_geometry = EXCLUDED.boundary_geometry
         RETURNING id
     """)
     # A province can have multiple districts in one source; dissolve its parts.
