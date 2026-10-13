@@ -44,7 +44,7 @@ python -m geospatial.database.bootstrap
 
 This command connects through the existing `POSTGRES_*` configuration, verifies the connected database name, enables PostGIS only if missing, and does **not** create or reset the database, touch climate data, or start Airflow. It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The importer has not yet been implemented (P4.3/P4.4).
 
-For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). For existing databases populated before this rename, run [`geospatial/sql/03_rename_boundary_geometry.sql`](./geospatial/sql/03_rename_boundary_geometry.sql) once on `weather` before using the updated importer.
+For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
 
 ## Active Dataset
 
