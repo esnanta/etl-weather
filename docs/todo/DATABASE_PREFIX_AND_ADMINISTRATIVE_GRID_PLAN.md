@@ -303,6 +303,10 @@ User ran `source activate-airflow.sh -q` and `python -m geospatial.database.boot
 
 Implemented `geospatial/importers/reader.py` and `geospatial/importers/districts.py`: mapped immutable-source validation before writes, source-specific reference normalization, automatic PostGIS bootstrap, transaction-scoped upserts, 3D geometry, and province dissolve from *all stored district boundaries* so a partial import does not delete other districts or reduce the province outline. Added `tests/unit/geospatial/test_importer.py` and read-only `geospatial/sql/02_import_verification.sql`. CLI defaults to validation-only; `--execute` performs writes. **Do not mark P4.4 completed until user executes tests, first import, repeat import and SQL checks.** Source release/version still unverified.
 
+### P4.4 first import evidence — 2026-10-13
+
+User reported `python -m pytest tests/unit/geospatial -q`: **19 passed in 0.70s**. Running `python -m geospatial.importers.districts --execute` targeted `weather.climate_data`, validated 23 GeoJSON features, confirmed PostGIS 3.4.2, processed 23/23 districts, and logged transaction commit with one province. Source SHA-256: `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. This establishes a successful *first* import run, **not** yet database-side geometry checks or repeated-import idempotency; those require user verification using `geospatial/sql/02_import_verification.sql` and rerun. Airflow remains out of scope.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
