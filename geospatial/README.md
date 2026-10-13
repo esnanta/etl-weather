@@ -82,3 +82,7 @@ python -m pytest tests/integration/geospatial/test_import_idempotency.py -q
 These tests check repeated import (stable primary keys, row counts and XYZ), partial input (other districts and complete province geometry survive), failure injected after a real district write (both province and district inserts rolled back), and failed retry (previous committed records unchanged). No network/CDS or Airflow is used. The suite has been added to the repository but still requires a local PostgreSQL test run; until then it is not a confirmed pass.
 
 To demonstrate **live idempotency for the already imported Aceh file** in `weather`, repeat `python -m geospatial.importers.districts --execute` once only after tests pass, then rerun `geospatial/sql/02_import_verification.sql`. It must remain one province, 23 districts and PASS. No database reset is necessary.
+
+### SQL verification connection context
+
+`geospatial/sql/02_import_verification.sql` now sets `search_path` to `climate_data, public` in the SQL file and qualifies PostGIS functions as `public.ST_*`. This avoids relying on PhpStorm session settings and keeps the query independently executable if only its SELECT is selected. The file does not mutate geospatial data. It assumes PostGIS is installed in `public`, as verified on the application's `weather` database. Run the complete file against `weather`, and review the newly generated result rather than a previous result tab.
