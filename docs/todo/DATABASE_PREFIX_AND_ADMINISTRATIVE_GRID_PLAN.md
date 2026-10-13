@@ -299,6 +299,10 @@ User ran `source activate-airflow.sh -q` and `python -m geospatial.database.boot
 - CLI `python -m geospatial.database.schema` only previews the target; `--execute` performs CREATE TABLE/INDEX. It invokes PostGIS bootstrap, never creates/drops the database, changes climate tables, or imports GeoJSON. No DDL has been executed on the user's machine by the assistant.
 - Unit tests exercise real schema DDL generation and mapping contracts via a captured connection; server-side PostGIS constraints, FK behavior, 3D round-trip and idempotency still require integration verification against the user's database. Do not mark P4.3 runtime verification complete prematurely.
 
+### P4.4 importer implementation — pending user runtime verification
+
+Implemented `geospatial/importers/reader.py` and `geospatial/importers/districts.py`: mapped immutable-source validation before writes, source-specific reference normalization, automatic PostGIS bootstrap, transaction-scoped upserts, 3D geometry, and province dissolve from *all stored district boundaries* so a partial import does not delete other districts or reduce the province outline. Added `tests/unit/geospatial/test_importer.py` and read-only `geospatial/sql/02_import_verification.sql`. CLI defaults to validation-only; `--execute` performs writes. **Do not mark P4.4 completed until user executes tests, first import, repeat import and SQL checks.** Source release/version still unverified.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
