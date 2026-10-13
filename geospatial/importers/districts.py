@@ -6,6 +6,9 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
+
+from tqdm.auto import tqdm
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -37,6 +40,7 @@ def import_districts(
     database: DatabaseConfig,
     source: GeoJSONSourceConfig = ACEH_DISTRICTS,
     path: Path | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> ImportSummary:
     """Validate entire source first; commit province/district UPSERTs atomically.
 
@@ -95,6 +99,7 @@ def import_districts(
     for feature in features:
         grouped.setdefault(feature.province_name, []).append(feature)
 
+    completed = 0
     with engine.begin() as connection:
         actual = connection.execute(text("SELECT current_database()")).scalar_one()
         if actual != database.database:
@@ -122,6 +127,9 @@ def import_districts(
                         "geometry": feature.geometry_json,
                     },
                 ).scalar_one()
+                completed += 1
+                if progress is not None:
+                    progress(completed, len(features))
             connection.execute(dissolve_sql, {"province_id": province_id})
 
     logger.info(
@@ -152,7 +160,18 @@ def main() -> None:
         return
     engine = create_engine(config.url, future=True)
     try:
-        result = import_districts(engine, database=config, source=source)
+        with tqdm(total=len(features), desc="Importing districts", unit="district") as bar:
+            last_count = 0
+
+            def update_progress(completed: int, total: int) -> None:
+                nonlocal last_count
+                bar.update(completed - last_count)
+                last_count = completed
+
+            result = import_districts(
+                engine, database=config, source=source, progress=update_progress
+            )
+        print("Transaction committed successfully.")
         print(
             f"Import complete: {result.features} features, "
             f"{result.provinces} provinces; SHA256={result.source_sha256}"
