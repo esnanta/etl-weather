@@ -44,9 +44,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128),
-                boundary_geometry geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_province_geom_valid CHECK (ST_IsValid(boundary_geometry)),
-                CONSTRAINT ck_province_geom_nonempty CHECK (NOT ST_IsEmpty(boundary_geometry)),
+                boundary_geometry public.geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_province_geom_valid CHECK (public.ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_province_geom_nonempty CHECK (NOT public.ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_province_country_name UNIQUE (country_code, province_name),
                 CONSTRAINT uq_province_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref)
