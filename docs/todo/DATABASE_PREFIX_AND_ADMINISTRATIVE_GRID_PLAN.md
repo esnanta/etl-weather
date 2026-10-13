@@ -315,6 +315,12 @@ Approved column name for provincial and district boundary geometries: `boundary_
 
 Added `tests/integration/geospatial/test_import_idempotency.py` to exercise the **production** schema builder and importer on actual PostgreSQL/PostGIS. The fixture requires guarded `TEST_POSTGRES_*` settings, uses a unique throwaway schema and drops only that schema. Tests cover two consecutive imports with stable IDs/XYZ; partial-file import preserving other districts and province; forced failure after the first genuine INSERT proving rollback; and a failed repeat import preserving previous committed state. Run `python -m pytest tests/integration/geospatial/test_import_idempotency.py -q`. These tests have not yet been run on the user's PostgreSQL server and are not claimed to have passed. After a pass, verify the second full Aceh import and `geospatial/sql/02_import_verification.sql` against `weather`.
 
+### P4.4 idempotency / rollback runtime evidence — 2026-10-13
+
+User ran `python -m pytest tests/integration/geospatial/test_import_idempotency.py -q`: **4 passed in 1.48s**, confirming the real PostgreSQL test cases for repeat imports, partial imports, rollback after a write, and failed-retry rollback/recovery under isolated TEST_POSTGRES configuration. User then reran `python -m geospatial.importers.districts --execute` on `weather.climate_data`: **23/23 features processed, one province, transaction committed**; source SHA-256 unchanged (`b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`). Previous SQL verification on `weather` returned 1 province, 23 districts, 23 unique source IDs and `PASS` (before the repeat run). **Final post-repeat read-only SQL verification is still requested** to independently establish persisted counts after the second run.
+
+User also added commit `4f8e0b2` (`tests/integration/geospatial/__init__.py`); it was preserved.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
@@ -326,7 +332,7 @@ Added `tests/integration/geospatial/test_import_idempotency.py` to exercise the 
 - [ ] Implement idempotent GeoJSON reader/importer; validate GeoJSON properties (`OBJECTID`, `WADMKK`, `WADMPR`), geometry type, CRS (OGC:CRS84 input / EPSG:4326 storage), invalid polygon handling and duplicate identities. Report missing or duplicate `source_feature_ref` values within a source dataset.
 - [ ] Import Aceh kabupaten/kota boundaries from `/geospatial/sources/id/districts/Aceh.geojson`; reconcile actual feature counts and report anomalies.
 - [ ] Prevent a partial one-kabupaten file load from deleting other imported administrative records.
-- [ ] Include tests for re-import, invalid geometry, missing fields, CRS, transaction rollback, and unmatched features.
+- [x] Add and execute real PostgreSQL tests for re-import, partial import, rollback, failed retry; 4 passed (2026-10-13). Unit tests cover missing mapped fields and invalid CRS; invalid geometry/topology and unmatched grid cases remain additional P4/P5 acceptance checks.
 
 ### P5 — Spatial mapping, query views and performance
 
