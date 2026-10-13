@@ -46,11 +46,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 EXPECTED_APPLICATION_TABLES = (
-    "daily_climate",
-    "daily_climate_detail",
-    "pipeline_progress",
-    "pipeline_progress_detail",
-    "submission_pacing",
+    DAILY_CLIMATE_TABLE,
+    DAILY_CLIMATE_DETAIL_TABLE,
+    PIPELINE_PROGRESS_TABLE,
+    PIPELINE_PROGRESS_DETAIL_TABLE,
+    PACING_TABLE,
 )
 
 
