@@ -32,7 +32,8 @@ WHERE name = 'postgis';
 An available version with `installed_version IS NULL` means PostGIS is installed on the **server** but is not enabled in that **database**. Enable it only in the chosen database, with appropriate privileges and after confirming the target:
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE SCHEMA IF NOT EXISTS climate_data;
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data;
 ```
 
 For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. Spatial bootstrap can be run manually (this **changes the selected database** by enabling the extension if absent):
@@ -49,7 +50,7 @@ For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01
 
 ### PostGIS deployment contract (single lifecycle)
 
-PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `geospatial.database.bootstrap` automatically checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public` when absent, and confirms the extension actually resides in `public`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `public.geometry` and `public.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
+PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `geospatial.database.bootstrap` automatically checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public` when absent, and confirms the extension actually resides in `public`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `climate_data.geometry` and `climate_data.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
 
 ## Active Dataset
 
@@ -345,3 +346,5 @@ python -m pytest tests/integration/pipeline/test_postgresql_idempotency.py -q
 ```
 
 Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).
+
+**Current development-database caveat:** The existing `weather` PostgreSQL database has PostGIS 3.4.2 installed in `public` from earlier P4 work. The new deployment contract instead installs PostGIS objects in `climate_data`. Do not attempt to reinstall, relocate, or drop the existing extension automatically; rebuilding the database is a separate destructive user-authorized operation. Until that rebuild, the new geospatial bootstrap/import code will intentionally reject the old extension placement.
