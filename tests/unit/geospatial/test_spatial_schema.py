@@ -62,7 +62,7 @@ def test_schema_builder_uses_postgis_and_protects_existing_climate_tables() -> N
     assert "FOREIGN KEY (district_id, province_id)" in sql
     assert "REFERENCES climate_data.t_district(id, province_id)" in sql
     assert "match_status IN ('matched', 'unmatched', 'ambiguous')" in sql
-    assert "USING GIST (geom)" in sql
+    assert "USING GIST (boundary_geometry)" in sql
     assert "DROP TABLE" not in sql
     assert "t_daily_climate" not in sql
 
