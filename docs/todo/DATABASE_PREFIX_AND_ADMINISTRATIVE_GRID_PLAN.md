@@ -309,7 +309,7 @@ User reported `python -m pytest tests/unit/geospatial -q`: **19 passed in 0.70s*
 
 ### Administrative geometry column naming — 2026-10-13
 
-Approved column name for provincial and district boundary geometries: `boundary_geometry geometry(MultiPolygonZ,4326)` (replaces `geom`). DDL, importer, validation query and schema tests now use it. The 23-feature first import already used the old column, so existing `weather.climate_data` tables require the **one-time non-destructive** transaction in `geospatial/sql/03_rename_boundary_geometry.sql` before another importer run. This renames columns in place without deleting geometry, including Z coordinates; it has **not** been executed by the assistant. Re-run tests and verification afterward.
+Approved column name for provincial and district boundary geometries: `boundary_geometry geometry(MultiPolygonZ,4326)` (replaces `geom`). DDL, importer, validation query and schema tests now use it. The one-off rename SQL file has been removed at user request; future clean-slate database recreation will use `boundary_geometry` directly. The user provided a screenshot of the import verification query returning PASS for 1 province, 23 districts, 23 distinct source references, 0 invalid geometries and 0 unexpected first-Z values, as well as 19 passing unit tests. A second importer execution and rollback behavior remain unverified. **Do not run destructive database reset unless the user expressly requests execution and confirms the targets.**
 
 ### P4 — Administrative reference schema and importer
 
