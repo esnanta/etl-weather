@@ -45,6 +45,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+def _section(title: str) -> None:
+    """Make major phases recognizable in terminal output."""
+    logger.info("\n%s\n%s", "=" * 68, title)
+
+
 EXPECTED_APPLICATION_TABLES = (
     DAILY_CLIMATE_TABLE,
     DAILY_CLIMATE_DETAIL_TABLE,
@@ -73,7 +78,7 @@ def _display_targets(
     config: DatabaseConfig,
     processes: list[tuple[int, str]],
 ) -> None:
-    logger.warning("Destroy-all targets")
+    _section("DESTROY ALL | TARGETS (review before confirmation)")
     logger.warning(
         "  PostgreSQL=%s:%d/%s | user=%s | schema=%s",
         config.host,
@@ -143,14 +148,18 @@ def _require_no_database_sessions(config: DatabaseConfig) -> None:
         )
         return
 
-    rendered = "; ".join(
-        "pid={pid} user={user} app={application_name!r} "
+    rendered = "\n".join(
+        "  - pid={pid} user={user} app={application_name!r} "
         "client={client_addr!r} state={state!r}".format(**session)
         for session in sessions
     )
     raise RuntimeError(
-        f"Target database {config.database!r} still has external session(s): "
-        + rendered
+        f"Cannot recreate database {config.database!r}: "
+        f"{len(sessions)} external PostgreSQL connection(s) are still open.\n"
+        f"{rendered}\n"
+        "Action: disconnect the listed database sessions in PhpStorm/DataGrip "
+        "or other clients, then rerun the command. "
+        "Database recreation and file cleanup have NOT started."
     )
 
 
@@ -252,14 +261,20 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
 
 def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     """Execute clean-slate destruction in failure-safe order."""
+    _section("STEP 1/6 | Stop Airflow processes")
     stopped_processes = _stop_all_airflow_processes()
+    _section("STEP 2/6 | Check open PostgreSQL sessions")
     _require_no_database_sessions(config)
 
+    _section("STEP 3/6 | Recreate PostgreSQL database")
     recreate_postgres_database._recreate_database(config)
+    _section("STEP 4/6 | Remove generated data")
     data_removed = reset_data.clear_data_contents()
+    _section("STEP 5/6 | Remove Airflow logs and runtime state")
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()
     runtime_files_removed = len(reset_airflow_runtime.clear_airflow_runtime_state())
 
+    _section("STEP 6/6 | Verify clean state")
     verification = _verify_clean_state(config)
     return {
         "stopped_airflow_processes": stopped_processes,
@@ -276,12 +291,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         app_env = resolve_app_environment()
     except ValueError as error:
-        logger.warning("Destroy-all aborted | %s", error)
+        _section("DESTROY ALL | BLOCKED")
+        logger.warning("Reason: %s", error)
+        logger.warning("No destructive operation was started.")
         return 2
 
+    _section("DESTROY ALL | PREFLIGHT")
     logger.info("Application environment | APP_ENV=%s", app_env)
     if app_env != APP_ENV_DEV:
         logger.warning("Destroy-all unavailable | APP_ENV=%s.", app_env)
+        logger.warning("Reason: destructive operations require APP_ENV=dev. No changes made.")
         return 3
 
     config = DatabaseConfig.from_env()
@@ -290,22 +309,24 @@ def main(argv: list[str] | None = None) -> int:
         recreate_postgres_database._validate_static_guards(config)
         processes = list_airflow_processes()
     except RuntimeError as error:
-        logger.warning("Destroy-all preflight failed | %s", error)
+        _section("DESTROY ALL | PREFLIGHT FAILED")
+        logger.warning("Reason: %s", error)
+        logger.warning("No destructive operation was started.")
         return 4
 
     _display_targets(config, processes)
 
     if not args.execute:
-        logger.info(
-            "Inspect-only mode | no Airflow process, database, data, logs, or "
-            "runtime state was changed."
-        )
+        _section("DESTROY ALL | INSPECTION COMPLETE")
+        logger.info("No Airflow process, database, data, logs, or runtime state was changed.")
         return 0
 
     if not _confirmation():
-        logger.info("Destroy-all cancelled; exact DESTROY confirmation not supplied.")
+        _section("DESTROY ALL | CANCELLED")
+        logger.info("Exact DESTROY confirmation not supplied; no changes made.")
         return 0
 
+    _section("DESTROY ALL | EXECUTION STARTED")
     logger.warning(
         "Executing intentional development destroy | database=%s | host=%s",
         config.database,
@@ -315,9 +336,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = execute_destroy(config)
     except RuntimeError as error:
-        logger.warning("Destroy-all failed | %s", error)
+        _section("DESTROY ALL | FAILED")
+        logger.error("Destroy-all failed | %s", error)
+        logger.error("Review the failure above before retrying.")
+        logger.error("Some earlier steps may already have completed; do not assume full rollback.")
         return 5
 
+    _section("DESTROY ALL | SUCCESS")
     logger.info(
         "Destroy-all complete | stopped_airflow_processes=%d | "
         "data_entries_removed=%d | airflow_log_entries_removed=%d | "
