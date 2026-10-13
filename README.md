@@ -46,6 +46,11 @@ This command connects through the existing `POSTGRES_*` configuration, verifies 
 
 For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
 
+
+### PostGIS deployment contract (single lifecycle)
+
+PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `geospatial.database.bootstrap` automatically checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public` when absent, and confirms the extension actually resides in `public`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `public.geometry` and `public.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
+
 ## Active Dataset
 
 ```text
