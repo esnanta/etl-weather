@@ -58,19 +58,23 @@ def import_districts(
            source_feature_ref, geom)
         VALUES (
           :country, :province, :dataset, :version, NULL,
-          ST_Multi(ST_UnaryUnion(ST_Collect(
-            ARRAY(
-              SELECT ST_SetSRID(ST_GeomFromGeoJSON(x.geometry_json), 4326)
-              FROM jsonb_to_recordset(CAST(:geometries AS jsonb))
-                   AS x(geometry_json text)
-            )
-          )))
+          ST_SetSRID(ST_GeomFromGeoJSON(:geometry), 4326)
         )
         ON CONFLICT (country_code, province_name)
-        DO UPDATE SET geom = EXCLUDED.geom,
-                      source_dataset = EXCLUDED.source_dataset,
+        DO UPDATE SET source_dataset = EXCLUDED.source_dataset,
                       source_version = EXCLUDED.source_version
         RETURNING id
+    """)
+    dissolve_sql = text(f"""
+        UPDATE {APPLICATION_SCHEMA}.{PROVINCE_TABLE} p
+        SET geom = boundaries.geom
+        FROM (
+          SELECT ST_Multi(ST_UnaryUnion(ST_Collect(d.geom))) AS geom
+          FROM {APPLICATION_SCHEMA}.{DISTRICT_TABLE} d
+          WHERE d.province_id = :province_id
+        ) boundaries
+        WHERE p.id = :province_id
+          AND boundaries.geom IS NOT NULL
     """)
     district_sql = text(f"""
         INSERT INTO {APPLICATION_SCHEMA}.{DISTRICT_TABLE}
@@ -91,16 +95,11 @@ def import_districts(
     for feature in features:
         grouped.setdefault(feature.province_name, []).append(feature)
 
-    import json
-
     with engine.begin() as connection:
         actual = connection.execute(text("SELECT current_database()")).scalar_one()
         if actual != database.database:
             raise RuntimeError("Importer connected to an unexpected database.")
         for province_name, members in sorted(grouped.items()):
-            geometry_rows = json.dumps(
-                [{"geometry_json": f.geometry_json} for f in members]
-            )
             province_id = connection.execute(
                 province_sql,
                 {
@@ -108,7 +107,7 @@ def import_districts(
                     "province": province_name,
                     "dataset": source.source_dataset,
                     "version": source.source_version,
-                    "geometries": geometry_rows,
+                    "geometry": members[0].geometry_json,
                 },
             ).scalar_one()
             for feature in members:
@@ -123,6 +122,7 @@ def import_districts(
                         "geometry": feature.geometry_json,
                     },
                 ).scalar_one()
+            connection.execute(dissolve_sql, {"province_id": province_id})
 
     logger.info(
         "Administrative import committed | features=%s | provinces=%s | sha256=%s",
