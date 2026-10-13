@@ -311,6 +311,10 @@ User reported `python -m pytest tests/unit/geospatial -q`: **19 passed in 0.70s*
 
 Approved column name for provincial and district boundary geometries: `boundary_geometry geometry(MultiPolygonZ,4326)` (replaces `geom`). DDL, importer, validation query and schema tests now use it. The one-off rename SQL file has been removed at user request; future clean-slate database recreation will use `boundary_geometry` directly. The user provided a screenshot of the import verification query returning PASS for 1 province, 23 districts, 23 distinct source references, 0 invalid geometries and 0 unexpected first-Z values, as well as 19 passing unit tests. A second importer execution and rollback behavior remain unverified. **Do not run destructive database reset unless the user expressly requests execution and confirms the targets.**
 
+### P4.4 idempotency and rollback integration coverage — awaiting execution
+
+Added `tests/integration/geospatial/test_import_idempotency.py` to exercise the **production** schema builder and importer on actual PostgreSQL/PostGIS. The fixture requires guarded `TEST_POSTGRES_*` settings, uses a unique throwaway schema and drops only that schema. Tests cover two consecutive imports with stable IDs/XYZ; partial-file import preserving other districts and province; forced failure after the first genuine INSERT proving rollback; and a failed repeat import preserving previous committed state. Run `python -m pytest tests/integration/geospatial/test_import_idempotency.py -q`. These tests have not yet been run on the user's PostgreSQL server and are not claimed to have passed. After a pass, verify the second full Aceh import and `geospatial/sql/02_import_verification.sql` against `weather`.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
