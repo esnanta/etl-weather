@@ -27,7 +27,7 @@ source activate-airflow.sh -q
 python -m geospatial.database.bootstrap
 ```
 
-This is idempotent and activates PostGIS only when missing; it never creates/drops the database or alters weather observations. Initial activation requires sufficient database permissions. **The future GeoJSON importer must invoke `ensure_postgis_extension(engine, expected_database=...)` automatically before writing features.** P4.4 importer has not been implemented yet. This module does not use Airflow.
+This is idempotent and activates PostGIS only when missing; it never creates/drops the database or alters weather observations. Initial activation requires sufficient database permissions. The GeoJSON importer invokes `ensure_postgis_extension(engine, expected_database=...)` automatically before writing features. This module does not use Airflow.
 
 ## P4.3 spatial schema
 
@@ -45,3 +45,23 @@ python -m geospatial.database.schema --execute
 ```
 
 Existing mismatched table layouts are not migrated by `IF NOT EXISTS`; verify table definitions before using P4.4. `t_province` and `t_district` preserve XYZ as `geometry(MultiPolygonZ,4326)`. The grid mapping uses `latitude` and `longitude` with a unique coordinate pair and an explicit status (`matched`, `unmatched`, `ambiguous`); only unambiguous matches receive district and province foreign keys. Source property mapping lives in `geospatial/config.py`. Version metadata for the Aceh source is currently `unverified` and must be resolved before import or published attribution.
+
+## P4.4 GeoJSON district importer
+
+`geospatial/importers/reader.py` validates the configured source file and never changes it. Property names and source identity are read from `geospatial/config.py`, not hard-coded in importer logic. `geospatial/importers/districts.py` imports all valid features in one PostgreSQL transaction with district UPSERT keyed by `(source_dataset, source_version, source_feature_ref)` and a unique province name scoped to country. The province polygon is dissolved from **all districts currently in the database** after import, so a partial input does not remove previously loaded regions or shrink the province polygon. The importer does not touch climate observations or grid mappings.
+
+Validate source without modifying PostgreSQL:
+
+```bash
+source activate-airflow.sh -q
+python -m geospatial.importers.districts
+python -m pytest tests/unit/geospatial -q
+```
+
+Import into configured `weather.climate_data` (**database write**):
+
+```bash
+python -m geospatial.importers.districts --execute
+```
+
+Then run `geospatial/sql/02_import_verification.sql` in PhpStorm, and repeat the import and verification to check idempotency. Expected initial Aceh counts: one province, 23 districts, and no grid mapping yet. The configured source version remains `unverified`; replace it only once actual release metadata is established, with a corresponding migration/identity strategy. Production geometry validity and transactional rollback still require on-server verification; no live import has been run by the assistant.
