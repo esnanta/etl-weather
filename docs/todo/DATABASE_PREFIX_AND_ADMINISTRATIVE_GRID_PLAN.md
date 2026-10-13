@@ -307,6 +307,10 @@ Implemented `geospatial/importers/reader.py` and `geospatial/importers/districts
 
 User reported `python -m pytest tests/unit/geospatial -q`: **19 passed in 0.70s**. Running `python -m geospatial.importers.districts --execute` targeted `weather.climate_data`, validated 23 GeoJSON features, confirmed PostGIS 3.4.2, processed 23/23 districts, and logged transaction commit with one province. Source SHA-256: `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. This establishes a successful *first* import run, **not** yet database-side geometry checks or repeated-import idempotency; those require user verification using `geospatial/sql/02_import_verification.sql` and rerun. Airflow remains out of scope.
 
+### Administrative geometry column naming — 2026-10-13
+
+Approved column name for provincial and district boundary geometries: `boundary_geometry geometry(MultiPolygonZ,4326)` (replaces `geom`). DDL, importer, validation query and schema tests now use it. The 23-feature first import already used the old column, so existing `weather.climate_data` tables require the **one-time non-destructive** transaction in `geospatial/sql/03_rename_boundary_geometry.sql` before another importer run. This renames columns in place without deleting geometry, including Z coordinates; it has **not** been executed by the assistant. Re-run tests and verification afterward.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
