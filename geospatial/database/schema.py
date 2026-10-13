@@ -44,9 +44,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128),
-                geom geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_province_geom_valid CHECK (ST_IsValid(geom)),
-                CONSTRAINT ck_province_geom_nonempty CHECK (NOT ST_IsEmpty(geom)),
+                boundary_geometry geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_province_geom_valid CHECK (ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_province_geom_nonempty CHECK (NOT ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_province_country_name UNIQUE (country_code, province_name),
                 CONSTRAINT uq_province_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref)
@@ -61,9 +61,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128) NOT NULL,
-                geom geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_district_geom_valid CHECK (ST_IsValid(geom)),
-                CONSTRAINT ck_district_geom_nonempty CHECK (NOT ST_IsEmpty(geom)),
+                boundary_geometry geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_district_geom_valid CHECK (ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_district_geom_nonempty CHECK (NOT ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_district_province_name UNIQUE (province_id, district_name),
                 CONSTRAINT uq_district_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref),
@@ -110,7 +110,7 @@ def create_spatial_tables(
             ("ix_t_district_geom", district),
         ):
             connection.execute(text(
-                f"CREATE INDEX IF NOT EXISTS {name} ON {table} USING GIST (geom)"
+                f"CREATE INDEX IF NOT EXISTS {name} ON {table} USING GIST (boundary_geometry)"
             ))
         connection.execute(text(
             f"CREATE INDEX IF NOT EXISTS ix_t_district_province_id "
