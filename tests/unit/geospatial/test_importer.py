@@ -104,3 +104,22 @@ def test_importer_preflight_validates_before_postgis(tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="CRS"):
             import_districts(object(), database=db, path=path)
         bootstrap.assert_not_called()
+
+def test_reader_accepts_decimal_geojson_coordinates(tmp_path: Path) -> None:
+    """Regression: json.load(parse_float=Decimal) must pass coordinate checks."""
+    path = _fixture(tmp_path / "decimal.geojson")
+    doc = json.loads(path.read_text())
+    doc["features"][0]["geometry"]["coordinates"][0][0] = [
+        [95.123456789, 2.123456789, 0.0],
+        [96.123456789, 2.123456789, 0.0],
+        [96.123456789, 3.123456789, 0.0],
+        [95.123456789, 2.123456789, 0.0],
+    ]
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    before = path.read_bytes()
+    features = read_district_features(ACEH_DISTRICTS, path=path)
+    assert len(features) == 1
+    coords = json.loads(features[0].geometry_json)["coordinates"][0][0][0]
+    assert coords == [95.123456789, 2.123456789, 0.0]
+    assert path.read_bytes() == before
+
