@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -58,8 +57,8 @@ def _validate_coordinates(geometry: dict, *, dimensions: int) -> None:
                     raise ValueError("Incorrect GeoJSON coordinate dimensions.")
                 if any(
                     isinstance(v, bool)
-                    or not isinstance(v, (int, float))
-                    or not math.isfinite(v)
+                    or not isinstance(v, (int, float, Decimal))
+                    or not Decimal(str(v)).is_finite()
                     for v in coords
                 ):
                     raise ValueError("GeoJSON has non-finite/non-numeric coordinate.")
