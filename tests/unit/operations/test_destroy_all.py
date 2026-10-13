@@ -1,4 +1,8 @@
-"""Verify the intentional clean-slate destroy command."""
+"""Verify production destroy-all guards, execution order, and operator logs.
+
+These tests invoke the real destroy_all functions while isolating destructive OS,
+PostgreSQL, and Airflow boundaries. They do not substitute for a live reset.
+"""
 
 from __future__ import annotations
 
@@ -327,3 +331,78 @@ def test_direct_script_execution_hard_denies_prod() -> None:
     assert result.returncode == 3
     assert "Destroy-all unavailable | APP_ENV=prod" in result.stderr
     assert "ImportError" not in result.stderr
+
+
+def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog) -> None:
+    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr("scripts.destroy_all._stop_all_airflow_processes", lambda: 0)
+    monkeypatch.setattr("scripts.destroy_all._database_sessions", lambda config: [
+        {"pid": 15381, "user": "postgres", "application_name": "PyCharm",
+         "client_addr": "127.0.0.1", "state": "idle"}
+    ])
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        lambda config: pytest.fail("Database recreation must not start."),
+    )
+
+    with caplog.at_level("INFO"):
+        assert destroy_all.main(["--execute"]) == 5
+    assert "STEP 2/6 | Check open PostgreSQL sessions" in caplog.text
+    assert "DESTROY ALL | FAILED" in caplog.text
+    assert "pid=15381" in caplog.text
+    assert "PyCharm" in caplog.text
+    assert "disconnect the listed database sessions" in caplog.text
+    assert "file cleanup have NOT started" in caplog.text
+
+
+def test_success_logs_phases_and_final_state(monkeypatch, caplog) -> None:
+    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr(
+        "scripts.destroy_all._stop_all_airflow_processes", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all._require_no_database_sessions", lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_data.clear_data_contents", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_airflow_logs.clear_airflow_logs", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all._verify_clean_state", lambda config: {
+            "airflow_processes_remaining": 0,
+            "airflow_runtime_files_remaining": 0,
+            "data_entries_remaining": 0,
+            "airflow_log_entries_remaining": 0,
+            "database_ready": 1,
+        },
+    )
+    with caplog.at_level("INFO"):
+        assert destroy_all.main(["--execute"]) == 0
+    for step in range(1, 7):
+        assert f"STEP {step}/6" in caplog.text
+    assert "DESTROY ALL | SUCCESS" in caplog.text
+    assert "database_ready=1" in caplog.text
