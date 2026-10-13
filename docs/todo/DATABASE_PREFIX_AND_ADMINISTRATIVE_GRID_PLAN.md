@@ -321,6 +321,10 @@ User ran `python -m pytest tests/integration/geospatial/test_import_idempotency.
 
 User also added commit `4f8e0b2` (`tests/integration/geospatial/__init__.py`); it was preserved.
 
+### Unified PostGIS schema contract — 2026-10-13
+
+Bootstrap, spatial schema, and district importer now use the same fixed extension location: `public`, while application tables reside in `climate_data`. Bootstrap creates the extension with `WITH SCHEMA public` if missing and fails on an incompatible pre-existing installation rather than relocating it automatically. DDL refers to `public.geometry`, validity functions to `public.ST_*`, and importer/verification queries use schema-qualified PostGIS functions. The PostgreSQL server-side PostGIS package remains an explicit deployment prerequisite. User still needs to rerun unit/integration tests after these changes. The latest screenshot showed 23 districts, 23 unique references and zero invalid geometries, though the displayed result pane did not include the final PASS column.
+
 ### P4 — Administrative reference schema and importer
 
 - [x] Check PostGIS package availability on PostgreSQL 16 and activate/verify it on `weather`: user executed `python -m geospatial.database.bootstrap` successfully; PostGIS version 3.4.2 reported (2026-10-12).
