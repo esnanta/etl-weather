@@ -69,3 +69,16 @@ Then run `geospatial/sql/02_import_verification.sql` in PhpStorm, and repeat the
 The `--execute` command displays a `tqdm` progress bar for district UPSERTs (23 expected for the Aceh source). A full bar means all district statements finished; the province dissolve and transaction COMMIT may still be in progress. The importer reports success only after COMMIT. If an exception occurs, the transaction rolls back and the importer does not print its success message. The progress bar is CLI-only; library callers can omit the optional progress callback.
 
 Administrative boundary columns are named `boundary_geometry` in both `t_province` and `t_district` (`geometry(MultiPolygonZ,4326)`); `geometry` is the PostGIS type. Fresh schema bootstrap creates `boundary_geometry` directly. Existing databases may be deliberately reset by the user at a later stage; the project does not retain a one-off rename migration.
+
+## P4.4 idempotency and rollback integration tests
+
+The tests in `tests/integration/geospatial/test_import_idempotency.py` run the **actual** schema builder and GeoJSON importer against a unique temporary schema in the database configured by `TEST_POSTGRES_*`. They never use `POSTGRES_DATABASE=weather`, require the test database name to contain `test`, and clean up only their own temporary schema. PostGIS must be available in that database and the test role must have sufficient privileges for `CREATE EXTENSION` (if needed), schema creation and cleanup.
+
+```bash
+source activate-airflow.sh -q
+python -m pytest tests/integration/geospatial/test_import_idempotency.py -q
+```
+
+These tests check repeated import (stable primary keys, row counts and XYZ), partial input (other districts and complete province geometry survive), failure injected after a real district write (both province and district inserts rolled back), and failed retry (previous committed records unchanged). No network/CDS or Airflow is used. The suite has been added to the repository but still requires a local PostgreSQL test run; until then it is not a confirmed pass.
+
+To demonstrate **live idempotency for the already imported Aceh file** in `weather`, repeat `python -m geospatial.importers.districts --execute` once only after tests pass, then rerun `geospatial/sql/02_import_verification.sql`. It must remain one province, 23 districts and PASS. No database reset is necessary.
