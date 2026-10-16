@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from pipeline.database import (
+from database.config import (
     DAILY_CLIMATE_DETAIL_TABLE,
     DAILY_CLIMATE_TABLE,
     SCHEMA_NAME,
