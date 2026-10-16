@@ -162,6 +162,14 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - [ ] Local verification: `python -m database.setup --help`, `python -m database.setup` (both dry-run) and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/database -q` followed by full unit regression. Results are **not reported** yet.
 - [ ] Provision and verify isolated `TEST_POSTGRES_*` only with explicit operator approval to run `--execute`. No PostgreSQL connections or writes were performed by these source changes.
 
+## DB-R3 dotenv-isolation test correction (user report, 2026-10-17)
+
+- CLI `python -m database.setup --help` and default dry-run succeeded: distinct `localhost:5432/weather` and `localhost:5432/weather_test` in `climate_data`; no DB connection or changes in dry-run.
+- Local `tests/unit/database -q`: **12 passed, 1 failed**; all units: **362 passed, 1 failed in 8.16s**. Both failures are the same `test_missing_test_configuration_never_uses_application_settings` case.
+- Cause: deleting `TEST_POSTGRES_*` from `os.environ` allows `DatabaseConfig.from_env()` to repopulate these values from the user's existing `.env` via `load_dotenv()`, so the test's missing-config scenario was not actually isolated.
+- Fixed the **unit test fixture** to pass an explicit environment mapping without `TEST_POSTGRES_*` directly to `resolve_test_database_config(env)`, bypassing dotenv; this still validates that test config never falls back to `POSTGRES_*`. Production dotenv behavior remains unchanged.
+- **Awaiting rerun after correction**; do not record a passing 363-test baseline until user reports it. No PostgreSQL integration or setup `--execute` has been run.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
