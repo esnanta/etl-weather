@@ -111,14 +111,22 @@ git grep -n -E 'pipeline[./]database|geospatial[./]database|create_database_engi
 
 Exclude clearly marked historical records when deciding code removal, but do not silently delete past implementation evidence. Step 1 stays unchecked until the full reference inventory and import/CLI impact review is confirmed.
 
+### Step 1 completed — local git grep evidence (user report, 2026-10-16)
+
+The user executed both targeted `git grep` checks on their local `dev` checkout and supplied full terminal output. Active legacy Python imports were identified in `geospatial/config.py`, `orchestration/campaign/reporting.py`, `orchestration/repositories/load_evidence.py`, maintenance scripts (`destroy_all.py`, `recreate_postgres_database.py`, `report_campaign_progress.py`, `reset_all.py`), geospatial/pipeline/orchestration integration tests, geospatial importer unit test, and three operations unit test modules. The remaining internal imports in `pipeline/database/` are expected until package deletion. Separately audited `scripts/inspect_campaign_capacity.py`, which contains function-local legacy imports not matched by the start-of-line-only grep pattern.
+
+CLI/documentation references remain in `README.md`, `geospatial/README.md`, `query/README.md`, and the historical `docs/todo/DATABASE_PREFIX_AND_ADMINISTRATIVE_GRID_PLAN.md`. References in this plan are migration tracking/history, not runtime imports. Root `database.connection.create_database_engine` is canonical, not a legacy symbol to delete.
+
+**Step 1 acceptance:** complete for the agreed grep scope; inventory is known. Step 2 remains pending until migrated paths and test isolation are checked.
+
 ### DB-R2 final cleanup — approved execution order (2026-10-16)
 
 **Scope:** `dev` only. Retain one canonical root `database/` package. Domain reads remain in `pipeline/repositories/`, ETL writes in `pipeline/loaders/`, and progress/pacing operations in `orchestration/repositories/`. No DAG or scientific behavior change. Geospatial must remain independent from orchestration. No database drops, extension relocation, or source-data deletion.
 
 **Step 1 — Audit every remaining legacy reference**
-- [ ] Inventory `pipeline.database`, `geospatial.database`, path-based CLI invocations, imports of old DDL/engine helpers, and stale documentation in `pipeline/`, `geospatial/`, `orchestration/`, `scripts/`, `tests/`, `.github/`, and Markdown/SQL files on **dev**.
-- [ ] Record path + symbol + replacement/retirement decision for every hit. Include potential import cycles and commands documented as `python -m geospatial.database.bootstrap` / `schema`.
-- [ ] Confirm references with a full working-tree `git grep` on `dev`; GitHub code search on default branch alone is not acceptable evidence.
+- [x] Inventory `pipeline.database`, `geospatial.database`, path-based CLI invocations, imports of old DDL/engine helpers, and stale documentation in `pipeline/`, `geospatial/`, `orchestration/`, `scripts/`, `tests/`, `.github/`, and Markdown/SQL files on **dev**.
+- [x] Record path + symbol + replacement/retirement decision for every hit. Include potential import cycles and commands documented as `python -m geospatial.database.bootstrap` / `schema`.
+- [x] Confirm references with a full working-tree `git grep` on `dev`; GitHub code search on default branch alone is not acceptable evidence.
 
 **Step 2 — Migrate all remaining callers to root `database/`**
 - [ ] Replace runtime, maintenance-script, test, and documentation references with canonical `database.config`, `database.connection`, `database.climate`, `database.geospatial`, `database.schema`, or `database.bootstrap`, as appropriate.
