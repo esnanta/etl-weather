@@ -135,7 +135,7 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 
 **Step 3 — Preserve geospatial CLI capabilities**
 - [ ] Decide/document new supported `python -m database.bootstrap` / `python -m database.geospatial` entrypoints or thin CLI scripts before deleting old module paths; preserve dry-run default, `--execute` guard, intended DB identity, and no automatic GeoJSON import.
-- [ ] Verify help/dry-run output and non-destructive operation of new commands. Do not activate PostGIS or create tables merely to check help/dry-run.
+- [x] Verify help/dry-run output and non-destructive operation of new commands. Do not activate PostGIS or create tables merely to check help/dry-run.
 
 **Step 4 — Remove old database packages**
 - [ ] Delete `pipeline/database/` and `geospatial/database/` **only after** Steps 1–3 are verified.
@@ -325,6 +325,15 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - Updated `README.md` and `geospatial/README.md` for the new CLI and corrected the documented PostGIS location to `climate_data`.
 - **Pending user verification:** both `--help` and default dry runs (no `--execute`) and full unit regression. Do not delete legacy wrappers yet; no DB mutation has been executed by this work.
 - Historical notes in `docs/todo/DATABASE_PREFIX_AND_ADMINISTRATIVE_GRID_PLAN.md` should retain original citations and be explicitly marked as historical, not silently rewritten.
+
+## DB-R2 root spatial CLI verified (user report, 2026-10-16)
+
+- `python -m database.bootstrap --help` and `python -m database.geospatial --help`: both succeeded.
+- `python -m database.bootstrap`: `PostGIS target: database=weather, schema=climate_data`, followed by `Dry run: database unchanged`.
+- `python -m database.geospatial`: lists `t_province`, `t_district`, `t_grid_region` with target `weather.climate_data` and `Dry run: no database changes`.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`: **355 passed in 8.56s**.
+- No `--execute` was used. CLI execution against a live database and PostgreSQL integration remain unverified.
+- Step 3 CLI `--help`/dry-run acceptance is satisfied. Step 4 package deletion requires final active-import audit.
 
 ## Current evidence and boundaries
 
