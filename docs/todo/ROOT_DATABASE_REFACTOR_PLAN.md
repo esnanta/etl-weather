@@ -181,6 +181,14 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - **Regression not run:** Local `tests/unit/orchestration -q` and `tests/unit -q` need to be executed after these changes. The pre-change baseline was 122 and 355 passing tests respectively. PostgreSQL integration remains outstanding.
 - No DAG scheduling/retry/deferral or geospatial code was changed in this partial orchestration step.
 
+## DB-R2 orchestration partial migration regression (user report, 2026-10-16)
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` → **122 passed in 4.87s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.42s**.
+- This verifies the **partial** orchestration import/bootstrap delegation migration at unit-test level. The 122 tests are included in the total 355, not additive.
+- Duplicate DDL still exists in `orchestration/repositories/pipeline_progress.py` and `submission_pacing.py`; removing it and redirecting callers remains required before DB-R2 can close.
+- No live PostgreSQL integration verification has been executed in this stage.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
