@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from config import SUBMISSION_INTERVAL_MINUTES
-from pipeline.database.config import PACING_SCHEMA, PACING_TABLE
+from database.config import PACING_SCHEMA, PACING_TABLE
 
 
 @dataclass(frozen=True)
