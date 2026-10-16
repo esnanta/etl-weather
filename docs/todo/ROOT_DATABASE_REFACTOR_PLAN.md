@@ -302,6 +302,15 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - Collection succeeds with migrated root imports; test execution and PostgreSQL behavior are not verified by this result.
 - Remaining priority: geospatial integration fixture isolation under canonical `climate_data`, then new spatial CLI and safe legacy-package retirement.
 
+## DB-R2 geospatial integration fixture migration (2026-10-16)
+
+- Migrated `tests/integration/geospatial/test_import_idempotency.py` to canonical root `database.geospatial.create_spatial_tables` and explicit `database.config.resolve_test_database_config`.
+- Removed temporary schema creation, monkeypatching of `APPLICATION_SCHEMA`, and destructive `DROP SCHEMA ... CASCADE`. The fixture now uses `climate_data` only within a dedicated `TEST_POSTGRES_*` database.
+- Fixture rejects an unexpected database identity, misplaced PostGIS, or pre-existing rows in any of the three spatial tables. It cleans up the test importer dataset's district and province rows rather than dropping schemas. SQL uses explicitly qualified `climate_data.ST_*` calls.
+- **Caveat:** it requires an empty and isolated spatial test environment and does not support concurrent suites writing to these three tables. Broader test-database provisioning and isolation remain DB-R3. No integration tests have been executed against live PostgreSQL by this change.
+- **Validation pending:** geospatial integration `--collect-only`, focused geospatial unit regression and complete unit regression on user workstation, followed by isolated integration only after confirming `TEST_POSTGRES_*` points at a disposable test database (never `weather`).
+- Legacy geospatial CLI replacement and removal of old packages remain separate unchecked steps.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
