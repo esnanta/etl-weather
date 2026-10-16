@@ -61,9 +61,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128) NOT NULL,
-                boundary_geometry geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_district_geom_valid CHECK (ST_IsValid(boundary_geometry)),
-                CONSTRAINT ck_district_geom_nonempty CHECK (NOT ST_IsEmpty(boundary_geometry)),
+                boundary_geometry climate_data.geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_district_geom_valid CHECK (climate_data.ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_district_geom_nonempty CHECK (NOT climate_data.ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_district_province_name UNIQUE (province_id, district_name),
                 CONSTRAINT uq_district_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref),
