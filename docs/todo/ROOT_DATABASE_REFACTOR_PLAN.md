@@ -342,6 +342,15 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - **Crucial verification gate:** the user-reported **355 passed in 8.56s** was **before** deletion. Rerun complete units and all test collection on the new revision; do not mark Step 4/5 accepted before confirming no missing import or broken CLI.
 - Historical documentation references may remain in archival notes. Root `AGENTS.md`, root `README.md`, and other guidance still require Step 6 alignment. Isolated PostgreSQL execution remains a DB-R3/DB-R5 gate.
 
+## DB-R2 post-removal regression defect and fix (user report, 2026-10-16)
+
+- Local grep for top-level old-package imports returned no hits, but this missed a **string-based subprocess import** in `tests/unit/orchestration/test_campaign_config.py`.
+- Actual post-deletion unit test: **354 passed, 1 failed in 7.51s**; failure was `ModuleNotFoundError: pipeline.database.config` in that subprocess test, not application code.
+- Integration collection succeeded: **15 tests collected in 0.66s**; no PostgreSQL integration tests executed.
+- Changed subprocess import string to `from database.config import APPLICATION_SCHEMA` (commit `095d15c`). New complete unit regression **pending**, do not claim 355 passed post-removal yet.
+- User has **not** rerun root bootstrap/geospatial dry-run after package removal; Step 4/5 acceptance remains pending.
+- Next audit must include string-based references, not just statements anchored to `^from` or `^import`.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
