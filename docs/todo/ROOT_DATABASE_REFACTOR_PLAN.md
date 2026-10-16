@@ -1,6 +1,6 @@
 # Root Database Package Refactor Plan
 
-**Status:** Approved architecture; planning only — implementation not started.  
+**Status:** DB-R1 source audit partially completed; DB-R2 root package staged (not yet migrated into runtime). No live PostgreSQL or local pytest verification has been performed.  
 **Target branch:** `dev` exclusively.  
 **Current priority:** Database refactor before P5 grid-to-region mapping; Airflow orchestration remains deferred.
 
@@ -27,6 +27,15 @@ etl-weather/
 ```
 
 The files above are the agreed **target**, not existing files. Do not create separate root `database/schema/` subpackages instead. Once migration is complete, remove `pipeline/database/` and `geospatial/database/` and update all references, not just add compatibility re-exports.
+
+## Approved climate/geospatial separation (2026-10-16)
+
+One flat root `database/` package has two independent DDL entrypoints:
+
+- `initialize_climate_schema(engine, config)` owns **only** `t_daily_climate`, `t_daily_climate_detail`, `t_pipeline_progress`, `t_pipeline_progress_detail`, and `t_submission_pacing`.
+- `initialize_geospatial_schema(engine, config)` owns **only** `t_province`, `t_district`, and `t_grid_region`, including PostGIS dependency.
+- Airflow, DAG tasks, and orchestration repositories must not import, invoke, or initialize geospatial code or tables. Geospatial remains independent of Airflow.
+- An explicit development database setup may invoke both paths to prepare the eight-table database. This is not permission for orchestration to invoke the geospatial path.
 
 ## Ownership and behavior boundaries
 
@@ -72,9 +81,9 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - [ ] Confirm destructive operation target/confirmation policy for *both* databases before implementing it.
 
 ### DB-R2 — Root package and import migration
-- [ ] Introduce the approved flat `/database` package and centralize configuration/connection utilities.
-- [ ] Relocate canonical weather DDL, geospatial DDL and PostGIS bootstrap into the target modules while preserving definitions.
-- [ ] Establish one `database/schema.py` composition entrypoint for **all eight currently identified** application/operational/spatial tables, including correct FK order and indexes.
+- [x] Stage the approved flat `/database` package and new configuration/connection utilities (not yet adopted by callers; regression pending).
+- [x] Stage copies of canonical weather DDL, geospatial DDL and PostGIS bootstrap into target modules; original owners remain until migration and validation.
+- [x] Stage `database/schema.py` with **two independent** entrypoints (five climate/operational tables and three spatial tables); runtime adoption and SQL regression still pending.
 - [ ] Move operational CREATE TABLE ownership out of orchestration repositories without moving operational business logic.
 - [ ] Update imports across runtime, scripts, tests and CI; remove old `pipeline/database` and `geospatial/database` only after no callers remain.
 - [ ] Keep code and docstrings in English; avoid stale compatibility aliases and duplicate bootstrap paths.
@@ -107,6 +116,15 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - [ ] Verify `destroy_all` retains full clean-slate scope and works only with explicit confirmation; verify preserved sources/config and clean test-database state.
 - [ ] Record real test output and SQL verification evidence in this checklist; **do not mark done based solely on code inspection**.
 - [ ] Only after database refactor acceptance, resume P4 integration verification and P5 spatial mapping. Airflow remains deferred.
+
+## 2026-10-16 DB-R1 / DB-R2 execution evidence
+
+- Inspected the identified source files in the `dev` branch and confirmed scattered CREATE TABLE ownership, implicit database creation in `pipeline.database.config.create_database_engine`, geospatial temporary-schema monkeypatching and one-database maintenance preflight.
+- Source audit is **not complete**: repository-wide callers, all tests, CI and SQL references require a full working-tree scan. Do not mark DB-R1 completed until that scan is checked.
+- Live connection identity, database existence, PostgreSQL roles/permissions, and the actual PostGIS schema are **not verified** in this GitHub-only environment. `weather_test` absence is historical user-provided context, not a fresh SQL observation.
+- New files staged on `dev`: `database/__init__.py`, `config.py`, `connection.py`, `climate.py`, `geospatial.py`, `schema.py`, `bootstrap.py`, `verification.py`; plus `tests/unit/database/test_root_config.py`.
+- **No callers were migrated**, old packages remain, no PostgreSQL DDL/destructive commands were executed, and pytest was **not executed**. New unit tests and schema composition must be run and reviewed before any old module is removed.
+- Next steps: run local read-only DB identity/privilege queries and existing baseline tests; migrate callers in bounded groups while preserving domain separation; remove duplicate DDL only after successful regression.
 
 ## Current evidence and boundaries
 
