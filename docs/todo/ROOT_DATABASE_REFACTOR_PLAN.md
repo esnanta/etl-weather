@@ -311,6 +311,13 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - **Validation pending:** geospatial integration `--collect-only`, focused geospatial unit regression and complete unit regression on user workstation, followed by isolated integration only after confirming `TEST_POSTGRES_*` points at a disposable test database (never `weather`).
 - Legacy geospatial CLI replacement and removal of old packages remain separate unchecked steps.
 
+## DB-R2 geospatial fixture verification (user report, 2026-10-16)
+
+- `python -m pytest tests/integration/geospatial/test_import_idempotency.py --collect-only -q` → **4 tests collected in 0.15s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` → **19 passed in 0.17s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.44s**.
+- These outcomes validate collection and unit regression only; no live PostgreSQL integration behavior has been verified.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
