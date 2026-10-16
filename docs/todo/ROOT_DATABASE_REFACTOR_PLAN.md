@@ -199,6 +199,17 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - No `Creating missing PostgreSQL database` message appeared in the repeat run. This verifies successful repeated initialization on the tested state, not byte-for-byte data/index preservation.
 - DB-R3 acceptance evidence: **363 unit passed**, **15 PostgreSQL integration passed**, initial test database empty across eight tables, dual-target first provisioning successful, and repeat setup successful. DB-R3 functional acceptance complete; partial-failure compensation and destructive operations are separate hardening / DB-R4 concerns.
 
+## DB-R4 initial destructive-maintenance alignment (2026-10-17)
+
+- [x] Audited `scripts/recreate_postgres_database.py` and `scripts/destroy_all.py` against root `database/` ownership. Existing recreation already had `APP_ENV=dev`, inactive campaign/Airflow checks, PostgreSQL-session checks, interactive confirmation and safely quoted DROP/CREATE identifiers; destroy additionally requires exact `DESTROY` and stops recognized Airflow processes before database recreation.
+- [x] Replaced the obsolete **climate-only** `orchestration.repositories.database.initialize_application_storage` call in `_recreate_database` with root `database.bootstrap.bootstrap(config)`. A recreated application database now uses the same five climate plus three spatial DDL paths as DB-R3; PostGIS server installation and permissions are prerequisites.
+- [x] Updated `destroy_all` final database verification to require all **eight** canonical tables from `database.verification` and the PostGIS extension in `climate_data` (formerly checked five tables only).
+- [x] Added a targeted unit contract assertion for the eight-table verification list.
+- [ ] **Do not execute destructive scripts yet.** Existing `destroy_all` still covers the application database, generated artifacts and Airflow runtime, but **does not drop/recreate `weather_test`**. Expanding destructive scope is a separately approved policy decision; no implicit test database deletion.
+- [ ] Examine the remaining preflight gap: `destroy_all` checks external DB sessions after stopping Airflow; it should check database-specific privileges, readiness and both relevant targets **before the first destructive step**, then recheck sessions immediately before DROP. Likewise, the recreation CLI should validate root-bootstrap prerequisites prior to DROP.
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/operations -q` then full unit suite. No local tests or destructive execution have been performed by this source change.
+- [ ] Update CLI/maintenance documentation after the full DB-R4 safety design is resolved.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
