@@ -1,9 +1,11 @@
 """Guardrails for explicit two-database development initialization."""
 from __future__ import annotations
 
+import os
+
 import pytest
 
-from database.config import DatabaseConfig
+from database.config import DatabaseConfig, resolve_test_database_config
 from database import setup
 
 
@@ -66,10 +68,10 @@ def test_missing_test_configuration_never_uses_application_settings(monkeypatch)
         monkeypatch.setenv("POSTGRES_" + key, value)
         monkeypatch.delenv("TEST_POSTGRES_" + key, raising=False)
     # Supply a deliberately incomplete environment mapping to avoid loading .env.
-    from database.config import resolve_test_database_config
-
-    supplied = {key: value for key, value in __import__("os").environ.items()
-                if not key.startswith("TEST_POSTGRES_")}
+    supplied = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith("TEST_POSTGRES_")
+    }
     with pytest.raises(ValueError, match="TEST_POSTGRES_"):
         resolve_test_database_config(supplied)
 
