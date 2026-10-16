@@ -17,7 +17,7 @@ from sqlalchemy import create_engine
 
 from config import validate_and_log_app_environment
 from orchestration.campaign.reporting import format_campaign_report, read_campaign_report
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 
 logging.basicConfig(
     level=logging.INFO,
