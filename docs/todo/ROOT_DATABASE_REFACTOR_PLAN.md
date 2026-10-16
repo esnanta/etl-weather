@@ -166,6 +166,13 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - Updated the schema test to import `create_spatial_tables` and `DatabaseConfig` from root `database/`, and patch the actual new dependency target `database.geospatial.ensure_postgis_extension`. No production SQL, data, or Airflow code was modified in this correction.
 - Re-run geospatial and complete unit suites on local `dev` before marking accepted. This GitHub-only environment has not executed pytest.
 
+## DB-R2 geospatial regression passed (user report, 2026-10-16)
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` → **19 passed in 0.58s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 9.03s**.
+- These runs were executed on the user's local `dev` checkout after updating the stale test patch target. Geospatial migration is accepted at the **unit regression** level, but isolated PostgreSQL integration remains pending.
+- Next DB-R2 phase: migrate orchestration database imports and operational DDL ownership to the root package without adding any geospatial dependency to Airflow.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
