@@ -1,1 +1,0 @@
-"""Spatial database initialization utilities."""
