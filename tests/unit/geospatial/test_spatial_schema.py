@@ -57,7 +57,12 @@ def test_schema_builder_uses_postgis_and_protects_existing_climate_tables() -> N
     assert "CREATE TABLE IF NOT EXISTS climate_data.t_province" in sql
     assert "CREATE TABLE IF NOT EXISTS climate_data.t_district" in sql
     assert "CREATE TABLE IF NOT EXISTS climate_data.t_grid_region" in sql
-    assert sql.count("geometry(MultiPolygonZ, 4326)") == 2
+    assert sql.count("boundary_geometry climate_data.geometry(MultiPolygonZ, 4326)") == 2
+    assert "boundary_geometry geometry(MultiPolygonZ, 4326)" not in sql
+    assert "CHECK (ST_IsValid(" not in sql
+    assert "CHECK (NOT ST_IsEmpty(" not in sql
+    assert sql.count("climate_data.ST_IsValid(boundary_geometry)") == 2
+    assert sql.count("climate_data.ST_IsEmpty(boundary_geometry)") == 2
     assert "source_feature_ref VARCHAR(128)" in sql
     assert "FOREIGN KEY (district_id, province_id)" in sql
     assert "REFERENCES climate_data.t_district(id, province_id)" in sql
