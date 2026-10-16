@@ -8,13 +8,13 @@ from typing import Any, Mapping
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from pipeline.database.config import (
+from database.config import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
 )
 from orchestration.progress.definition import PipelineProgressDefinition
-from pipeline.database import DAILY_CLIMATE_DETAIL_TABLE, DAILY_CLIMATE_TABLE, SCHEMA_NAME
+from database.config import DAILY_CLIMATE_DETAIL_TABLE, DAILY_CLIMATE_TABLE, SCHEMA_NAME
 _ALLOWED_EXECUTION_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_BOUNDARY_STATUSES = ("pending", "running", "failed", "complete")
 _ALLOWED_VALIDATION_STATUSES = ("pending", "failed", "valid")
