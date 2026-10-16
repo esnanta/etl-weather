@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts import destroy_all
 from ..._paths import REPOSITORY_ROOT
 
