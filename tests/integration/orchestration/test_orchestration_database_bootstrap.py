@@ -8,7 +8,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from pipeline.database.config import (
+from database.config import (
     PACING_SCHEMA,
     PACING_TABLE,
     PIPELINE_PROGRESS_DETAIL_TABLE,
@@ -16,7 +16,7 @@ from pipeline.database.config import (
     PIPELINE_PROGRESS_TABLE,
 )
 from orchestration.repositories.database import initialize_application_storage
-from pipeline.database import (
+from database.config import (
     DAILY_CLIMATE_DETAIL_TABLE,
     DAILY_CLIMATE_TABLE,
     DatabaseConfig,
