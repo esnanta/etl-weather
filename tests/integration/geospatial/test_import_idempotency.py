@@ -122,7 +122,7 @@ def _geojson(path: Path, *, names: tuple[str, ...]) -> Path:
 def _rows(engine, schema: str):
     with engine.connect() as conn:
         province = conn.execute(text(
-            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), climate_data.climate_data.ST_NDims(boundary_geometry) "
+            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), climate_data.ST_NDims(boundary_geometry) "
             f"FROM {schema}.t_province ORDER BY id"
         )).all()
         districts = conn.execute(text(
