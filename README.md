@@ -201,13 +201,23 @@ Analysis / modelling
 
 The important boundary is conceptual: `pipeline/` owns climate-data acquisition, validation, transformation, artifact handling, and persistence. Airflow may coordinate those operations, but it does not redefine their scientific behavior.
 
+### Development and test database setup (DB-R3)
+
+For a **development environment only** (`APP_ENV=dev`), configure both `POSTGRES_*` and distinct `TEST_POSTGRES_*` values before preparing database structure. Preview the targets without connecting or changing either database:
+
+```bash
+python -m database.setup
+```
+
+After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same five climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
+
 ## Project Structure
 
 ```text
 etl-weather/
 ├── config.py                 # shared lightweight application configuration
 ├── docs/                     # design decisions and project documentation
-├── database/                 # canonical PostgreSQL config, schema DDL and bootstrap
+├── database/                 # canonical PostgreSQL config, schema DDL, bootstrap and guarded dev/test setup
 ├── geospatial/               # independent administrative boundaries and spatial grid mapping
 │   ├── sources/id/districts/ # immutable Aceh GeoJSON source
 │   └── sql/                  # read-only spatial capability checks
