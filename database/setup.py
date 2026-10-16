@@ -75,6 +75,17 @@ def _inspect_target(config: DatabaseConfig) -> bool:
                 actual = connection.execute(text("SELECT current_database()")).scalar_one()
                 if actual != config.database:
                     raise RuntimeError("Connected database identity mismatch.")
+                extension_schema = connection.execute(text(
+                    "SELECT n.nspname FROM pg_extension e "
+                    "JOIN pg_namespace n ON n.oid = e.extnamespace "
+                    "WHERE e.extname = 'postgis'"
+                )).scalar_one_or_none()
+                if extension_schema not in (None, "climate_data"):
+                    raise RuntimeError(
+                        f"PostGIS in {config.database!r} is installed in "
+                        f"{extension_schema!r}, expected 'climate_data'; "
+                        "refusing automatic relocation."
+                    )
     return exists
 
 
