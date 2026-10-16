@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.elements import TextClause
 
-from pipeline.database import DatabaseConfig, resolve_database_config
+from database.config import DatabaseConfig, resolve_database_config
 from pipeline.observability.logging import log_metric
 from pipeline.models.weather import BoundingBox, DataSource
 
