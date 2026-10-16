@@ -103,7 +103,7 @@ Database writes must remain idempotent.
 
 An unchanged partition may skip database writes only when request identity, transformed artifact path/checksum, and expected observation count match. Any mismatch must use the normal transactional metadata and observation persistence path.
 
-Integration tests must use the isolated `TEST_POSTGRES_*` database. They must never fall back silently to development or production PostgreSQL.
+Integration tests must use the isolated `TEST_POSTGRES_*` database. They must never fall back silently to development or production PostgreSQL. Schema DDL/identifiers come only from root `database/`; climate and geospatial integration tests must preserve `climate_data` and the explicit PostGIS extension location. Running `--collect-only` verifies imports/collection, not database transactions. Never let integration fixtures drop the application `weather` database.
 
 ## Checkpoint, Retry, and Recovery Rules
 
