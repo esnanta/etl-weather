@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from geospatial.config import ACEH_DISTRICTS, SPATIAL_SCHEMA
-from geospatial.database.schema import create_spatial_tables
-from pipeline.database.config import DatabaseConfig
+from database.geospatial import create_spatial_tables
+from database.config import DatabaseConfig
 
 
 class _Connection:
@@ -48,7 +48,7 @@ def test_source_profile_maps_actual_aceh_properties() -> None:
 def test_schema_builder_uses_postgis_and_protects_existing_climate_tables() -> None:
     engine = _Engine()
     with patch(
-        "geospatial.database.schema.ensure_postgis_extension", return_value="3.4.2"
+        "database.geospatial.ensure_postgis_extension", return_value="3.4.2"
     ) as bootstrap:
         create_spatial_tables(engine, _config())
 
