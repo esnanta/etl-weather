@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 SYSTEM_DATABASES = frozenset({"postgres", "template0", "template1"})
 
 
-def resolve_targets() -> tuple[DatabaseConfig, DatabaseConfig]:
-    """Require both independent env families before any setup operation."""
-    application = DatabaseConfig.from_env(prefix="POSTGRES_")
-    testing = resolve_test_database_config()
+def _validate_targets(application: DatabaseConfig, testing: DatabaseConfig) -> None:
+    """Guard both CLI and direct Python callers before any database connection."""
     if resolve_app_environment() != APP_ENV_DEV:
         raise ValueError("Database setup is available only with APP_ENV=dev.")
     for target in (application, testing):
@@ -38,6 +36,15 @@ def resolve_targets() -> tuple[DatabaseConfig, DatabaseConfig]:
         testing.host.lower(), testing.port, testing.database.lower()
     ):
         raise ValueError("Application and test databases must be distinct targets.")
+    if "test" not in testing.database.lower() or testing.database.lower() in SYSTEM_DATABASES:
+        raise ValueError("Test database must be explicitly identifiable as a test target.")
+
+
+def resolve_targets() -> tuple[DatabaseConfig, DatabaseConfig]:
+    """Resolve both independent environment families without fallback."""
+    application = DatabaseConfig.from_env(prefix="POSTGRES_")
+    testing = resolve_test_database_config()
+    _validate_targets(application, testing)
     return application, testing
 
 
@@ -97,6 +104,7 @@ def initialize_development_databases(
     Both targets are checked before the first write. Database creation and DDL
     are not cross-database atomic: failures require operator inspection.
     """
+    _validate_targets(application, testing)
     targets = (application, testing)
     exists = [_inspect_target(target) for target in targets]
     for target, present in zip(targets, exists):
