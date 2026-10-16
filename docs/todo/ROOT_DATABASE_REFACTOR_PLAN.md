@@ -357,9 +357,17 @@ The user clarified the intended design: **`python -m database.climate`** indepen
 
 - [x] Implement independent climate CLI and combined bootstrap coordinator on `dev`.
 - [x] Update root and geospatial README CLI guidance.
-- [ ] Verify `--help` and dry-run output of all three CLIs after these changes.
-- [ ] Re-run complete unit suite (**355 passed** required) after the implementation.
+- [x] Verify `--help` and dry-run output of all three CLIs after these changes.
+- [x] Re-run complete unit suite (**355 passed in 7.74s**) after the implementation.
 - [ ] Execute against the isolated test database for full initialization verification when DB-R3 provisioning is ready; do not test destructive operations on `weather`.
+
+## DB-R2 three-CLI verification (user report, 2026-10-16)
+
+- `python -m database.climate --help` and default `python -m database.climate` succeeded. Dry-run target `weather.climate_data`, listing exactly five climate/operational tables.
+- `python -m database.geospatial --help` and default `python -m database.geospatial` succeeded. Dry-run lists exactly three spatial tables in `weather.climate_data`.
+- `python -m database.bootstrap --help` and default `python -m database.bootstrap` succeeded. Dry-run reports five climate/operational + three geospatial tables and unchanged database.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 7.74s** after CLI changes and legacy-package removal.
+- All six CLI commands were help/dry-run only. No `--execute` or live PostgreSQL integration results have been reported.
 
 ## Current evidence and boundaries
 
