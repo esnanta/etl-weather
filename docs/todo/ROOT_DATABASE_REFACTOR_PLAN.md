@@ -189,6 +189,15 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - Duplicate DDL still exists in `orchestration/repositories/pipeline_progress.py` and `submission_pacing.py`; removing it and redirecting callers remains required before DB-R2 can close.
 - No live PostgreSQL integration verification has been executed in this stage.
 
+## DB-R2 operational DDL deduplication (2026-10-16)
+
+- Removed the duplicate `create_pipeline_progress_tables` implementation from `orchestration/repositories/pipeline_progress.py`; `database/schema.py` retains the canonical definition. The repository retains progress CRUD, reconciliation and selection behavior.
+- Removed the duplicate `create_submission_pacing_table` implementation from `orchestration/repositories/submission_pacing.py`; `database/schema.py` retains the canonical definition. The repository retains reservation/locking behavior.
+- Updated operational repository public exports, progress DDL unit tests and PostgreSQL progress/pacing integration-test imports to use the root owner.
+- `database/schema.py` now loads `database.geospatial` only inside explicit `initialize_geospatial_schema`; importing the orchestration climate DDL path does not import spatial DDL code.
+- **Unit regression is pending after these edits**. Latest verified baseline before DDL removal: orchestration **122 passed** and all unit tests **355 passed**. Integration PostgreSQL remains outstanding.
+- Legacy `pipeline/database/` and `geospatial/database/` packages remain in place. Do not remove them until full reference search and passing regression.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
