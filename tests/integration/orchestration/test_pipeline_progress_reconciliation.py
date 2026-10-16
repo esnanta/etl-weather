@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from config import CAMPAIGN_START_DATE
-from pipeline.database.config import PIPELINE_PROGRESS_SCHEMA, PIPELINE_PROGRESS_TABLE
+from database.config import PIPELINE_PROGRESS_SCHEMA, PIPELINE_PROGRESS_TABLE
 from orchestration.campaign import policy as campaign_policy
 from orchestration.campaign.policy import (
     CampaignQuarter,
@@ -28,9 +28,9 @@ from orchestration.campaign.policy import (
     select_earliest_incomplete_quarter,
 )
 from orchestration.progress.definition import PipelineProgressDefinition, ProgressPartition
+from database.schema import create_pipeline_progress_tables
 from orchestration.repositories.pipeline_progress import (
     are_extract_attempts_terminal,
-    create_pipeline_progress_tables,
     get_pipeline_progress_by_id,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
