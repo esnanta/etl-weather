@@ -160,6 +160,12 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - Known integration-test blocker: `tests/integration/geospatial/test_import_idempotency.py` monkeypatches `geospatial.database.schema.APPLICATION_SCHEMA` and uses a temporary schema instead of canonical `climate_data`. It must be refactored as part of isolated test DB provisioning; do not run it against `weather`.
 - **Tests pending:** focused geospatial units and full unit regression must be executed on the user's workstation before accepting DB-R2 geospatial migration. No local pytest or PostgreSQL access is available through the GitHub connector.
 
+## DB-R2 geospatial test correction (2026-10-16)
+
+- User ran `tests/unit/geospatial -q` → **18 passed, 1 failed**; full `tests/unit -q` → **354 passed, 1 failed**. Both failures came from `test_spatial_schema.py` patching `geospatial.database.schema.ensure_postgis_extension`, which moved to `database.geospatial.ensure_postgis_extension`.
+- Updated the schema test to import `create_spatial_tables` and `DatabaseConfig` from root `database/`, and patch the actual new dependency target `database.geospatial.ensure_postgis_extension`. No production SQL, data, or Airflow code was modified in this correction.
+- Re-run geospatial and complete unit suites on local `dev` before marking accepted. This GitHub-only environment has not executed pytest.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
