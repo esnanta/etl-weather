@@ -142,6 +142,16 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - No `geospatial/`, `orchestration/`, database maintenance scripts or old database packages were modified in this step. Existing callers in those domains still use old paths.
 - **Verification pending:** focused pipeline unit pytest and complete unit regression on user's workstation. The GitHub connector cannot execute those tests or access local PostgreSQL. Do not mark this migration accepted until evidence is supplied.
 
+## DB-R2 pipeline migration regression evidence (user report, 2026-10-16)
+
+The user executed these commands on the updated local `dev` working tree:
+
+- `python -m pytest tests/unit/pipeline/test_database.py tests/unit/pipeline/test_load.py tests/unit/pipeline/test_daily_climate_repository.py -q` → **19 passed in 0.65s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/pipeline -q` → **119 passed in 2.05s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.97s**.
+
+The focused tests and pipeline tests are included in the full unit count; do not add totals. This validates the pipeline import migration at unit level. It does not establish actual PostgreSQL integration, lack of runtime DDL, or correctness of the future geospatial/orchestration migrations. Next: migrate geospatial callers while keeping the Airflow boundary unchanged.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
