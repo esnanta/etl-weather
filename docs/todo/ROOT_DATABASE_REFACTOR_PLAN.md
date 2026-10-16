@@ -177,6 +177,13 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - The isolated dotenv fixture correction is verified. These results do not verify PostgreSQL provisioning or transactional integration.
 - Next DB-R3 gate: review two-target preflight, roles/permissions, and existing database state before any explicit `database.setup --execute`.
 
+## DB-R3 successful dual-database provisioning (user report, 2026-10-17)
+
+- Read-only inspection of existing `weather`: `schema_exists=True`, `postgis_schema=climate_data`, `climate_tables_missing=()`, `geospatial_tables_missing=()`.
+- Executed `python -m database.setup --execute` locally under `APP_ENV=dev`: existing `weather` was initialized idempotently; missing `weather_test` was created, initialized and verified.
+- Both targets logged PostGIS **3.4.2** in `climate_data`; setup finished `Application and isolated test database schemas verified.`.
+- **Still to verify:** test database contains no copied observations or imported administrative rows; live integration suites pass; cleanup and cross-database failure behavior remain review items. Do not mark integration coverage verified based on schema readiness alone.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
