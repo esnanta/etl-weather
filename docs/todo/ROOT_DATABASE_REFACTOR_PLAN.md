@@ -153,6 +153,15 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 
 **Acceptance gate:** All legacy Python imports and module CLI paths removed/replaced; CLI dry-run works; the 355-unit-test baseline is preserved; no geospatial dependency from orchestration; integration status explicitly documented. Do not mark DB-R2 complete merely because deleted folders disappear.
 
+## DB-R3 setup/bootstrap responsibility decision and additional guards (2026-10-17)
+
+**Decision retained:** `database/setup.py` provisions **two explicit application/test PostgreSQL targets**; `database/bootstrap.py` initializes **one existing target** by composing the independently callable five-table climate and three-table spatial schema paths. The explicit `database.climate` and `database.geospatial` CLIs remain available. Airflow does not use provisioning or the combined eight-table bootstrap.
+
+- [x] Hardened `database.setup.initialize_development_databases(application, testing)` so **direct Python calls** enforce the same `APP_ENV=dev`, canonical schema, system-database refusal, test-name marker and distinct target checks as the CLI before opening connections. CLI's no-connection dry-run is preserved.
+- [x] Added unit coverage for production environment refusal, same-target refusal, unmarked test target refusal, and one-database bootstrap composition/disposal. The preflight-order test now explicitly sets `APP_ENV=dev`.
+- [ ] Local verification: `python -m database.setup --help`, `python -m database.setup` (both dry-run) and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/database -q` followed by full unit regression. Results are **not reported** yet.
+- [ ] Provision and verify isolated `TEST_POSTGRES_*` only with explicit operator approval to run `--execute`. No PostgreSQL connections or writes were performed by these source changes.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
