@@ -1,9 +1,9 @@
+from database.schema import create_pipeline_progress_tables
 from orchestration.repositories.pipeline_progress import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
     PipelineProgress,
-    create_pipeline_progress_tables,
     get_earliest_incomplete_progress,
     get_pipeline_progress_by_id,
     get_failed_progress_partitions,
