@@ -284,6 +284,12 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - **Not yet completed:** orchestration integration test imports, geospatial integration fixture replacement, geospatial CLI preservation, package removal, and documentation cleanup. No database operations were performed. Unit regression after these edits **not yet run**; previous 355 passed baseline predates these edits.
 - Do not delete the legacy packages until all active-import grep matches are eliminated and safe replacement for temporary-schema geospatial integration test is designed (DB-R3).
 
+## DB-R2 Step 2 intermediate unit regression (user report, 2026-10-16)
+
+- After migrating thirteen remaining application/script/test configuration imports to root `database.config`, the user executed `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`: **355 passed in 8.70s**.
+- This verifies unit regression only, not live PostgreSQL or geospatial integration fixture correctness.
+- Remaining integration references and CLI migration are tracked as open; do not remove the legacy packages yet.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
