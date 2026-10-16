@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root))
 from psycopg import connect, sql
 
 from config import APP_ENV_DEV, resolve_app_environment
-from orchestration.repositories.database import initialize_application_storage
+from database.bootstrap import bootstrap
 from orchestration.scheduling.schedule import campaign_schedule
 from database.config import DatabaseConfig
 from scripts.airflow_processes import list_airflow_processes
@@ -244,13 +244,8 @@ def _recreate_database(config: DatabaseConfig) -> None:
                 )
             )
 
-    from sqlalchemy import create_engine
-
-    engine = create_engine(config.url, future=True)
-    try:
-        initialize_application_storage(engine, config)
-    finally:
-        engine.dispose()
+    # Canonical root bootstrap initializes all eight application tables.
+    bootstrap(config)
 
 
 def main(argv: list[str] | None = None) -> int:
