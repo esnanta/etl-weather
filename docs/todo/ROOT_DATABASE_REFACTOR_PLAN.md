@@ -133,6 +133,15 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` → **122 passed in 4.85s** (included in the 355 overall tests, not additive).
 - These were executed and reported by the user on their workstation, not by the GitHub integration. They establish the pre-import-migration unit regression baseline only; PostgreSQL integration and live database inventory remain outstanding.
 
+## DB-R2 pipeline import migration (2026-10-16)
+
+- Migrated `pipeline/loaders/daily_climate_postgres.py` to `database.config`, `database.connection`, and `database.climate`.
+- Migrated `pipeline/repositories/daily_climate_reader.py` to `database.config`.
+- Redirected `tests/unit/pipeline/test_database.py`, `test_load.py`, and `test_daily_climate_repository.py` to root database modules.
+- The new `database.connection.create_database_engine` does **not** create a missing database implicitly. This is an intentional lifecycle boundary change and must be covered by regression tests. The loader still invokes weather-table DDL at runtime; ownership/removal of implicit table creation remains an open design/implementation item.
+- No `geospatial/`, `orchestration/`, database maintenance scripts or old database packages were modified in this step. Existing callers in those domains still use old paths.
+- **Verification pending:** focused pipeline unit pytest and complete unit regression on user's workstation. The GitHub connector cannot execute those tests or access local PostgreSQL. Do not mark this migration accepted until evidence is supplied.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
