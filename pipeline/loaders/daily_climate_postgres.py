@@ -9,13 +9,12 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from pipeline.database import (
-    DatabaseConfig,
+from database.config import DatabaseConfig, resolve_database_config
+from database.connection import create_database_engine
+from database.climate import (
     create_daily_climate_detail_table,
     create_daily_climate_table,
-    create_database_engine,
     create_schema,
-    resolve_database_config,
 )
 from pipeline.interfaces.etl import DataLoader
 from pipeline.observability.logging import log_metric
