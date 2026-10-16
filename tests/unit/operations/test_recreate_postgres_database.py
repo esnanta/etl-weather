@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts import recreate_postgres_database as maintenance
 from ..._paths import REPOSITORY_ROOT
 
