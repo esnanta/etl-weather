@@ -10,15 +10,15 @@ from typing import cast
 
 from sqlalchemy.engine import Engine
 
-from pipeline.database import (
-    DatabaseConfig,
+from database.climate import (
     create_daily_climate_detail_table,
     create_daily_climate_table,
     create_schema,
 )
 
 
-from pipeline.database.config import (
+from database.config import (
+    DatabaseConfig,
     TABLE_PREFIX,
     VIEW_PREFIX,
     table_name,
