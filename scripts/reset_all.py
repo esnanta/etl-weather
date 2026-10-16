@@ -17,7 +17,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts import recreate_postgres_database
 from scripts import reset_airflow_logs
 from scripts import reset_airflow_runtime
