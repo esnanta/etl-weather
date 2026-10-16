@@ -153,6 +153,16 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 
 **Acceptance gate:** All legacy Python imports and module CLI paths removed/replaced; CLI dry-run works; the 355-unit-test baseline is preserved; no geospatial dependency from orchestration; integration status explicitly documented. Do not mark DB-R2 complete merely because deleted folders disappear.
 
+## DB-R3 initial implementation (2026-10-17)
+
+- [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
+- [x] Added `database/setup.py`, a separate guarded development/test setup CLI. Default mode only resolves and displays distinct `POSTGRES_*` and `TEST_POSTGRES_*` targets; no database connection or DDL. `--execute` is allowed only under `APP_ENV=dev` and preflights both targets' maintenance access, PostGIS server availability, target database identity and existing extension-schema placement before the first write.
+- [x] Explicit execute creates missing targets through the PostgreSQL maintenance database with safely quoted identifiers, delegates eight-table initialization to the same combined `database.bootstrap.bootstrap(config)` function for each, and uses read-only schema readiness verification afterward. No data copying and no automatic DROP/recreate.
+- [x] Added `tests/unit/database/test_setup.py` for env isolation, distinct identities and preflight ordering.
+- [ ] Verify dry-run help and configured targets locally; run unit regression. Baseline **355** unit tests before new tests; the number may increase with added test cases.
+- [ ] Test live provisioning against explicitly isolated `TEST_POSTGRES_*` under operator control; integration tests have not been executed by the assistant.
+- [ ] Review remaining lifecycle/setup parity and failure behavior before marking DB-R3 fully complete. Database provisioning across two PostgreSQL DBs is not atomic.
+
 ### DB-R3 — Unified initialize and test provisioning
 - [ ] Implement explicit, idempotent initialize for the application database; verify existing schemas, PostGIS and all expected tables.
 - [ ] Implement guarded development setup that prepares both application and test databases using dedicated `POSTGRES_*` and `TEST_POSTGRES_*` settings; test DB missing is **created**, not silently skipped.
