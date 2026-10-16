@@ -129,7 +129,7 @@ def create_spatial_tables(
 def main() -> None:
     """Apply the spatial DDL only after explicit CLI confirmation."""
     import argparse
-    from sqlalchemy import create_engine
+    from database.connection import create_database_engine
 
     parser = argparse.ArgumentParser(description="Create non-destructive spatial tables.")
     parser.add_argument(
@@ -144,7 +144,7 @@ def main() -> None:
         print("Dry run: no database changes. Pass --execute to create missing objects.")
         return
 
-    engine = create_engine(config.url, future=True)
+    engine = create_database_engine(config)
     try:
         create_spatial_tables(engine, config)
         print("Spatial tables ready; no GeoJSON imported.")
