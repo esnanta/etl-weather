@@ -49,6 +49,28 @@ def spatial_db(monkeypatch):
         schema=schema,
     )
     engine = create_engine(config.url, future=True)
+    # The extension is global within this test database, not per temporary schema.
+    # Fail before any test schema DDL, rather than repeatedly raising from bootstrap.
+    try:
+        with engine.connect() as connection:
+            postgis_schema = connection.execute(text(
+                "SELECT n.nspname FROM pg_extension e "
+                "JOIN pg_namespace n ON n.oid = e.extnamespace "
+                "WHERE e.extname = 'postgis'"
+            )).scalar_one_or_none()
+        if postgis_schema not in (None, "climate_data"):
+            pytest.fail(
+                f"TEST_POSTGRES_DATABASE={name!r} has PostGIS in "
+                f"{postgis_schema!r}, but the project requires 'climate_data'. "
+                "Prepare a dedicated test database with PostGIS installed in "
+                "'climate_data' before running integration tests. "
+                "Do not relocate or drop an existing extension automatically.",
+                pytrace=False,
+            )
+    except BaseException:
+        engine.dispose()
+        raise
+
     # Only the schema location is isolated. The actual production SQL and
     # transaction control remain fully exercised by PostgreSQL and PostGIS.
     monkeypatch.setattr(spatial_schema, "APPLICATION_SCHEMA", schema)
@@ -92,7 +114,7 @@ def _geojson(path: Path, *, names: tuple[str, ...]) -> Path:
 def _rows(engine, schema: str):
     with engine.connect() as conn:
         province = conn.execute(text(
-            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), ST_NDims(boundary_geometry) "
+            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), climate_data.ST_NDims(boundary_geometry) "
             f"FROM {schema}.t_province ORDER BY id"
         )).all()
         districts = conn.execute(text(
