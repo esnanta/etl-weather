@@ -290,6 +290,12 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - This verifies unit regression only, not live PostgreSQL or geospatial integration fixture correctness.
 - Remaining integration references and CLI migration are tracked as open; do not remove the legacy packages yet.
 
+## DB-R2 Step 2 additional integration import migration (user report, 2026-10-16)
+
+- Latest local unit regression following thirteen caller migrations: **355 passed in 8.70s**.
+- Updated `tests/integration/orchestration/test_orchestration_database_bootstrap.py` and `tests/integration/orchestration/test_pipeline_progress_reconciliation.py` to import config and climate DDL from root `database/`.
+- **Unverified after latest edits:** no new local pytest/integration results yet. `tests/integration/geospatial/test_import_idempotency.py` still needs isolated test database fixture redesign; do not delete old package or use application database to run it.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
