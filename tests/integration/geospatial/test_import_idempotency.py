@@ -127,7 +127,7 @@ def _rows(engine, schema: str):
         )).all()
         districts = conn.execute(text(
             f"SELECT id, district_name, source_feature_ref, "
-            f"climate_data.ST_AsEWKT(boundary_geometry), ST_NDims(boundary_geometry) "
+            f"climate_data.ST_AsEWKT(boundary_geometry), climate_data.ST_NDims(boundary_geometry) "
             f"FROM {schema}.t_district ORDER BY source_feature_ref"
         )).all()
     return province, districts
