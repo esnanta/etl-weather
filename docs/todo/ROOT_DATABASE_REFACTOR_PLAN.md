@@ -369,6 +369,18 @@ The user clarified the intended design: **`python -m database.climate`** indepen
 - `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 7.74s** after CLI changes and legacy-package removal.
 - All six CLI commands were help/dry-run only. No `--execute` or live PostgreSQL integration results have been reported.
 
+## DB-R2 Step 6 documentation synchronization (2026-10-17)
+
+- [x] Root `AGENTS.md`: root `database/` owns connection/config/DDL/PostGIS; scientific loader/read repository, operational repository, and spatial importer responsibilities remain separate.
+- [x] Root `README.md`: actual root database project tree, three explicitly guarded CLIs, five climate + three spatial tables, current PostGIS `climate_data` contract; removed obsolete description of missing importer and historical extension-in-public claim.
+- [x] `tests/AGENTS.md` and `tests/README.md`: explicit isolated `TEST_POSTGRES_*`, canonical schema constraints, geospatial integration command, and collection-vs-execution distinction.
+- [x] `orchestration/README.md`: climate-only application bootstrap versus independent spatial initialization, metadata remains SQLite.
+- [x] `query/README.md`: canonical climate DDL source references moved to root `database/climate.py` and `database/schema.py`.
+- [x] `geospatial/README.md`: previously updated to describe all three CLIs, PostGIS and importer, and test safety.
+- [x] Verified no old `pipeline/database`, `geospatial/database`, `pipeline.database`, or `geospatial.database` references in the seven reviewed live instructional documents (geospatial README mentions PostGIS in `public` solely as a legacy-test-db warning).
+- [ ] Final repo-wide documentation search, excluding explicitly historical migration notes, and subsequent local unit regression after documentation edits.
+- [ ] Live isolated PostgreSQL integration tests and unified development/test provisioning remain DB-R3/DB-R5 work, **not** proved by documentation-only changes.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
