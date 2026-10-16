@@ -152,6 +152,14 @@ The user executed these commands on the updated local `dev` working tree:
 
 The focused tests and pipeline tests are included in the full unit count; do not add totals. This validates the pipeline import migration at unit level. It does not establish actual PostgreSQL integration, lack of runtime DDL, or correctness of the future geospatial/orchestration migrations. Next: migrate geospatial callers while keeping the Airflow boundary unchanged.
 
+## DB-R2 geospatial import migration (2026-10-16)
+
+- `geospatial/importers/districts.py` now imports PostgreSQL configuration, PostGIS bootstrap and engine construction from root `database/`.
+- `geospatial/database/schema.py` and `geospatial/database/bootstrap.py` are temporary **CLI-only wrappers** that invoke root DDL/bootstrap. The old package cannot be deleted until the documented module CLI invocations are migrated and all old callers are removed.
+- No geospatial SQL write/upsert, GeoJSON source files, geometry XYZ definition, or orchestration DAGs were modified. Root `database.schema` still provides separate climate (five tables) and geospatial (three tables) initialization paths.
+- Known integration-test blocker: `tests/integration/geospatial/test_import_idempotency.py` monkeypatches `geospatial.database.schema.APPLICATION_SCHEMA` and uses a temporary schema instead of canonical `climate_data`. It must be refactored as part of isolated test DB provisioning; do not run it against `weather`.
+- **Tests pending:** focused geospatial units and full unit regression must be executed on the user's workstation before accepting DB-R2 geospatial migration. No local pytest or PostgreSQL access is available through the GitHub connector.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
