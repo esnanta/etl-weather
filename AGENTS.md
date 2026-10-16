@@ -32,6 +32,8 @@ Do not add another provider path without an explicit design decision, isolated a
 - Put Airflow orchestration in `orchestration/`.
 - Put thin DAG declarations in `orchestration/dags/` and Airflow task wrappers in `orchestration/tasks/`.
 - Put ETL logic in `pipeline/`.
+- Keep all PostgreSQL configuration, connection lifecycle, DDL and PostGIS bootstrap in the root `database/` package. The independent `database.schema.initialize_climate_schema` and `initialize_geospatial_schema` paths must remain separate; the explicit `python -m database.bootstrap --execute` CLI coordinates both.
+- Keep climate reads in `pipeline/repositories/`, climate writes in `pipeline/loaders/`, progress and pacing CRUD in `orchestration/repositories/`, and spatial imports in `geospatial/importers/`. None of these domain modules owns canonical CREATE TABLE SQL.
 - Put geospatial source datasets, validation, importers, persistence, and grid-to-region mapping in `geospatial/`, separate from `pipeline/` and `orchestration/`.
 - The `geospatial/` module must run independently of Airflow; do not import Airflow into geospatial code or add geospatial work to the current ETL DAG.
 - Treat GeoJSON files under `geospatial/sources/` as immutable source inputs. Importers must read and validate them without modifying, replacing, or deleting the source files.
@@ -57,7 +59,6 @@ Keep in `pipeline/`:
 - `contracts/` for shared scientific constants/contracts;
 - `storage/` for deterministic artifacts and local I/O;
 - `loaders/` for database persistence/idempotency;
-- `database/` for database configuration and schema bootstrap;
 - `repositories/` for controlled read-only data access;
 - `requests/weather.py` for request validation, normalization, splitting, and identity;
 - `requests/factory.py` for configured typed request construction;
