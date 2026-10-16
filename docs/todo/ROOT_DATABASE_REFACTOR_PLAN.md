@@ -1,6 +1,6 @@
 # Root Database Package Refactor Plan
 
-**Status:** DB-R1 source audit partially completed; DB-R2 root package staged (not yet migrated into runtime). No live PostgreSQL or local pytest verification has been performed.  
+**Status:** DB-R2 pipeline, geospatial, and orchestration import/DDL migration completed at unit-test level (355 passed, user-reported 2026-10-16). Legacy package cleanup pending; PostgreSQL integration and DB-R1 live checks remain open.  
 **Target branch:** `dev` exclusively.  
 **Current priority:** Database refactor before P5 grid-to-region mapping; Airflow orchestration remains deferred.
 
@@ -84,9 +84,43 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - [x] Stage the approved flat `/database` package and new configuration/connection utilities (not yet adopted by callers; regression pending).
 - [x] Stage copies of canonical weather DDL, geospatial DDL and PostGIS bootstrap into target modules; original owners remain until migration and validation.
 - [x] Stage `database/schema.py` with **two independent** entrypoints (five climate/operational tables and three spatial tables); runtime adoption and SQL regression still pending.
-- [ ] Move operational CREATE TABLE ownership out of orchestration repositories without moving operational business logic.
+- [x] Move operational CREATE TABLE ownership out of orchestration repositories without moving operational business logic (unit regression: 122 orchestration / 355 total passed; integration outstanding).
 - [ ] Update imports across runtime, scripts, tests and CI; remove old `pipeline/database` and `geospatial/database` only after no callers remain.
 - [ ] Keep code and docstrings in English; avoid stale compatibility aliases and duplicate bootstrap paths.
+
+### DB-R2 final cleanup — approved execution order (2026-10-16)
+
+**Scope:** `dev` only. Retain one canonical root `database/` package. Domain reads remain in `pipeline/repositories/`, ETL writes in `pipeline/loaders/`, and progress/pacing operations in `orchestration/repositories/`. No DAG or scientific behavior change. Geospatial must remain independent from orchestration. No database drops, extension relocation, or source-data deletion.
+
+**Step 1 — Audit every remaining legacy reference**
+- [ ] Inventory `pipeline.database`, `geospatial.database`, path-based CLI invocations, imports of old DDL/engine helpers, and stale documentation in `pipeline/`, `geospatial/`, `orchestration/`, `scripts/`, `tests/`, `.github/`, and Markdown/SQL files on **dev**.
+- [ ] Record path + symbol + replacement/retirement decision for every hit. Include potential import cycles and commands documented as `python -m geospatial.database.bootstrap` / `schema`.
+- [ ] Confirm references with a full working-tree `git grep` on `dev`; GitHub code search on default branch alone is not acceptable evidence.
+
+**Step 2 — Migrate all remaining callers to root `database/`**
+- [ ] Replace runtime, maintenance-script, test, and documentation references with canonical `database.config`, `database.connection`, `database.climate`, `database.geospatial`, `database.schema`, or `database.bootstrap`, as appropriate.
+- [ ] Keep loader / repository behavior and operational SQL unchanged, with no silent DB creation and no permanent re-export compatibility aliases.
+- [ ] Verify application and test DB configuration remain distinct; never fall back from `TEST_POSTGRES_*` to `POSTGRES_*`.
+
+**Step 3 — Preserve geospatial CLI capabilities**
+- [ ] Decide/document new supported `python -m database.bootstrap` / `python -m database.geospatial` entrypoints or thin CLI scripts before deleting old module paths; preserve dry-run default, `--execute` guard, intended DB identity, and no automatic GeoJSON import.
+- [ ] Verify help/dry-run output and non-destructive operation of new commands. Do not activate PostGIS or create tables merely to check help/dry-run.
+
+**Step 4 — Remove old database packages**
+- [ ] Delete `pipeline/database/` and `geospatial/database/` **only after** Steps 1–3 are verified.
+- [ ] Confirm no import, CLI, test, CI, or documentation reference requires deleted modules. Root `database/` must be the sole owner of DDL/config/connection/PostGIS bootstrap.
+
+**Step 5 — Verify after removal**
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` (pre-cleanup baseline **355 passed in 9.16s**, as reported by user).
+- [ ] Run focused unit suites (`tests/unit/pipeline`, `tests/unit/geospatial`, `tests/unit/orchestration`) and validate maintained CLI help/dry-run behavior.
+- [ ] Run isolated `TEST_POSTGRES_*` integration tests **when test DB provisioning is ready**; never target the application `weather` database. Report skipped/missing DB as unverified, not passed.
+
+**Step 6 — Align instructions and documentation**
+- [ ] Update `AGENTS.md`, `README.md`, `tests/AGENTS.md`, `tests/README.md`, related domain READMEs, SQL/docs and workflow references to reflect root database ownership and current CLI.
+- [ ] Verify no duplicated or contradictory architecture instructions and no stale `pipeline/database` or `geospatial/database` references (except clearly labeled historical migration notes).
+- [ ] Record actual commands, observed outputs, changed files, and evidence here before marking DB-R2 cleanup complete.
+
+**Acceptance gate:** All legacy Python imports and module CLI paths removed/replaced; CLI dry-run works; the 355-unit-test baseline is preserved; no geospatial dependency from orchestration; integration status explicitly documented. Do not mark DB-R2 complete merely because deleted folders disappear.
 
 ### DB-R3 — Unified initialize and test provisioning
 - [ ] Implement explicit, idempotent initialize for the application database; verify existing schemas, PostGIS and all expected tables.
