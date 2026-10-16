@@ -1,7 +1,7 @@
-"""Initialize spatial database capabilities without running Airflow.
+"""Initialize application schema paths independently, without Airflow.
 
-This module does not create, drop, or recreate databases or application tables.
-GeoJSON importers must call ensure_postgis_extension before their writes.
+The combined CLI never creates or drops databases; PostGIS is isolated to the
+spatial initializer, and importers can check it independently.
 """
 from __future__ import annotations
 
@@ -63,35 +63,45 @@ def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
 
 
 def bootstrap(config: DatabaseConfig | None = None) -> str:
-    """Bootstrap the existing application database without creating it."""
+    """Initialize climate and spatial objects in the existing configured database."""
+    from database.schema import initialize_climate_schema, initialize_geospatial_schema
+
     resolved = resolve_database_config(config)
     engine = create_database_engine(resolved)
     try:
-        return ensure_postgis_extension(engine, expected_database=resolved.database)
+        initialize_climate_schema(engine, resolved)
+        initialize_geospatial_schema(engine, resolved)
+        with engine.connect() as connection:
+            version = connection.execute(
+                text("SELECT extversion FROM pg_extension WHERE extname = 'postgis'")
+            ).scalar_one()
+        return str(version)
     finally:
         engine.dispose()
 
 
 def main() -> None:
-    """Preview the target by default; --execute explicitly enables/verifies PostGIS."""
+    """Preview by default; explicitly initialize both independent schema paths."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Initialize PostGIS in the configured existing database.")
+    parser = argparse.ArgumentParser(
+        description="Initialize climate and geospatial tables in the existing database."
+    )
     parser.add_argument(
-        "--execute",
-        action="store_true",
-        help="Apply PostGIS initialization to the configured database.",
+        "--execute", action="store_true",
+        help="Create five climate/operational and three spatial tables, including PostGIS.",
     )
     args = parser.parse_args()
     config = resolve_database_config()
-    print(f"PostGIS target: database={config.database}, schema={POSTGIS_SCHEMA}")
+    print(f"Database bootstrap target: database={config.database}, schema={config.schema}")
+    print("Climate/operational tables: 5; geospatial tables: 3 (PostGIS required).")
     if not args.execute:
-        print("Dry run: database unchanged. Pass --execute to initialize PostGIS.")
+        print("Dry run: database unchanged. Pass --execute to initialize both schema paths.")
         return
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
     version = bootstrap(config)
-    print(f"PostGIS ready (version {version}).")
+    print(f"Climate and geospatial tables ready; PostGIS version {version}.")
 
 
 if __name__ == "__main__":
