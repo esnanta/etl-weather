@@ -351,6 +351,16 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - User has **not** rerun root bootstrap/geospatial dry-run after package removal; Step 4/5 acceptance remains pending.
 - Next audit must include string-based references, not just statements anchored to `^from` or `^import`.
 
+## DB-R2 CLI contract refinement — three entrypoints (2026-10-16)
+
+The user clarified the intended design: **`python -m database.climate`** independently initializes the five climate/operational tables; **`python -m database.geospatial`** independently initializes the three geospatial tables and required PostGIS extension; **`python -m database.bootstrap`** coordinates both, for a total of eight application tables. Each defaults to read-only dry-run, and requires `--execute` for DDL. The combined CLI calls the separate `initialize_climate_schema` and `initialize_geospatial_schema` in order; Airflow must continue using its climate-only path and must never bootstrap geospatial implicitly. Root `database.bootstrap.ensure_postgis_extension` stays independently callable for importer bootstrap. The combined bootstrap does **not** create databases, remove objects, or import GeoJSON.
+
+- [x] Implement independent climate CLI and combined bootstrap coordinator on `dev`.
+- [x] Update root and geospatial README CLI guidance.
+- [ ] Verify `--help` and dry-run output of all three CLIs after these changes.
+- [ ] Re-run complete unit suite (**355 passed** required) after the implementation.
+- [ ] Execute against the isolated test database for full initialization verification when DB-R3 provisioning is ready; do not test destructive operations on `weather`.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
