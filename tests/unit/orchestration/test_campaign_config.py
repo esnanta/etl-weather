@@ -92,7 +92,7 @@ def test_database_schema_import_does_not_require_campaign_environment() -> None:
         [
             sys.executable,
             "-c",
-            "from pipeline.database.config import APPLICATION_SCHEMA; "
+            "from database.config import APPLICATION_SCHEMA; "
             "print(APPLICATION_SCHEMA)",
         ],
         env=env,
