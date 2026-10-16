@@ -198,6 +198,14 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - **Unit regression is pending after these edits**. Latest verified baseline before DDL removal: orchestration **122 passed** and all unit tests **355 passed**. Integration PostgreSQL remains outstanding.
 - Legacy `pipeline/database/` and `geospatial/database/` packages remain in place. Do not remove them until full reference search and passing regression.
 
+## DB-R2 operational DDL regression and legacy package decision (user report, 2026-10-16)
+
+- After removing duplicated operational DDL, `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` → **122 passed in 4.95s**.
+- Full `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 9.16s**.
+- Agreed target: remove legacy `pipeline/database/` and `geospatial/database/` once every remaining caller, scripts, tests and documentation have migrated; do **not** move infrastructure/DDL into `pipeline/repositories/`.
+- `pipeline/repositories/` continues to own domain-specific climate reads; `pipeline/loaders/` retains transactional climate writes. Root `database/` owns shared connection, config, bootstrap, verification and DDL; `orchestration/repositories/` retains progress/pacing operations.
+- Deletion is **not yet done**; audit of remaining references and post-removal regressions is required. PostgreSQL integration tests remain outstanding.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
