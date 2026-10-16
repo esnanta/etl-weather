@@ -82,7 +82,7 @@ Airflow or climate observations.
 
 ## Source definitions
 
-The audit maps to `pipeline/database/schema.py`,
+The audit maps to root `database/climate.py` and `database/schema.py`,
 `pipeline/loaders/daily_climate_postgres.py`,
 `orchestration/repositories/pipeline_progress.py`, and
 `orchestration/repositories/submission_pacing.py` on branch `dev`.
