@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from pipeline.database.config import (
+from database.config import (
     APPLICATION_SCHEMA,
     DISTRICT_TABLE,
     GRID_REGION_TABLE,
