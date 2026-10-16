@@ -170,13 +170,20 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - Fixed the **unit test fixture** to pass an explicit environment mapping without `TEST_POSTGRES_*` directly to `resolve_test_database_config(env)`, bypassing dotenv; this still validates that test config never falls back to `POSTGRES_*`. Production dotenv behavior remains unchanged.
 - **Awaiting rerun after correction**; do not record a passing 363-test baseline until user reports it. No PostgreSQL integration or setup `--execute` has been run.
 
+## DB-R3 regression verification (user report, 2026-10-17)
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/database -q` → **13 passed in 0.59s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **363 passed in 7.65s** (the supplied command text displayed `RA5_CAMPAIGN_SCHEDULE_ENABLED`, but pytest completed successfully; recheck the environment-variable spelling in future commands).
+- The isolated dotenv fixture correction is verified. These results do not verify PostgreSQL provisioning or transactional integration.
+- Next DB-R3 gate: review two-target preflight, roles/permissions, and existing database state before any explicit `database.setup --execute`.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
 - [x] Added `database/setup.py`, a separate guarded development/test setup CLI. Default mode only resolves and displays distinct `POSTGRES_*` and `TEST_POSTGRES_*` targets; no database connection or DDL. `--execute` is allowed only under `APP_ENV=dev` and preflights both targets' maintenance access, PostGIS server availability, target database identity and existing extension-schema placement before the first write.
 - [x] Explicit execute creates missing targets through the PostgreSQL maintenance database with safely quoted identifiers, delegates eight-table initialization to the same combined `database.bootstrap.bootstrap(config)` function for each, and uses read-only schema readiness verification afterward. No data copying and no automatic DROP/recreate.
 - [x] Added `tests/unit/database/test_setup.py` for env isolation, distinct identities and preflight ordering.
-- [ ] Verify dry-run help and configured targets locally; run unit regression. Baseline **355** unit tests before new tests; the number may increase with added test cases.
+- [x] Verify dry-run help and configured targets locally; run unit regression. Baseline **355** unit tests before new tests; the number may increase with added test cases.
 - [ ] Test live provisioning against explicitly isolated `TEST_POSTGRES_*` under operator control; integration tests have not been executed by the assistant.
 - [ ] Review remaining lifecycle/setup parity and failure behavior before marking DB-R3 fully complete. Database provisioning across two PostgreSQL DBs is not atomic.
 
