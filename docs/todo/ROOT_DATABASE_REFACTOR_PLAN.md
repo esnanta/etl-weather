@@ -184,6 +184,14 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - Both targets logged PostGIS **3.4.2** in `climate_data`; setup finished `Application and isolated test database schemas verified.`.
 - **Still to verify:** test database contains no copied observations or imported administrative rows; live integration suites pass; cleanup and cross-database failure behavior remain review items. Do not mark integration coverage verified based on schema readiness alone.
 
+## DB-R3 live integration verification (user report, 2026-10-17)
+
+- The user inspected all eight `climate_data` tables in newly provisioned `weather_test` and reported **0 rows in every table before integration execution**: `t_daily_climate`, `t_daily_climate_detail`, `t_pipeline_progress`, `t_pipeline_progress_detail`, `t_submission_pacing`, `t_province`, `t_district`, `t_grid_region`.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` → **15 passed in 1.69s**.
+- Existing unit regression: **363 passed in 7.65s**; dual-target setup previously reported success, PostGIS 3.4.2 in both databases, all eight tables present.
+- This establishes successful fresh provisioning and live isolated integration behavior. Unit and integration counts are separate test suites.
+- Remaining DB-R3 review: repeated `setup --execute` behavior and error handling on partial cross-database failures; no destructive recreation is authorized by this evidence.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
