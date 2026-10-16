@@ -263,6 +263,12 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - `pipeline/repositories/` continues to own domain-specific climate reads; `pipeline/loaders/` retains transactional climate writes. Root `database/` owns shared connection, config, bootstrap, verification and DDL; `orchestration/repositories/` retains progress/pacing operations.
 - Deletion is **not yet done**; audit of remaining references and post-removal regressions is required. PostgreSQL integration tests remain outstanding.
 
+## DB-R2 Step 1 local grep evidence (user report)
+
+The user ran `git grep -n -E 'pipeline[./]database|geospatial[./]database|create_database_engine|ensure_database_exists' -- '*.py' '*.md' '*.sql' '*.sh' '*.yml' '*.yaml'` on their working tree. The pasted output ended after a leading colon and is **incomplete**; do not treat the list as an exhaustive zero-stale-import result.
+
+Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly describes PostGIS under `public`; `docs/todo/DATABASE_PREFIX_AND_ADMINISTRATIVE_GRID_PLAN.md` contains historical legacy paths; `database/bootstrap.py` and `database/connection.py` correctly use the **new** `create_database_engine` function. These new canonical symbols are not cleanup targets. Step 1 checklist remains unchecked pending complete inventory and cross-check with the dev tree scan above.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
