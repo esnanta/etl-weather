@@ -12,10 +12,12 @@ PostGIS must be installed on the PostgreSQL **server** before the Python bootstr
 
 ```bash
 source activate-airflow.sh -q
-python -m database.bootstrap             # dry run: no DB changes
-python -m database.bootstrap --execute   # initialize/verify PostGIS
-python -m database.geospatial            # dry run: no DB changes
-python -m database.geospatial --execute  # create spatial tables
+python -m database.climate               # dry run: five climate/operational tables
+python -m database.geospatial            # dry run: three spatial tables
+python -m database.bootstrap             # dry run: all eight tables
+python -m database.climate --execute     # climate/operational only
+python -m database.geospatial --execute  # geospatial only, including PostGIS
+python -m database.bootstrap --execute   # both independent initialization paths
 python -m geospatial.importers.districts --execute
 ```
 
