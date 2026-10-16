@@ -333,7 +333,7 @@ def test_direct_script_execution_hard_denies_prod() -> None:
     assert "ImportError" not in result.stderr
 
 
-def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog) -> None:
+def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, capsys) -> None:
     monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
     monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
@@ -354,15 +354,17 @@ def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog) -> N
 
     with caplog.at_level("INFO"):
         assert destroy_all.main(["--execute"]) == 5
-    assert "STEP 2/6 | Check open PostgreSQL sessions" in caplog.text
-    assert "DESTROY ALL | FAILED" in caplog.text
+    stderr = capsys.readouterr().err
+    assert "STEP 2/6 | Check open PostgreSQL sessions" in stderr
+    assert "DESTROY ALL | FAILED" in stderr
+    assert "INFO | \n" not in stderr
     assert "pid=15381" in caplog.text
     assert "PyCharm" in caplog.text
     assert "disconnect the listed database sessions" in caplog.text
     assert "file cleanup have NOT started" in caplog.text
 
 
-def test_success_logs_phases_and_final_state(monkeypatch, caplog) -> None:
+def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> None:
     monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
     monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
@@ -402,7 +404,9 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog) -> None:
     )
     with caplog.at_level("INFO"):
         assert destroy_all.main(["--execute"]) == 0
+    stderr = capsys.readouterr().err
     for step in range(1, 7):
-        assert f"STEP {step}/6" in caplog.text
-    assert "DESTROY ALL | SUCCESS" in caplog.text
+        assert f"STEP {step}/6" in stderr
+    assert "DESTROY ALL | SUCCESS" in stderr
+    assert "INFO | \n" not in stderr
     assert "database_ready=1" in caplog.text
