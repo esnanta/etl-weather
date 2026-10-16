@@ -410,3 +410,12 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
     assert "DESTROY ALL | SUCCESS" in stderr
     assert "INFO | \n" not in stderr
     assert "database_ready=1" in caplog.text
+
+
+def test_destroy_contract_requires_all_eight_canonical_tables() -> None:
+    from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
+
+    assert set(destroy_all.EXPECTED_APPLICATION_TABLES) == (
+        CLIMATE_TABLES | GEOSPATIAL_TABLES
+    )
+    assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 8
