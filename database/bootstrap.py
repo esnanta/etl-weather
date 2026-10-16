@@ -73,8 +73,24 @@ def bootstrap(config: DatabaseConfig | None = None) -> str:
 
 
 def main() -> None:
+    """Preview the target by default; --execute explicitly enables/verifies PostGIS."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Initialize PostGIS in the configured existing database.")
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Apply PostGIS initialization to the configured database.",
+    )
+    args = parser.parse_args()
+    config = resolve_database_config()
+    print(f"PostGIS target: database={config.database}, schema={POSTGIS_SCHEMA}")
+    if not args.execute:
+        print("Dry run: database unchanged. Pass --execute to initialize PostGIS.")
+        return
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
-    version = bootstrap()
+    version = bootstrap(config)
     print(f"PostGIS ready (version {version}).")
 
 
