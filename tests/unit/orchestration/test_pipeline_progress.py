@@ -13,7 +13,7 @@ from typing import cast
 import pytest
 from sqlalchemy.engine import Engine
 
-from pipeline.database.config import (
+from database.config import (
     PIPELINE_PROGRESS_DETAIL_TABLE,
     PIPELINE_PROGRESS_SCHEMA,
     PIPELINE_PROGRESS_TABLE,
@@ -22,8 +22,8 @@ from orchestration.progress.definition import (
     PipelineProgressDefinition,
     ProgressPartition,
 )
+from database.schema import create_pipeline_progress_tables
 from orchestration.repositories.pipeline_progress import (
-    create_pipeline_progress_tables,
     initialize_pipeline_progress,
     reconcile_pipeline_progress,
     update_pipeline_progress_detail,
