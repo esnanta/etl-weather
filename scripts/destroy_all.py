@@ -47,7 +47,8 @@ logger = logging.getLogger(__name__)
 
 def _section(title: str) -> None:
     """Make major phases recognizable in terminal output."""
-    logger.info("\n%s\n%s", "=" * 68, title)
+    # Section headings are presentation, not timestamped log events.
+    print(f"\n{'=' * 68}\n{title}", file=sys.stderr, flush=True)
 
 
 EXPECTED_APPLICATION_TABLES = (
