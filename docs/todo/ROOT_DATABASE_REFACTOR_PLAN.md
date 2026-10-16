@@ -335,6 +335,13 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - No `--execute` was used. CLI execution against a live database and PostgreSQL integration remain unverified.
 - Step 3 CLI `--help`/dry-run acceptance is satisfied. Step 4 package deletion requires final active-import audit.
 
+## DB-R2 legacy package removal (2026-10-16)
+
+- Deleted all six tracked files from `pipeline/database/` and `geospatial/database/` on `dev`, after auditing active known import sites and confirming the replacement spatial CLI help/dry-run commands.
+- Final deletion commit: `581bfdd15928d380cd35ee2ee868910d641f0a2c`. Git does not track empty directories; the old package paths should disappear on a clean checkout. Local `__pycache__` files can remain untracked and should not be interpreted as source modules.
+- **Crucial verification gate:** the user-reported **355 passed in 8.56s** was **before** deletion. Rerun complete units and all test collection on the new revision; do not mark Step 4/5 accepted before confirming no missing import or broken CLI.
+- Historical documentation references may remain in archival notes. Root `AGENTS.md`, root `README.md`, and other guidance still require Step 6 alignment. Isolated PostgreSQL execution remains a DB-R3/DB-R5 gate.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
