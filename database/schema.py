@@ -16,7 +16,6 @@ from database.config import (
 from database.climate import (
     create_schema, create_daily_climate_table, create_daily_climate_detail_table,
 )
-from database.geospatial import create_spatial_tables
 
 
 def _parent_table() -> str:
@@ -170,4 +169,6 @@ def initialize_climate_schema(engine: Engine, config: DatabaseConfig | None = No
 
 def initialize_geospatial_schema(engine: Engine, config: DatabaseConfig | None = None) -> None:
     """Initialize only the three spatial tables, including PostGIS dependency."""
+    from database.geospatial import create_spatial_tables
+
     create_spatial_tables(engine, config)
