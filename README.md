@@ -40,7 +40,7 @@ For this project, activate PostGIS on the existing application database `weather
 
 ```bash
 source activate-airflow.sh -q
-python -m geospatial.database.bootstrap
+python -m database.bootstrap --execute
 ```
 
 This command connects through the existing `POSTGRES_*` configuration, verifies the connected database name, enables PostGIS only if missing, and does **not** create or reset the database, touch climate data, or start Airflow. It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The importer has not yet been implemented (P4.3/P4.4).
@@ -50,7 +50,7 @@ For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01
 
 ### PostGIS deployment contract (single lifecycle)
 
-PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `geospatial.database.bootstrap` automatically checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public` when absent, and confirms the extension actually resides in `public`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `climate_data.geometry` and `climate_data.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
+PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `database.bootstrap` automatically checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data` when absent, and confirms the extension actually resides in `climate_data`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `climate_data.geometry` and `climate_data.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
 
 ## Active Dataset
 
