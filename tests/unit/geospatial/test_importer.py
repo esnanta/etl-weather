@@ -11,7 +11,7 @@ import pytest
 from geospatial.config import ACEH_DISTRICTS
 from geospatial.importers.reader import normalize_feature_ref, read_district_features
 from geospatial.importers.districts import import_districts
-from pipeline.database.config import DatabaseConfig
+from database.config import DatabaseConfig
 
 
 def _fixture(path: Path, *, ident=113.0, district="Aceh Barat", crs=None) -> Path:
