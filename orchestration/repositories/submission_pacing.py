@@ -36,21 +36,6 @@ def submission_interval_seconds() -> int:
     return SUBMISSION_INTERVAL_MINUTES * 60
 
 
-def create_submission_pacing_table(engine: Engine) -> None:
-    """Create the durable global submission clock without provider identity."""
-    with engine.begin() as connection:
-        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {PACING_SCHEMA}"))
-        connection.execute(
-            text(
-                f"""CREATE TABLE IF NOT EXISTS {PACING_SCHEMA}.{PACING_TABLE} (
-                    singleton_id SMALLINT PRIMARY KEY CHECK (singleton_id = 1),
-                    last_submission_at TIMESTAMPTZ,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )"""
-            )
-        )
-
-
 def reserve_submission(
     engine: Engine,
     *,
