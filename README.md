@@ -36,14 +36,14 @@ CREATE SCHEMA IF NOT EXISTS climate_data;
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data;
 ```
 
-For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. Spatial bootstrap can be run manually (this **changes the selected database** by enabling the extension if absent):
+For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. The explicit combined initializer creates missing climate and spatial objects (the default invocation is a dry-run):
 
 ```bash
 source activate-airflow.sh -q
 python -m database.bootstrap --execute  # climate + geospatial (8 tables)
 ```
 
-This command connects through the existing `POSTGRES_*` configuration, verifies the connected database name, enables PostGIS only if missing, and does **not** create or reset the database, touch climate data, or start Airflow. It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The importer has not yet been implemented (P4.3/P4.4).
+With `--execute`, this command connects through `POSTGRES_*`, initializes five climate/operational and three spatial tables, enables PostGIS if missing, and does **not** create or reset the database, delete observations, import GeoJSON, or start Airflow. The independent alternatives are `python -m database.climate --execute` (climate only) and `python -m database.geospatial --execute` (spatial only). It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The district importer is implemented in `geospatial/importers/districts.py`.
 
 For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
 
@@ -207,14 +207,13 @@ The important boundary is conceptual: `pipeline/` owns climate-data acquisition,
 etl-weather/
 ├── config.py                 # shared lightweight application configuration
 ├── docs/                     # design decisions and project documentation
+├── database/                 # canonical PostgreSQL config, schema DDL and bootstrap
 ├── geospatial/               # independent administrative boundaries and spatial grid mapping
 │   ├── sources/id/districts/ # immutable Aceh GeoJSON source
-│   ├── database/             # PostgreSQL/PostGIS bootstrap
 │   └── sql/                  # read-only spatial capability checks
 ├── orchestration/            # Airflow orchestration layer
 │   └── README.md             # Airflow setup and operations
 ├── pipeline/                 # ETL and canonical data-access implementation
-│   ├── database/
 │   ├── extraction/
 │   ├── loaders/
 │   ├── repositories/
@@ -347,4 +346,4 @@ python -m pytest tests/integration/pipeline/test_postgresql_idempotency.py -q
 
 Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).
 
-**Current development-database caveat:** The existing `weather` PostgreSQL database has PostGIS 3.4.2 installed in `public` from earlier P4 work. The new deployment contract instead installs PostGIS objects in `climate_data`. Do not attempt to reinstall, relocate, or drop the existing extension automatically; rebuilding the database is a separate destructive user-authorized operation. Until that rebuild, the new geospatial bootstrap/import code will intentionally reject the old extension placement.
+**Database verification:** The latest recorded clean setup has PostGIS 3.4.2 in `weather.climate_data`; verify the target independently before executing database setup. Never automatically relocate or drop an extension installed in another schema.
