@@ -23,14 +23,8 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
-from database.config import (
-    DAILY_CLIMATE_TABLE,
-    DAILY_CLIMATE_DETAIL_TABLE,
-    PIPELINE_PROGRESS_TABLE,
-    PIPELINE_PROGRESS_DETAIL_TABLE,
-    PACING_TABLE,
-)
-from database.config import DatabaseConfig
+from database.config import DatabaseConfig, APPLICATION_SCHEMA
+from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
 from scripts import recreate_postgres_database
 from scripts import reset_airflow_logs
 from scripts import reset_airflow_runtime
@@ -51,13 +45,7 @@ def _section(title: str) -> None:
     print(f"\n{'=' * 68}\n{title}", file=sys.stderr, flush=True)
 
 
-EXPECTED_APPLICATION_TABLES = (
-    DAILY_CLIMATE_TABLE,
-    DAILY_CLIMATE_DETAIL_TABLE,
-    PIPELINE_PROGRESS_TABLE,
-    PIPELINE_PROGRESS_DETAIL_TABLE,
-    PACING_TABLE,
-)
+EXPECTED_APPLICATION_TABLES = tuple(sorted(CLIMATE_TABLES | GEOSPATIAL_TABLES))
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -227,7 +215,17 @@ def _database_tables_ready(config: DatabaseConfig) -> bool:
                 (config.schema,),
             )
             found = {row[0] for row in cursor.fetchall()}
-    return set(EXPECTED_APPLICATION_TABLES).issubset(found)
+            cursor.execute(
+                "SELECT n.nspname FROM pg_extension e "
+                "JOIN pg_namespace n ON n.oid=e.extnamespace "
+                "WHERE e.extname='postgis'"
+            )
+            extension_row = cursor.fetchone()
+    return (
+        set(EXPECTED_APPLICATION_TABLES).issubset(found)
+        and extension_row is not None
+        and extension_row[0] == APPLICATION_SCHEMA
+    )
 
 
 def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
