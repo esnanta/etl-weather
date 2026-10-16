@@ -318,6 +318,14 @@ Verified visible hits: `README.md` still uses legacy spatial CLI and incorrectly
 - `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.44s**.
 - These outcomes validate collection and unit regression only; no live PostgreSQL integration behavior has been verified.
 
+## DB-R2 Step 3 root geospatial CLI implementation (2026-10-16)
+
+- Root `python -m database.bootstrap` now defaults to read-only target preview and requires `--execute` to initialize or verify PostGIS (the legacy wrapper previously executed immediately; this deliberate new guard must be reflected in operator instructions).
+- Root `python -m database.geospatial` already previews by default and requires `--execute` for DDL; it now uses `database.connection.create_database_engine` instead of a direct SQLAlchemy engine factory.
+- Updated `README.md` and `geospatial/README.md` for the new CLI and corrected the documented PostGIS location to `climate_data`.
+- **Pending user verification:** both `--help` and default dry runs (no `--execute`) and full unit regression. Do not delete legacy wrappers yet; no DB mutation has been executed by this work.
+- Historical notes in `docs/todo/DATABASE_PREFIX_AND_ADMINISTRATIVE_GRID_PLAN.md` should retain original citations and be explicitly marked as historical, not silently rewritten.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
