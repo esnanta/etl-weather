@@ -38,8 +38,8 @@ from orchestration.repositories.pipeline_progress import (
     try_claim_pipeline_progress,
     update_pipeline_progress_detail,
 )
-from pipeline.database import (
-    DatabaseConfig,
+from database.config import DatabaseConfig
+from database.climate import (
     create_daily_climate_detail_table,
     create_daily_climate_table,
     create_schema,
