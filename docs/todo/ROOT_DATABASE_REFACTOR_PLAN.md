@@ -126,6 +126,13 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - **No callers were migrated**, old packages remain, no PostgreSQL DDL/destructive commands were executed, and pytest was **not executed**. New unit tests and schema composition must be run and reviewed before any old module is removed.
 - Next steps: run local read-only DB identity/privilege queries and existing baseline tests; migrate callers in bounded groups while preserving domain separation; remove duplicate DDL only after successful regression.
 
+## Verified local unit-test baseline (user report, 2026-10-16)
+
+- `python -m pytest tests/unit/database -q` → **5 passed in 0.13s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 9.37s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` → **122 passed in 4.85s** (included in the 355 overall tests, not additive).
+- These were executed and reported by the user on their workstation, not by the GitHub integration. They establish the pre-import-migration unit regression baseline only; PostgreSQL integration and live database inventory remain outstanding.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
