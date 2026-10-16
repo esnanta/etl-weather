@@ -10,13 +10,14 @@ from typing import Callable
 
 from tqdm.auto import tqdm
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from database.connection import create_database_engine
 from sqlalchemy.engine import Engine
 
 from geospatial.config import ACEH_DISTRICTS, GeoJSONSourceConfig
-from geospatial.database.bootstrap import ensure_postgis_extension
+from database.bootstrap import ensure_postgis_extension
 from geospatial.importers.reader import DistrictFeature, read_district_features
-from pipeline.database.config import (
+from database.config import (
     APPLICATION_SCHEMA,
     DISTRICT_TABLE,
     PROVINCE_TABLE,
@@ -158,7 +159,7 @@ def main() -> None:
     if not arguments.execute:
         print("Dry run: GeoJSON validated, database unchanged. Use --execute to import.")
         return
-    engine = create_engine(config.url, future=True)
+    engine = create_database_engine(config)
     try:
         with tqdm(total=len(features), desc="Importing districts", unit="district") as bar:
             last_count = 0
