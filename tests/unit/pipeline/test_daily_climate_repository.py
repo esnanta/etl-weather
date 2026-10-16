@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from pipeline.models.weather import BoundingBox, DataSource
 from pipeline.repositories.daily_climate_reader import (
     DailyClimateSelection,
