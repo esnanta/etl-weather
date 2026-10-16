@@ -24,7 +24,7 @@ from psycopg import connect, sql
 from config import APP_ENV_DEV, resolve_app_environment
 from orchestration.repositories.database import initialize_application_storage
 from orchestration.scheduling.schedule import campaign_schedule
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts.airflow_processes import list_airflow_processes
 
 logging.basicConfig(
