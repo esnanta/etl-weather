@@ -65,8 +65,13 @@ def test_missing_test_configuration_never_uses_application_settings(monkeypatch)
     ):
         monkeypatch.setenv("POSTGRES_" + key, value)
         monkeypatch.delenv("TEST_POSTGRES_" + key, raising=False)
+    # Supply a deliberately incomplete environment mapping to avoid loading .env.
+    from database.config import resolve_test_database_config
+
+    supplied = {key: value for key, value in __import__("os").environ.items()
+                if not key.startswith("TEST_POSTGRES_")}
     with pytest.raises(ValueError, match="TEST_POSTGRES_"):
-        setup.resolve_targets()
+        resolve_test_database_config(supplied)
 
 
 def test_direct_setup_rejects_production_environment(monkeypatch) -> None:
