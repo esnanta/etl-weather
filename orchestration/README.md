@@ -425,7 +425,7 @@ python -m pytest \
   -q
 ```
 
-The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`.
+The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`. Airflow storage bootstrap initializes only the five climate/operational tables via root `database/`; geospatial table initialization is an independent explicit CLI operation (`python -m database.geospatial --execute`), never part of DAG execution. Airflow metadata remains SQLite.
 
 Detailed test contracts remain in [`tests/README.md`](../tests/README.md).
 
