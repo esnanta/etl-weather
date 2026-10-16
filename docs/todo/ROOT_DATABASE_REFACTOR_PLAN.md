@@ -173,6 +173,14 @@ The focused tests and pipeline tests are included in the full unit count; do not
 - These runs were executed on the user's local `dev` checkout after updating the stale test patch target. Geospatial migration is accepted at the **unit regression** level, but isolated PostgreSQL integration remains pending.
 - Next DB-R2 phase: migrate orchestration database imports and operational DDL ownership to the root package without adding any geospatial dependency to Airflow.
 
+## DB-R2 orchestration migration — partial (2026-10-16)
+
+- `orchestration/repositories/database.py` now delegates its five-table bootstrap calls to DDL constructors imported from root `database.climate` and `database.schema`. No geospatial initializer is called by orchestration.
+- `orchestration/repositories/pipeline_progress.py` and `submission_pacing.py` now import configuration identifiers from root `database.config`.
+- **Not yet complete:** Duplicate CREATE TABLE functions still exist in the two operational repositories and their remaining references/tests require migration. The requested removal of DDL ownership is not accepted. An attempt to apply a large edit to the progress module was blocked by tooling; no claim of completion is made.
+- **Regression not run:** Local `tests/unit/orchestration -q` and `tests/unit -q` need to be executed after these changes. The pre-change baseline was 122 and 355 passing tests respectively. PostgreSQL integration remains outstanding.
+- No DAG scheduling/retry/deferral or geospatial code was changed in this partial orchestration step.
+
 ## Current evidence and boundaries
 
 The user previously reported **19 passed** geospatial unit tests, **22 passed** destroy-all unit tests, successful PostGIS 3.4.2 bootstrap at `weather.climate_data`, creation of the three spatial tables, and one committed import of 23 Aceh districts/one province. These results predate this planned refactor and do not establish its regression success. The user has since **dropped `weather_test`**, while `weather` must remain untouched until an explicitly authorized maintenance operation. No source files or PostgreSQL databases have been changed by creating this plan.
