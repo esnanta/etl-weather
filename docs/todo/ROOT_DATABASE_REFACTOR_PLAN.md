@@ -192,6 +192,13 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - This establishes successful fresh provisioning and live isolated integration behavior. Unit and integration counts are separate test suites.
 - Remaining DB-R3 review: repeated `setup --execute` behavior and error handling on partial cross-database failures; no destructive recreation is authorized by this evidence.
 
+## DB-R3 repeat setup verification (user report, 2026-10-17)
+
+- Re-ran `python -m database.setup --execute` against **existing** `weather` and `weather_test`.
+- Both reported schema `climate_data` ready, climate table readiness, PostGIS version **3.4.2** in `climate_data`; command completed with `Application and isolated test database schemas verified.`.
+- No `Creating missing PostgreSQL database` message appeared in the repeat run. This verifies successful repeated initialization on the tested state, not byte-for-byte data/index preservation.
+- DB-R3 acceptance evidence: **363 unit passed**, **15 PostgreSQL integration passed**, initial test database empty across eight tables, dual-target first provisioning successful, and repeat setup successful. DB-R3 functional acceptance complete; partial-failure compensation and destructive operations are separate hardening / DB-R4 concerns.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
