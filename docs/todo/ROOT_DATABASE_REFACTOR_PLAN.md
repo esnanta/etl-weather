@@ -88,6 +88,29 @@ Development setup prepares **both** `weather` and `weather_test` (resolved from 
 - [ ] Update imports across runtime, scripts, tests and CI; remove old `pipeline/database` and `geospatial/database` only after no callers remain.
 - [ ] Keep code and docstrings in English; avoid stale compatibility aliases and duplicate bootstrap paths.
 
+### Step 1 audit evidence — dev Git tree scan (2026-10-16)
+
+A GitHub **dev** recursive tree request returned 271 entries (`truncated=false`). Source-level checks confirmed the following active legacy references; this is a working inventory, **not yet proof of a full `git grep` pass**:
+
+| Group | Verified remaining references | Migration target |
+| --- | --- | --- |
+| Maintenance/monitoring scripts | `scripts/destroy_all.py`, `inspect_campaign_capacity.py`, `recreate_postgres_database.py`, `report_campaign_progress.py`, `reset_all.py` | `database.config`, `database.connection` and appropriate root schema functions |
+| Orchestration domain reads | `orchestration/repositories/load_evidence.py` | `database.config` / `database.climate` identifiers only |
+| Integration tests | `tests/integration/geospatial/test_import_idempotency.py`, `tests/integration/pipeline/test_postgresql_idempotency.py`, `tests/integration/orchestration/test_orchestration_database_bootstrap.py`, `tests/integration/orchestration/test_pipeline_progress_reconciliation.py` | Root database imports; geospatial fixture requires DB-R3 isolation redesign |
+| Unit tests | `tests/unit/geospatial/test_importer.py`; `tests/unit/operations/test_destroy_all.py`, `test_recreate_postgres_database.py`, `test_reset_all.py` | Root `DatabaseConfig` |
+| CLI and documentation | `README.md`, `geospatial/README.md` use `python -m geospatial.database.bootstrap` / `schema`; `docs/todo/DATABASE_PREFIX_AND_ADMINISTRATIVE_GRID_PLAN.md` has historical references | New CLI entrypoints plus clearly labeled historical notes |
+| Legacy implementation | `pipeline/database/{__init__,config,schema}.py`, `geospatial/database/{__init__,bootstrap,schema}.py` | Remove only after migration and CLI verification |
+
+**Additional documentation discrepancy:** root `README.md` currently describes PostGIS installed in `public`, conflicting with the approved `climate_data` placement. Correct during Step 6; verify actual PostgreSQL extension placement separately.
+
+**Next audit gate:** run on local `dev`:
+
+```bash
+git grep -n -E 'pipeline[./]database|geospatial[./]database|create_database_engine|ensure_database_exists' -- '*.py' '*.md' '*.sql' '*.sh' '*.yml' '*.yaml'
+```
+
+Exclude clearly marked historical records when deciding code removal, but do not silently delete past implementation evidence. Step 1 stays unchecked until the full reference inventory and import/CLI impact review is confirmed.
+
 ### DB-R2 final cleanup — approved execution order (2026-10-16)
 
 **Scope:** `dev` only. Retain one canonical root `database/` package. Domain reads remain in `pipeline/repositories/`, ETL writes in `pipeline/loaders/`, and progress/pacing operations in `orchestration/repositories/`. No DAG or scientific behavior change. Geospatial must remain independent from orchestration. No database drops, extension relocation, or source-data deletion.
