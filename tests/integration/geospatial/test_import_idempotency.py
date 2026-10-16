@@ -1,8 +1,8 @@
 """Real PostgreSQL coverage of production geospatial importer persistence.
 
 The production create_spatial_tables() and import_districts() functions execute
-against TEST_POSTGRES_* only. A unique throwaway schema isolates this suite
-from weather.climate_data and other tests. A progress callback injects failure
+against TEST_POSTGRES_* only. The dedicated TEST_POSTGRES_* database uses canonical climate_data schema.
+Fixtures refuse to touch pre-existing spatial rows and clean up only test data. A progress callback injects failure
 after a real district UPSERT to prove transaction rollback.
 """
 from __future__ import annotations
@@ -11,22 +11,22 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-import geospatial.database.schema as spatial_schema
+from database.geospatial import create_spatial_tables
+from database.config import DatabaseConfig, APPLICATION_SCHEMA, resolve_test_database_config
 import geospatial.importers.districts as district_importer
 from geospatial.config import ACEH_DISTRICTS
-from pipeline.database.config import DatabaseConfig
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def spatial_db(monkeypatch):
+def spatial_db():
+    """Exercise the canonical spatial schema only in a dedicated empty test DB."""
     load_dotenv()
     keys = (
         "TEST_POSTGRES_HOST", "TEST_POSTGRES_PORT", "TEST_POSTGRES_DATABASE",
@@ -36,51 +36,59 @@ def spatial_db(monkeypatch):
     if missing:
         pytest.skip("Requires isolated " + ", ".join(missing))
 
-    name = os.environ["TEST_POSTGRES_DATABASE"]
-    if "test" not in name.lower() or name.lower() in {"weather", "postgres"}:
-        pytest.fail("Refusing non-test database for geospatial integration.")
-    schema = "geospatial_test_" + uuid4().hex
-    config = DatabaseConfig(
-        host=os.environ["TEST_POSTGRES_HOST"],
-        port=int(os.environ["TEST_POSTGRES_PORT"]),
-        database=name,
-        user=os.environ["TEST_POSTGRES_USER"],
-        password=os.environ["TEST_POSTGRES_PASSWORD"],
-        schema=schema,
-    )
-    engine = create_engine(config.url, future=True)
-    # The extension is global within this test database, not per temporary schema.
-    # Fail before any test schema DDL, rather than repeatedly raising from bootstrap.
+    config = resolve_test_database_config()
+    engine = create_engine(config.sqlalchemy_url, future=True)
+    ready = False
     try:
         with engine.connect() as connection:
+            actual = connection.execute(text("SELECT current_database()")).scalar_one()
+            if actual != config.database:
+                pytest.fail("Refusing unexpected test database identity.")
             postgis_schema = connection.execute(text(
                 "SELECT n.nspname FROM pg_extension e "
                 "JOIN pg_namespace n ON n.oid = e.extnamespace "
                 "WHERE e.extname = 'postgis'"
             )).scalar_one_or_none()
-        if postgis_schema not in (None, "climate_data"):
+            if postgis_schema not in (None, APPLICATION_SCHEMA):
+                pytest.fail(
+                    f"PostGIS is installed in {postgis_schema!r}; "
+                    f"expected {APPLICATION_SCHEMA!r}. No automatic relocation.",
+                    pytrace=False,
+                )
+        create_spatial_tables(engine, config)
+        with engine.connect() as connection:
+            existing = (
+                connection.execute(text(
+                    "SELECT COUNT(*) FROM climate_data.t_province"
+                )).scalar_one(),
+                connection.execute(text(
+                    "SELECT COUNT(*) FROM climate_data.t_district"
+                )).scalar_one(),
+                connection.execute(text(
+                    "SELECT COUNT(*) FROM climate_data.t_grid_region"
+                )).scalar_one(),
+            )
+        if any(existing):
             pytest.fail(
-                f"TEST_POSTGRES_DATABASE={name!r} has PostGIS in "
-                f"{postgis_schema!r}, but the project requires 'climate_data'. "
-                "Prepare a dedicated test database with PostGIS installed in "
-                "'climate_data' before running integration tests. "
-                "Do not relocate or drop an existing extension automatically.",
+                "Geospatial integration requires empty spatial tables in "
+                "dedicated TEST_POSTGRES_* database; refusing to modify existing rows.",
                 pytrace=False,
             )
-    except BaseException:
-        engine.dispose()
-        raise
-
-    # Only the schema location is isolated. The actual production SQL and
-    # transaction control remain fully exercised by PostgreSQL and PostGIS.
-    monkeypatch.setattr(spatial_schema, "APPLICATION_SCHEMA", schema)
-    monkeypatch.setattr(district_importer, "APPLICATION_SCHEMA", schema)
-    try:
-        spatial_schema.create_spatial_tables(engine, config)
+        ready = True
         yield engine, config
     finally:
-        with engine.begin() as conn:
-            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        if ready:
+            # Only rows created by this fixture's test source; never drop schema
+            # or truncate tables owned by another integration suite.
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "DELETE FROM climate_data.t_district "
+                    "WHERE source_dataset = :source"
+                ), {"source": ACEH_DISTRICTS.source_dataset})
+                connection.execute(text(
+                    "DELETE FROM climate_data.t_province "
+                    "WHERE source_dataset = :source"
+                ), {"source": ACEH_DISTRICTS.source_dataset})
         engine.dispose()
 
 
@@ -114,7 +122,7 @@ def _geojson(path: Path, *, names: tuple[str, ...]) -> Path:
 def _rows(engine, schema: str):
     with engine.connect() as conn:
         province = conn.execute(text(
-            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), climate_data.ST_NDims(boundary_geometry) "
+            f"SELECT id, climate_data.ST_AsEWKT(boundary_geometry), climate_data.climate_data.ST_NDims(boundary_geometry) "
             f"FROM {schema}.t_province ORDER BY id"
         )).all()
         districts = conn.execute(text(
