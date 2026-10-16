@@ -15,7 +15,7 @@ import pandas as pd
 from sqlalchemy.engine import Connection
 
 import pipeline.loaders.daily_climate_postgres as postgres_loader
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from pipeline.loaders.daily_climate_postgres import (
     upsert_daily_climate_metadata,
     upsert_daily_climate_observations,
