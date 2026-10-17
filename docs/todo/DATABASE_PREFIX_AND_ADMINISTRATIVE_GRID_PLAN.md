@@ -16,7 +16,7 @@ Operator tests before targeted fix: `tests/unit/geospatial -q` **1 failed, 23 pa
 
 Documented both preview and explicit `--execute` in `geospatial/README.md`, including the empty-observations case, `ST_Covers` classifications, idempotency and isolated verification. Root README expansion is explicitly **pending** by operator decision.
 
-- [ ] Re-run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after correcting the assertion; expected 24 passing tests if nothing else changed.
+- [x] Re-ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after the assertion correction: **24 passed in 0.22s** (operator report, 2026-10-17).
 - [x] Isolated PostgreSQL mapping integration test passed and full geospatial integration subset passed.
 - [ ] Restore a limited real pilot of climate observations before previewing P5 mapping against `weather`. Do not execute mapping on empty observations merely to claim coverage.
 
