@@ -8,6 +8,18 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.2 regression checkpoint and mapping README (2026-10-17)
+
+Operator previewed `python -m geospatial.mapping` against `weather.climate_data`: **coordinates=0, matched=0, unmatched=0, ambiguous=0**. This is expected because climate observation rows have not been restored after DESTROY. No mapping rows were written.
+
+Operator tests before targeted fix: `tests/unit/geospatial -q` **1 failed, 23 passed (0.29s)**. The sole failure, `test_ambiguous_and_unmatched_never_get_assigned_districts`, asserted an incorrect text fragment `WHEN match_count = 1 THEN MIN(...)`. Actual SQL uses `CASE WHEN COUNT(district_id) = 1 THEN MIN(...)` in the classification CTE; the unit assertion was corrected without changing the mapping implementation. `tests/integration/geospatial/test_grid_mapping.py -q` **1 passed (0.91s)** and `tests/integration/geospatial -q` **5 passed (0.84s)**.
+
+Documented both preview and explicit `--execute` in `geospatial/README.md`, including the empty-observations case, `ST_Covers` classifications, idempotency and isolated verification. Root README expansion is explicitly **pending** by operator decision.
+
+- [ ] Re-run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after correcting the assertion; expected 24 passing tests if nothing else changed.
+- [x] Isolated PostgreSQL mapping integration test passed and full geospatial integration subset passed.
+- [ ] Restore a limited real pilot of climate observations before previewing P5 mapping against `weather`. Do not execute mapping on empty observations merely to claim coverage.
+
 ## P5.1 audit and P5.2 implementation checkpoint (2026-10-17)
 
 **P5.1 audited source:** `database/geospatial.py` already defines `t_grid_region` with `DOUBLE PRECISION` latitude/longitude, a unique coordinate key, allowed `matched/unmatched/ambiguous` statuses, match count checks, nullable administrative IDs on non-unique/no matches, and a composite district/province FK. `database/climate.py` stores observation coordinates as `DOUBLE PRECISION`. No schema migration is required for this mapping step. `geospatial.importers.districts` previously loaded and verified 23 districts and 1 Aceh province; polygon shapes are MultiPolygonZ/SRID 4326.
