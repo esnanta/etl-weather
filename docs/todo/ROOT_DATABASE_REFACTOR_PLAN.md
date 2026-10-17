@@ -221,6 +221,14 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - [ ] Unit regression after this change still pending; no real DROP or filesystem cleanup executed by the assistant.
 - [ ] Historical sections of this plan mentioning recreate remain historical context and are superseded by this decision.
 
+## DB-R4 logging regression verified (user report, 2026-10-17)
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/operations -q` → **93 passed in 1.40s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **366 passed in 7.14s**.
+- The restored destroy → recreate → bootstrap behavior and distinct DESTROY/RESET logging assertions pass unit regression.
+- No destructive `--execute` was performed during verification; live destruction/recreation is intentionally untested against the populated `weather` database.
+- Remaining before final DB-R4 closure: inspect-only CLI verification and any outstanding policy/documentation review. Unit regression is complete.
+
 ## DB-R4 lifecycle log ownership (2026-10-17)
 
 - User-reported baseline before log changes: **366 unit tests passed in 8.24s**, including **93 operations tests passed in 1.37s**.
