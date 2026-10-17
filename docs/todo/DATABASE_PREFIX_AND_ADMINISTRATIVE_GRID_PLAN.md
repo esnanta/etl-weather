@@ -8,6 +8,14 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P4 re-verification after DESTROY — accepted (2026-10-17)
+
+Operator ran `python -m geospatial.importers.districts` (dry-run: 23 valid source features) and `python -m geospatial.importers.districts --execute` on freshly recreated `weather.climate_data`. Import committed **23 districts, 1 province** with source SHA-256 `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. Read-only database query confirmed PostGIS **3.4.2** installed in schema `climate_data`.
+
+The operator then executed `geospatial/sql/02_import_verification.sql` against `weather` and provided a screenshot of **1 province, 0 invalid provinces, 23 districts, 23 unique source references, 0 invalid districts, 0 unexpected first-Z values, validation_status=PASS**. Automated regression: `tests/unit/geospatial -q` **19 passed in 0.33s**, and `tests/integration/geospatial/test_import_idempotency.py -q` **4 passed in 0.91s**. P4 live import/reverification acceptance is complete.
+
+**Next P5 dependency:** the earlier DESTROY wiped existing climate observations. Before building a grid-to-region mapping using actual observations, run a controlled standalone ETL pilot or use an isolated, representative coordinate fixture. Do not treat 1,505 bounding-box positions as 1,505 verified persisted observation locations (the earlier three-day pilot reported 530 complete-variable points per local day). Keep spatial mapping independent from Airflow and scientific ETL stages.
+
 ## Current work after root database refactor (2026-10-17)
 
 The separate root database consolidation DB-R1–DB-R6 has passed its documented acceptance scope. Root `database/` now owns the canonical eight-table DDL and PostGIS lifecycle; `weather` was successfully destroyed/recreated and bootstrapped, followed by **15 PostgreSQL integration tests passed**, **366 unit tests passed**, and **93 operations tests passed**. The original detailed refactor plan was removed from `docs/todo/` after completion; its history remains available in Git.
