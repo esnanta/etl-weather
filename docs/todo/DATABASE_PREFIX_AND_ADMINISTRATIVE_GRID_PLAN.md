@@ -8,6 +8,17 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.2 real grid mapping persisted (operator report, 2026-10-17)
+
+Operator ran `python -m geospatial.mapping --execute` against `weather.climate_data`: **530 coordinates, 450 matched, 80 unmatched, 0 ambiguous**, with terminal `Grid mapping committed`. This confirms the CLI write transaction completed; independent read-only persisted-row verification and repeated-run timestamp/idempotency verification are next.
+
+- [x] Complete live-grid mapping commit after successful 1–3 May 2024 ETL pilot.
+- [x] Add `geospatial/sql/03_grid_mapping_verification.sql` with SELECT-only status, coordinate membership and LEFT JOIN row-count checks and a CSV export of exact coordinate/status pairs for a precise map.
+- [ ] Run verification SQL on `weather` and capture `validation_status=PASS`, ideally 530 mapped rows, 450 matched, 80 unmatched, and 1,590 source/joined daily observations.
+- [ ] Export **all 530** classified coordinates (not only unmatched coordinates) plus admin geometries to plot an exact, reproducible geographical map. Generated conceptual artwork is not geospatial evidence.
+- [ ] Rerun mapping and confirm unchanged coordinates and `mapped_at` timestamps.
+- [ ] Continue P5 region views and performance only after persisted mapping is verified.
+
 ## P5.2 real ERA5-Land pilot and spatial preview (operator report, 2026-10-17)
 
 Operator ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-03 python -m scripts.run_pipeline_cds`. The CDS download used 2024-04-30 context and May 1–3 target in two chunks; RAW NetCDF had 96 hourly timestamps and 1,505 bounding-box grid locations (43 × 35); transformed output had 530 valid grid positions per local day × 3 days = **1,590** observations. Temporal/spatial/dataframe validation passed, with no duplicate grid records. PostgreSQL `weather.climate_data` accepted 1,590 observations, `daily_climate_id=1`, and the total runtime was 289.98s. Source artifact checkpoints were created.
