@@ -464,7 +464,7 @@ DESTROY
 
 Unlike reset, destroy intentionally stops all recognized Airflow services/workers using SIGTERM followed by SIGKILL only for recognized processes that remain alive. If Airflow cannot be stopped, destructive database/data actions do not begin.
 
-After Airflow is stopped, destroy refuses to recreate PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
+After Airflow is stopped, destroy refuses to drop PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
 
 The destroy order is:
 
@@ -475,7 +475,7 @@ verify Airflow process count = 0
         ↓
 verify PostgreSQL session safety
         ↓
-recreate application PostgreSQL database
+drop application PostgreSQL database (no recreation)
         ↓
 clear project data/
         ↓
