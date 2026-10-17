@@ -247,6 +247,18 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - No live destructive execution was performed. DB-R4 inspect-only and unit acceptance verified; DROP/CREATE/bootstrap remains intentionally untested live on populated `weather`.
 - Follow-up hardening opportunity: consider making DESTROY inspect-only run the same read-only PostgreSQL privilege/PostGIS prerequisites as execution, without changing or stopping services.
 
+## DB-R5 real DESTROY and integration acceptance (user report, 2026-10-17)
+
+- Command: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute`; operator entered exact `DESTROY`.
+- Target `localhost:5432/weather` schema `climate_data`; preflight reported 0 external sessions (both checks), 0 recognized Airflow processes.
+- Live sequence succeeded: DROP `weather` → CREATE `weather` → root bootstrap → PostGIS **3.4.2** in `climate_data`. Terminal finished `DESTROY ALL | SUCCESS` and `database_ready=1`.
+- End state: `airflow_processes_remaining=0`, `airflow_runtime_files_remaining=0`, `data_entries_remaining=0`, `airflow_log_entries_remaining=0`. Removed-entry counts were all 0; this validates successful clean end-state but does not independently prove removal of populated artifacts.
+- Subsequent `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` → **15 passed in 2.03s**.
+- Previously confirmed unit regressions: **93 operations passed**, **366 total unit passed**. No separate actual RESET execution demonstrated, and table row counts and secondary DB `weather_test` unchanged status should not be inferred solely from this log.
+- [x] Live destroy → recreate → canonical bootstrap + terminal verification achieved.
+- [x] PostgreSQL integration suite passes after live destroy.
+- [ ] Finish DB-R6 documentation consistency and explicit RESET semantics review; optional follow-up inspect-only privilege checks.
+
 ## DB-R4 lifecycle log ownership (2026-10-17)
 
 - User-reported baseline before log changes: **366 unit tests passed in 8.24s**, including **93 operations tests passed in 1.37s**.
