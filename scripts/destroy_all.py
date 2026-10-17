@@ -269,15 +269,16 @@ def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     _section("STEP 2/6 | Check open PostgreSQL sessions")
     _require_no_database_sessions(config)
 
-    _section("STEP 3/6 | Recreate PostgreSQL database")
+    _section("STEP 3/6 | DROP, CREATE and bootstrap database (8 tables + PostGIS)")
     recreate_postgres_database._recreate_database(config)
-    _section("STEP 4/6 | Remove generated data")
+    _section("STEP 4/6 | Remove generated NetCDF/Parquet data")
     data_removed = reset_data.clear_data_contents()
-    _section("STEP 5/6 | Remove Airflow logs and runtime state")
+    _section("STEP 5/6 | Remove Airflow logs")
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()
+    logger.info("DESTROY | Remove Airflow runtime state")
     runtime_files_removed = len(reset_airflow_runtime.clear_airflow_runtime_state())
 
-    _section("STEP 6/6 | Verify clean state")
+    _section("STEP 6/6 | Verify database and clean runtime state")
     verification = _verify_clean_state(config)
     return {
         "stopped_airflow_processes": stopped_processes,
@@ -324,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("No Airflow process, database, data, logs, or runtime state was changed.")
         return 0
 
+    logger.info("DESTROY | Confirmation required: type exactly DESTROY")
     if not _confirmation():
         _section("DESTROY ALL | CANCELLED")
         logger.info("Exact DESTROY confirmation not supplied; no changes made.")
