@@ -199,6 +199,19 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - No `Creating missing PostgreSQL database` message appeared in the repeat run. This verifies successful repeated initialization on the tested state, not byte-for-byte data/index preservation.
 - DB-R3 acceptance evidence: **363 unit passed**, **15 PostgreSQL integration passed**, initial test database empty across eight tables, dual-target first provisioning successful, and repeat setup successful. DB-R3 functional acceptance complete; partial-failure compensation and destructive operations are separate hardening / DB-R4 concerns.
 
+## DB-R4 approved DESTROY contract change (2026-10-17)
+
+**User decision (supersedes earlier planning assumptions): `DESTROY` means delete; it must NOT recreate or bootstrap a database.** After successful deletion, the CLI must print explicit commands to re-provision separately.
+
+- [x] `scripts/destroy_all.py` now drops **only the configured application `POSTGRES_*` database** with safely quoted SQL, without invoking `_recreate_database` or `database.bootstrap`.
+- [x] Preserved exact `DESTROY` confirmation, `APP_ENV=dev` guard, PostgreSQL session checks before Airflow termination and again before DROP, generated data/log/runtime cleanup, and immutable source/config preservation.
+- [x] Final verification now requires the application database to be **absent**, not eight tables recreated.
+- [x] Success log advises `python -m database.setup --execute` to create missing dev/test databases; `python -m database.bootstrap --execute` initializes an **already existing** application database.
+- [x] `weather_test` is not deleted by this command. Its lifecycle remains separate.
+- [x] Updated root and orchestration READMEs and destroy unit assertions for drop-only behavior.
+- [ ] Unit regression after this change still pending; no real DROP or filesystem cleanup executed by the assistant.
+- [ ] Historical sections of this plan mentioning recreate remain historical context and are superseded by this decision.
+
 ## DB-R4 initial destructive-maintenance alignment (2026-10-17)
 
 - [x] Audited `scripts/recreate_postgres_database.py` and `scripts/destroy_all.py` against root `database/` ownership. Existing recreation already had `APP_ENV=dev`, inactive campaign/Airflow checks, PostgreSQL-session checks, interactive confirmation and safely quoted DROP/CREATE identifiers; destroy additionally requires exact `DESTROY` and stops recognized Airflow processes before database recreation.
