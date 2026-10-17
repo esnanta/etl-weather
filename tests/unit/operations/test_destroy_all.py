@@ -23,7 +23,7 @@ def _mock_destructive_postgis_preflight(monkeypatch):
     """Unit tests never open a live PostgreSQL maintenance connection."""
     monkeypatch.setattr(
         destroy_all.recreate_postgres_database,
-        "_validate_bootstrap_prerequisites",
+        "_validate_static_guards",
         lambda config: None,
     )
 
@@ -149,7 +149,7 @@ def test_airflow_stop_failure_prevents_database_recreation(monkeypatch) -> None:
     )
     monkeypatch.setattr(destroy_all, "_require_no_database_sessions", lambda config: None)
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.destroy_all._drop_database",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Database must remain untouched.")
         ),
@@ -174,7 +174,7 @@ def test_external_database_session_prevents_recreation(monkeypatch) -> None:
         ],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.destroy_all._drop_database",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Database must not be recreated with external sessions.")
         ),
@@ -196,7 +196,7 @@ def test_execute_destroy_uses_failure_safe_order(monkeypatch) -> None:
         lambda config: calls.append("sessions"),
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.destroy_all._drop_database",
         lambda config: calls.append("database"),
     )
     monkeypatch.setattr(
@@ -218,7 +218,7 @@ def test_execute_destroy_uses_failure_safe_order(monkeypatch) -> None:
             "airflow_runtime_files_remaining": 0,
             "data_entries_remaining": 0,
             "airflow_log_entries_remaining": 0,
-            "database_ready": 1,
+            "database_absent": 1,
         },
     )
 
@@ -282,7 +282,7 @@ def test_final_verification_accepts_clean_state(monkeypatch) -> None:
         "airflow_runtime_files_remaining": 0,
         "data_entries_remaining": 0,
         "airflow_log_entries_remaining": 0,
-        "database_ready": 1,
+        "database_absent": 1,
     }
 
 
@@ -360,14 +360,14 @@ def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, caps
          "client_addr": "127.0.0.1", "state": "idle"}
     ])
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.destroy_all._drop_database",
         lambda config: pytest.fail("Database recreation must not start."),
     )
 
     with caplog.at_level("INFO"):
         assert destroy_all.main(["--execute"]) == 5
     stderr = capsys.readouterr().err
-    assert "PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions" in stderr
+    assert "PREFLIGHT | Check PostgreSQL sessions before stopping Airflow" in stderr
     assert "DESTROY ALL | FAILED" in stderr
     assert "INFO | \n" not in stderr
     assert "pid=15381" in caplog.text
@@ -392,7 +392,7 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
         "scripts.destroy_all._require_no_database_sessions", lambda config: None,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.destroy_all._drop_database",
         lambda config: None,
     )
     monkeypatch.setattr(
@@ -411,7 +411,7 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
             "airflow_runtime_files_remaining": 0,
             "data_entries_remaining": 0,
             "airflow_log_entries_remaining": 0,
-            "database_ready": 1,
+            "database_absent": 1,
         },
     )
     with caplog.at_level("INFO"):
@@ -421,16 +421,17 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
         assert f"STEP {step}/6" in stderr
     assert "DESTROY ALL | SUCCESS" in stderr
     assert "INFO | \n" not in stderr
-    assert "database_ready=1" in caplog.text
+    assert "database_absent=1" in caplog.text
 
 
-def test_destroy_contract_requires_all_eight_canonical_tables() -> None:
-    from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
+def test_destroy_contract_never_recreates_database() -> None:
+    """The destroy command no longer imports or delegates to bootstrap."""
+    import inspect
 
-    assert set(destroy_all.EXPECTED_APPLICATION_TABLES) == (
-        CLIMATE_TABLES | GEOSPATIAL_TABLES
-    )
-    assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 8
+    source = inspect.getsource(destroy_all.execute_destroy)
+    assert "_drop_database(config)" in source
+    assert "_recreate_database(config)" not in source
+    assert "bootstrap(config)" not in source
 
 
 def test_session_preflight_blocks_airflow_termination(monkeypatch) -> None:
@@ -447,15 +448,15 @@ def test_session_preflight_blocks_airflow_termination(monkeypatch) -> None:
         destroy_all.execute_destroy(_config())
 
 
-def test_postgis_preflight_blocks_airflow_termination(monkeypatch) -> None:
+def test_static_guard_blocks_airflow_termination(monkeypatch) -> None:
     monkeypatch.setattr(
         destroy_all.recreate_postgres_database,
-        "_validate_bootstrap_prerequisites",
-        lambda config: (_ for _ in ()).throw(RuntimeError("PostGIS unavailable")),
+        "_validate_static_guards",
+        lambda config: (_ for _ in ()).throw(RuntimeError("Database target unavailable")),
     )
     monkeypatch.setattr(
         destroy_all, "_stop_all_airflow_processes",
         lambda: pytest.fail("Airflow termination must not begin"),
     )
-    with pytest.raises(RuntimeError, match="PostGIS unavailable"):
+    with pytest.raises(RuntimeError, match="Database target unavailable"):
         destroy_all.execute_destroy(_config())
