@@ -27,7 +27,7 @@ Generate the file during initial Airflow setup. Normal activation should reuse t
 Activate the project Airflow environment:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 ```
 
 The activation script loads the project `.env`, activates `myvenv`, validates the JWT file, and configures the repository-local Airflow runtime.
@@ -220,7 +220,7 @@ Airflow task success alone is not enough to declare a campaign quarter complete.
 Inspect campaign progress with:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 python scripts/report_campaign_progress.py
 ```
 
@@ -273,7 +273,7 @@ Airflow exchanges small metadata between tasks. NetCDF, Parquet, xarray, and Pan
 Trigger one explicit manual range:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 
 airflow dags trigger cds_era5_land_etl \
   --conf '{"start_date":"2024-01-01","end_date":"2024-01-31"}'
@@ -408,7 +408,7 @@ Preserve Airflow metadata, PostgreSQL progress, and checkpoint files while doing
 Run orchestration regression tests with scheduling disabled:
 
 ```bash
-source activate-airflow.sh
+source activate-airflow.sh -q
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
 python -m pytest tests/unit -q
@@ -425,15 +425,15 @@ python -m pytest \
   -q
 ```
 
-The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`.
+The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`. Airflow storage bootstrap initializes only the five climate/operational tables via root `database/`; geospatial table initialization is an independent explicit CLI operation (`python -m database.geospatial --execute`), never part of DAG execution. Airflow metadata remains SQLite.
 
 Detailed test contracts remain in [`tests/README.md`](../tests/README.md).
 
 ## Maintenance, Reset, and Clean-Slate Destroy
 
-The project intentionally separates conservative recovery from intentional destruction.
+Both commands are destructive in their current implementation: each recreates the configured application PostgreSQL database using the canonical eight-table/PostGIS bootstrap and deletes generated data, Airflow logs and Airflow runtime. RESET requires Airflow to be fully inactive and does not stop processes; DESTROY additionally stops recognized Airflow processes after guarded PostgreSQL preflight. Neither command recreates or deletes the separate test database.
 
-Use `reset_all.py` for guarded maintenance only after Airflow is fully inactive:
+Use `reset_all.py` for a confirmed full reset **only after Airflow is fully inactive**. RESET does not preserve existing NetCDF/Parquet artifacts:
 
 ```bash
 source activate-airflow.sh -q
@@ -464,18 +464,22 @@ DESTROY
 
 Unlike reset, destroy intentionally stops all recognized Airflow services/workers using SIGTERM followed by SIGKILL only for recognized processes that remain alive. If Airflow cannot be stopped, destructive database/data actions do not begin.
 
-After Airflow is stopped, destroy refuses to recreate PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
+Before stopping Airflow, DESTROY checks the application database prerequisites (permissions and PostGIS availability) and active PostgreSQL sessions. It checks sessions again after stopping Airflow, immediately before database recreation. If sessions remain, it reports their PID, user, application, client address and state; it never terminates arbitrary database clients.
 
 The destroy order is:
 
 ```text
+preflight database privileges, PostGIS and existing sessions
+        ↓
+exact DESTROY confirmation
+        ↓
 stop recognized Airflow runtime
         ↓
-verify Airflow process count = 0
+verify Airflow process count = 0 and recheck sessions
         ↓
-verify PostgreSQL session safety
+DROP and CREATE application PostgreSQL database
         ↓
-recreate application PostgreSQL database
+bootstrap five climate/operational and three geospatial tables + PostGIS
         ↓
 clear project data/
         ↓
@@ -486,7 +490,7 @@ clear generated Airflow SQLite/auth/PID runtime state
 verify clean state and canonical application tables
 ```
 
-Both maintenance paths preserve project configuration and source. In particular, destroy does not delete:
+Both commands use the same lower-level database and file-cleanup helpers, but neither invokes the other's CLI; their RESET and DESTROY log headings remain distinct. Both maintenance paths preserve project configuration and source. In particular, destroy does not delete:
 
 ```text
 .env

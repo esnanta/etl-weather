@@ -95,14 +95,14 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
 def _postgres() -> dict[str, object]:
     try:
         from sqlalchemy import create_engine, text
-        from config import (
+        from database.config import (
             PACING_SCHEMA,
             PACING_TABLE,
             PIPELINE_PROGRESS_DETAIL_TABLE,
             PIPELINE_PROGRESS_SCHEMA,
             PIPELINE_PROGRESS_TABLE,
         )
-        from pipeline.database import (
+        from database.config import (
             DAILY_CLIMATE_DETAIL_TABLE,
             DAILY_CLIMATE_TABLE,
             DatabaseConfig,

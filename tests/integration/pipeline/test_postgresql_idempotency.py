@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from pipeline.loaders.daily_climate_postgres import load_to_postgresql
 from pipeline.models.weather import (
     BoundingBox,
@@ -382,3 +382,77 @@ def test_provenance_mismatch_forces_upsert_and_restores_canonical_values(
     assert metadata[0] != "stale/path.parquet"
     assert metadata[1] == calculate_file_sha256(artifact.path)
     assert precipitation == [10.0, 11.0]
+
+
+def test_database_enforces_detail_fk_uniqueness_and_cascade(
+    postgres_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Exercise actual PostgreSQL constraints created by the production loader."""
+    dataset, artifact = _save_test_partition(tmp_path, monkeypatch)
+    parent_id, inserted = load_to_postgresql(dataset, artifact, postgres_config)
+    assert inserted == 2
+
+    engine = create_engine(postgres_config.url, future=True)
+    detail = (
+        f"{postgres_config.schema}.{postgres_config.daily_climate_detail_table}"
+    )
+    parent = f"{postgres_config.schema}.{postgres_config.daily_climate_table}"
+    try:
+        with engine.connect() as connection:
+            original = connection.execute(
+                text(
+                    f"SELECT valid_time, valid_time_local, latitude, longitude "
+                    f"FROM {detail} WHERE daily_climate_id = :id "
+                    f"ORDER BY latitude LIMIT 1"
+                ),
+                {"id": parent_id},
+            ).one()
+
+        def insert_observation(connection, target_id: int) -> None:
+            connection.execute(
+                text(
+                    f"INSERT INTO {detail} "
+                    "(daily_climate_id, valid_time, valid_time_local, latitude, longitude) "
+                    "VALUES (:id, :valid_time, :valid_time_local, :latitude, :longitude)"
+                ),
+                {
+                    "id": target_id,
+                    "valid_time": original.valid_time,
+                    "valid_time_local": original.valid_time_local,
+                    "latitude": original.latitude,
+                    "longitude": original.longitude,
+                },
+            )
+
+        with pytest.raises(IntegrityError):
+            with engine.begin() as connection:
+                insert_observation(connection, parent_id + 10_000_000)
+
+        with pytest.raises(IntegrityError):
+            with engine.begin() as connection:
+                insert_observation(connection, parent_id)
+
+        connection = engine.connect()
+        transaction = connection.begin()
+        try:
+            connection.execute(
+                text(f"DELETE FROM {parent} WHERE id = :id"),
+                {"id": parent_id},
+            )
+            assert connection.execute(
+                text(f"SELECT COUNT(*) FROM {detail} WHERE daily_climate_id = :id"),
+                {"id": parent_id},
+            ).scalar_one() == 0
+        finally:
+            transaction.rollback()
+            connection.close()
+
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(f"SELECT COUNT(*) FROM {detail} WHERE daily_climate_id = :id"),
+                {"id": parent_id},
+            ).scalar_one() == 2
+    finally:
+        engine.dispose()

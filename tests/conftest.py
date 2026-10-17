@@ -15,5 +15,5 @@ os.environ["CAMPAIGN_START_YEAR"] = "2016"
 os.environ["CAMPAIGN_END_YEAR"] = "2016"
 
 # Standalone request tests require deterministic environment-backed defaults.
-os.environ["CDS_START_DATE"] = "2022-01-01"
-os.environ["CDS_END_DATE"] = "2022-01-03"
+os.environ["PIPELINE_START_DATE"] = "2022-01-01"
+os.environ["PIPELINE_END_DATE"] = "2022-01-03"

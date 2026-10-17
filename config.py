@@ -28,9 +28,6 @@ APP_ENV_DEV = "dev"
 # Production disables destructive maintenance completely.
 APP_ENV_PROD = "prod"
 
-# PostgreSQL application schema shared by weather and orchestration tables.
-APPLICATION_SCHEMA = "climate_data"
-
 # IANA timezone name used for the project's local daily semantics.
 APPLICATION_TIMEZONE_NAME = "Asia/Jakarta"
 
@@ -46,10 +43,10 @@ ACEH_BBOX_COORDINATES = {
 CDS_DATASET = "reanalysis-era5-land"
 
 # Environment key for the standalone pipeline default start date.
-CDS_START_DATE_ENV = "CDS_START_DATE"
+PIPELINE_START_DATE_ENV = "PIPELINE_START_DATE"
 
 # Environment key for the standalone pipeline default end date.
-CDS_END_DATE_ENV = "CDS_END_DATE"
+PIPELINE_END_DATE_ENV = "PIPELINE_END_DATE"
 
 # Active ERA5-Land variables requested from CDS, in stable request order.
 CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
@@ -78,15 +75,6 @@ GIB = 1024**3
 
 # Minute spacing between mapped scheduled monthly lower bounds.
 MONTHLY_SLOT_SPACING_MINUTES = 15
-
-# Shared application schema aliases retained for operational table callers.
-PIPELINE_PROGRESS_SCHEMA = APPLICATION_SCHEMA
-PACING_SCHEMA = APPLICATION_SCHEMA
-
-# Operational progress and pacing table names.
-PIPELINE_PROGRESS_TABLE = "pipeline_progress"
-PIPELINE_PROGRESS_DETAIL_TABLE = "pipeline_progress_detail"
-PACING_TABLE = "submission_pacing"
 
 # Fixed minimum interval between provider submission POST requests.
 SUBMISSION_INTERVAL_MINUTES = 5
@@ -208,11 +196,11 @@ def resolve_date_range(
     return start_date, end_date
 
 
-def resolve_cds_period(
+def resolve_pipeline_period(
     env: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
-    """Resolve the standalone pipeline's configured default CDS period."""
-    return resolve_date_range(CDS_START_DATE_ENV, CDS_END_DATE_ENV, env)
+    """Resolve the standalone pipeline's configured default period."""
+    return resolve_date_range(PIPELINE_START_DATE_ENV, PIPELINE_END_DATE_ENV, env)
 
 
 def resolve_app_environment(

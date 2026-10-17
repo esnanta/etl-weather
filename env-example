@@ -35,8 +35,8 @@ TEST_POSTGRES_PASSWORD=your_test_password
 # Default inclusive date range for standalone pipeline runs.
 # Used only when no explicit period is provided.
 # Format: YYYY-MM-DD.
-CDS_START_DATE=2022-01-01
-CDS_END_DATE=2022-01-03
+PIPELINE_START_DATE=2022-01-01
+PIPELINE_END_DATE=2022-01-03
 
 # Airflow historical campaign identity and year bounds.
 # These values are required when orchestration accesses campaign configuration.

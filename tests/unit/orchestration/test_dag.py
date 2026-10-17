@@ -15,7 +15,7 @@ pytest.importorskip("airflow")
 from airflow.models import DagBag
 
 
-DAG_ID = "cds_era5_land_etl"
+DAG_ID = "cds-era5-land"
 DAG_FOLDER = REPOSITORY_ROOT / "orchestration" / "dags"
 
 ATTEMPT_TASK_ID = "monthly_etl.attempt_raw_checkpoint"
@@ -27,6 +27,7 @@ LOAD_TASK_ID = "monthly_etl.load"
 @pytest.fixture(scope="module")
 def dag():
     dag_bag = DagBag(dag_folder=DAG_FOLDER)
+    dag_bag.process_file(str(DAG_FOLDER / "cds_era5_land_etl.py"), only_if_updated=False, safe_mode=False)
     assert dag_bag.import_errors == {}
     assert DAG_ID in dag_bag.dags
     return dag_bag.dags[DAG_ID]

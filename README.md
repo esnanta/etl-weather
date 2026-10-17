@@ -7,9 +7,50 @@ The ETL pipeline can run directly from the command line or be coordinated by Apa
 ## Prerequisites
 
 - Python 3.12
-- PostgreSQL for canonical daily climate observations
+- PostgreSQL 16 for canonical climate observations; **PostGIS 3** extension is additionally required for administrative boundaries and spatial grid-to-region mapping (not required for the standalone climate ETL alone).
 - CDS API credentials
 - A single host, or a shared `data/` filesystem visible to every task worker
+
+## PostgreSQL and PostGIS
+
+PostGIS is an **extension installed into PostgreSQL**, not a separate database product. The existing climate ETL uses ordinary PostgreSQL tables and can run without the extension; the independent `geospatial/` component requires PostGIS for `geometry(MultiPolygonZ, 4326)`, spatial indexes, and point-in-polygon operations. The Airflow metadata database remains separate and is not involved in geospatial setup.
+
+On Ubuntu with a PostgreSQL 16 server, install the matching server-side package if needed:
+
+```bash
+sudo apt install postgresql-16-postgis-3 postgresql-16-postgis-3-scripts
+```
+
+Check package availability from a connection to the intended PostgreSQL server:
+
+```sql
+SELECT name, default_version, installed_version
+FROM pg_available_extensions
+WHERE name = 'postgis';
+```
+
+An available version with `installed_version IS NULL` means PostGIS is installed on the **server** but is not enabled in that **database**. Enable it only in the chosen database, with appropriate privileges and after confirming the target:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS climate_data;
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data;
+```
+
+For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. The explicit combined initializer creates missing climate and spatial objects (the default invocation is a dry-run):
+
+```bash
+source activate-airflow.sh -q
+python -m database.bootstrap --execute  # climate + geospatial (8 tables)
+```
+
+With `--execute`, this command connects through `POSTGRES_*`, initializes five climate/operational and three spatial tables, enables PostGIS if missing, and does **not** create or reset the database, delete observations, import GeoJSON, or start Airflow. The independent alternatives are `python -m database.climate --execute` (climate only) and `python -m database.geospatial --execute` (spatial only). It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The district importer is implemented in `geospatial/importers/districts.py`.
+
+For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
+
+
+### PostGIS deployment contract (single lifecycle)
+
+PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `database.geospatial` (and the combined `database.bootstrap`) checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data` when absent, and confirms the extension actually resides in `climate_data`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `climate_data.geometry` and `climate_data.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
 
 ## Active Dataset
 
@@ -160,16 +201,29 @@ Analysis / modelling
 
 The important boundary is conceptual: `pipeline/` owns climate-data acquisition, validation, transformation, artifact handling, and persistence. Airflow may coordinate those operations, but it does not redefine their scientific behavior.
 
+### Development and test database setup (DB-R3)
+
+For a **development environment only** (`APP_ENV=dev`), configure both `POSTGRES_*` and distinct `TEST_POSTGRES_*` values before preparing database structure. Preview the targets without connecting or changing either database:
+
+```bash
+python -m database.setup
+```
+
+For an already existing target, `python -m database.bootstrap` previews and `python -m database.bootstrap --execute` initializes the combined climate and spatial schema without creating the database. After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same five climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
+
 ## Project Structure
 
 ```text
 etl-weather/
 ├── config.py                 # shared lightweight application configuration
 ├── docs/                     # design decisions and project documentation
+├── database/                 # canonical PostgreSQL config, schema DDL, bootstrap and guarded dev/test setup
+├── geospatial/               # independent administrative boundaries and spatial grid mapping
+│   ├── sources/id/districts/ # immutable Aceh GeoJSON source
+│   └── sql/                  # read-only spatial capability checks
 ├── orchestration/            # Airflow orchestration layer
 │   └── README.md             # Airflow setup and operations
 ├── pipeline/                 # ETL and canonical data-access implementation
-│   ├── database/
 │   ├── extraction/
 │   ├── loaders/
 │   ├── repositories/
@@ -208,7 +262,7 @@ After confirming the displayed PostgreSQL database, data directory, and Airflow 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
 ```
 
-Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **It is broader than a weather-data-only reset.** It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
+Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **RESET ALL is also destructive** (database recreation, NetCDF/Parquet, logs and runtime cleanup), but requires Airflow to be inactive and does not terminate Airflow processes; DESTROY performs its own preflight and stops recognized processes. It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
 
 The combined runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; the existing daily and monthly Parquet artifacts are validated and reused on later runs.
 
@@ -301,3 +355,5 @@ python -m pytest tests/integration/pipeline/test_postgresql_idempotency.py -q
 ```
 
 Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).
+
+**Database verification:** The latest recorded clean setup has PostGIS 3.4.2 in `weather.climate_data`; verify the target independently before executing database setup. Never automatically relocate or drop an extension installed in another schema.

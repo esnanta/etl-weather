@@ -5,7 +5,7 @@ Context: ERA5-Land observations are uniquely identified within each request
 Purpose: Report partition-level counts of duplicate observation keys,
     missing local dates, invalid UTC+7 boundaries, and observations outside
     the partition's declared local date range.
-Tables: climate_data.daily_climate, climate_data.daily_climate_detail.
+Tables: climate_data.t_daily_climate, climate_data.t_daily_climate_detail.
 Grain: One row per stored metadata partition.
 Scope/parameters: All partitions, including partitions with no detail rows.
 Expected result: An entirely populated and consistent partition has zero
@@ -34,8 +34,8 @@ WITH counts AS (
             WHERE d.valid_time_local::date < dc.start_date
                OR d.valid_time_local::date > dc.end_date
         ) AS out_of_period_rows
-    FROM climate_data.daily_climate AS dc
-    LEFT JOIN climate_data.daily_climate_detail AS d
+    FROM climate_data.t_daily_climate AS dc
+    LEFT JOIN climate_data.t_daily_climate_detail AS d
         ON d.daily_climate_id = dc.id
     GROUP BY dc.id, dc.start_date, dc.end_date
 ),
@@ -44,7 +44,7 @@ duplicates AS (
     FROM (
         SELECT daily_climate_id, valid_time, latitude, longitude,
                COUNT(*) AS duplicate_count
-        FROM climate_data.daily_climate_detail
+        FROM climate_data.t_daily_climate_detail
         GROUP BY daily_climate_id, valid_time, latitude, longitude
         HAVING COUNT(*) > 1
     ) AS duplicate_groups

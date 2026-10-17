@@ -83,8 +83,8 @@ Expected scientific values must be traceable to accumulation rules, unit convers
 Canonical climate tables:
 
 ```text
-climate_data.daily_climate
-climate_data.daily_climate_detail
+climate_data.t_daily_climate
+climate_data.t_daily_climate_detail
 ```
 
 Canonical detail foreign key:
@@ -103,7 +103,7 @@ Database writes must remain idempotent.
 
 An unchanged partition may skip database writes only when request identity, transformed artifact path/checksum, and expected observation count match. Any mismatch must use the normal transactional metadata and observation persistence path.
 
-Integration tests must use the isolated `TEST_POSTGRES_*` database. They must never fall back silently to development or production PostgreSQL.
+Integration tests must use the isolated `TEST_POSTGRES_*` database. They must never fall back silently to development or production PostgreSQL. Schema DDL/identifiers come only from root `database/`; climate and geospatial integration tests must preserve `climate_data` and the explicit PostGIS extension location. Running `--collect-only` verifies imports/collection, not database transactions. Never let integration fixtures drop the application `weather` database.
 
 ## Checkpoint, Retry, and Recovery Rules
 
@@ -135,9 +135,9 @@ Do not add wet-day labels, scaling, anomaly features, rolling features, clusteri
 The durable operational tables are:
 
 ```text
-climate_data.pipeline_progress
-climate_data.pipeline_progress_detail
-climate_data.submission_pacing
+climate_data.t_pipeline_progress
+climate_data.t_pipeline_progress_detail
+climate_data.t_submission_pacing
 ```
 
 Tests must keep progress persistence independent from scheduler cadence. Progress identity is based on configured date ranges and configuration identity rather than quarter number.

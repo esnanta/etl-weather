@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from orchestration.repositories import submission_pacing
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig, PACING_SCHEMA, PACING_TABLE
+from database.schema import create_submission_pacing_table
 
 pytestmark = pytest.mark.integration
 
@@ -43,17 +44,17 @@ def test_reservations_are_durable_and_atomic() -> None:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    f"DROP TABLE IF EXISTS {submission_pacing.PACING_SCHEMA}."
-                    f"{submission_pacing.PACING_TABLE}"
+                    f"DROP TABLE IF EXISTS {PACING_SCHEMA}."
+                    f"{PACING_TABLE}"
                 )
             )
-        submission_pacing.create_submission_pacing_table(engine)
+        create_submission_pacing_table(engine)
         table_ready = True
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
-                    f"{submission_pacing.PACING_TABLE} WHERE TRUE"
+                    f"DELETE FROM {PACING_SCHEMA}."
+                    f"{PACING_TABLE} WHERE TRUE"
                 )
             )
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -84,8 +85,8 @@ def test_reservations_are_durable_and_atomic() -> None:
             with engine.begin() as connection:
                 connection.execute(
                     text(
-                        f"DELETE FROM {submission_pacing.PACING_SCHEMA}."
-                        f"{submission_pacing.PACING_TABLE} WHERE TRUE"
+                        f"DELETE FROM {PACING_SCHEMA}."
+                        f"{PACING_TABLE} WHERE TRUE"
                     )
                 )
         engine.dispose()

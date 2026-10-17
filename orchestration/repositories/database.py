@@ -13,14 +13,13 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from orchestration.repositories.submission_pacing import create_submission_pacing_table
-from orchestration.repositories.pipeline_progress import create_pipeline_progress_tables
-from pipeline.database import (
-    DatabaseConfig,
+from database.schema import create_submission_pacing_table, create_pipeline_progress_tables
+from database.climate import (
     create_daily_climate_detail_table,
     create_daily_climate_table,
     create_schema,
 )
+from database.config import DatabaseConfig
 
 
 @contextmanager

@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from config import PACING_SCHEMA, PACING_TABLE, SUBMISSION_INTERVAL_MINUTES
+from config import SUBMISSION_INTERVAL_MINUTES
+from database.config import PACING_SCHEMA, PACING_TABLE
 
 
 @dataclass(frozen=True)
@@ -33,21 +34,6 @@ def submission_interval_seconds() -> int:
     ):
         raise ValueError("SUBMISSION_INTERVAL_MINUTES must be a nonnegative integer.")
     return SUBMISSION_INTERVAL_MINUTES * 60
-
-
-def create_submission_pacing_table(engine: Engine) -> None:
-    """Create the durable global submission clock without provider identity."""
-    with engine.begin() as connection:
-        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {PACING_SCHEMA}"))
-        connection.execute(
-            text(
-                f"""CREATE TABLE IF NOT EXISTS {PACING_SCHEMA}.{PACING_TABLE} (
-                    singleton_id SMALLINT PRIMARY KEY CHECK (singleton_id = 1),
-                    last_submission_at TIMESTAMPTZ,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )"""
-            )
-        )
 
 
 def reserve_submission(

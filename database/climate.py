@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from pipeline.database.config import DatabaseConfig, resolve_database_config
+from database.config import DatabaseConfig, resolve_database_config
 from pipeline.observability.logging import log_metric
 
 DAILY_CLIMATE_COLUMNS = (
@@ -142,3 +142,42 @@ def create_daily_climate_detail_table(
             ),
         },
     )
+
+
+def main() -> None:
+    """Preview climate tables by default; apply DDL only with --execute."""
+    import argparse
+    from database.connection import create_database_engine
+    from database.config import (
+        DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE,
+        PIPELINE_PROGRESS_TABLE, PIPELINE_PROGRESS_DETAIL_TABLE, PACING_TABLE,
+    )
+    from database.schema import initialize_climate_schema
+
+    parser = argparse.ArgumentParser(
+        description="Initialize climate and operational tables without PostGIS."
+    )
+    parser.add_argument(
+        "--execute", action="store_true",
+        help="Create the five missing climate/operational tables.",
+    )
+    args = parser.parse_args()
+    config = resolve_database_config()
+    print(f"Climate schema target: database={config.database}, schema={config.schema}")
+    print("Tables: " + ", ".join((
+        DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE,
+        PIPELINE_PROGRESS_TABLE, PIPELINE_PROGRESS_DETAIL_TABLE, PACING_TABLE,
+    )))
+    if not args.execute:
+        print("Dry run: no database changes. Pass --execute to create missing objects.")
+        return
+    engine = create_database_engine(config)
+    try:
+        initialize_climate_schema(engine, config)
+        print("Climate and operational tables ready.")
+    finally:
+        engine.dispose()
+
+
+if __name__ == "__main__":
+    main()

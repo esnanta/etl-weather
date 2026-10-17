@@ -171,9 +171,10 @@ Or run by integration domain:
 ```bash
 python -m pytest tests/integration/pipeline -q
 python -m pytest tests/integration/orchestration -q
+python -m pytest tests/integration/geospatial -q
 ```
 
-Integration tests use the `TEST_POSTGRES_*` variables from `env-example`.
+Integration tests use the `TEST_POSTGRES_*` variables from `env-example` and must target a dedicated isolated PostgreSQL test database. Root `database/` owns climate/spatial DDL and PostGIS bootstrap; see `tests/AGENTS.md` for fixture safeguards. Use `python -m pytest tests/integration --collect-only -q` to verify discovery without database writes. CLI setup commands are described in the root `README.md`.
 
 The README intentionally does not keep a permanent numeric pass-count baseline because the suite changes over time.
 

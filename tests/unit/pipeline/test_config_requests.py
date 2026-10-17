@@ -5,7 +5,7 @@ import pytest
 from config import (
     database_recreation_allowed,
     resolve_app_environment,
-    resolve_cds_period,
+    resolve_pipeline_period,
     validate_and_log_app_environment,
 )
 from pipeline.models.weather import DataSource
@@ -13,8 +13,8 @@ from pipeline.requests.factory import build_cds_request
 
 
 def test_build_cds_request_requires_api_key(monkeypatch) -> None:
-    monkeypatch.setenv("CDS_START_DATE", "2022-01-01")
-    monkeypatch.setenv("CDS_END_DATE", "2022-01-03")
+    monkeypatch.setenv("PIPELINE_START_DATE", "2022-01-01")
+    monkeypatch.setenv("PIPELINE_END_DATE", "2022-01-03")
     monkeypatch.setattr("pipeline.requests.factory.load_dotenv", lambda: False)
     monkeypatch.delenv("CDSAPI_KEY", raising=False)
 
@@ -24,8 +24,8 @@ def test_build_cds_request_requires_api_key(monkeypatch) -> None:
 
 def test_build_cds_request_uses_era5_land_contract(monkeypatch) -> None:
     monkeypatch.setenv("CDSAPI_KEY", "1:mock-key")
-    monkeypatch.setenv("CDS_START_DATE", "2022-01-01")
-    monkeypatch.setenv("CDS_END_DATE", "2022-01-03")
+    monkeypatch.setenv("PIPELINE_START_DATE", "2022-01-01")
+    monkeypatch.setenv("PIPELINE_END_DATE", "2022-01-03")
 
     request = build_cds_request()
 
@@ -110,20 +110,20 @@ def test_application_environment_logs_warning_before_abort(caplog) -> None:
 
 
 def test_configured_cds_period_uses_canonical_environment_values() -> None:
-    assert resolve_cds_period({
-        "CDS_START_DATE": "2022-01-01",
-        "CDS_END_DATE": "2022-01-03",
+    assert resolve_pipeline_period({
+        "PIPELINE_START_DATE": "2022-01-01",
+        "PIPELINE_END_DATE": "2022-01-03",
     }) == ("2022-01-01", "2022-01-03")
 
 
 def test_configured_cds_period_rejects_invalid_or_inverted_values() -> None:
     with pytest.raises(ValueError, match="valid YYYY-MM-DD"):
-        resolve_cds_period({
-            "CDS_START_DATE": "2022-02-30",
-            "CDS_END_DATE": "2022-03-01",
+        resolve_pipeline_period({
+            "PIPELINE_START_DATE": "2022-02-30",
+            "PIPELINE_END_DATE": "2022-03-01",
         })
     with pytest.raises(ValueError, match="less than or equal"):
-        resolve_cds_period({
-            "CDS_START_DATE": "2022-03-02",
-            "CDS_END_DATE": "2022-03-01",
+        resolve_pipeline_period({
+            "PIPELINE_START_DATE": "2022-03-02",
+            "PIPELINE_END_DATE": "2022-03-01",
         })

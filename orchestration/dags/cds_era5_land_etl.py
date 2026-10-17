@@ -23,7 +23,7 @@ from orchestration.tasks.transformed_checkpoint import (
     ensure_transformed_checkpoint_with_progress,
 )
 
-DAG_ID = "cds_era5_land_etl"
+DAG_ID = "cds-era5-land"
 
 logger = logging.getLogger(__name__)
 validate_and_log_app_environment(logger)

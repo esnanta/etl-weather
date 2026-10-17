@@ -1,4 +1,8 @@
-"""Verify the intentional clean-slate destroy command."""
+"""Verify production destroy-all guards, execution order, and operator logs.
+
+These tests invoke the real destroy_all functions while isolating destructive OS,
+PostgreSQL, and Airflow boundaries. They do not substitute for a live reset.
+"""
 
 from __future__ import annotations
 
@@ -9,9 +13,19 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts import destroy_all
 from ..._paths import REPOSITORY_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _mock_destructive_postgis_preflight(monkeypatch):
+    """Unit tests never open a live PostgreSQL maintenance connection."""
+    monkeypatch.setattr(
+        destroy_all.recreate_postgres_database,
+        "_validate_bootstrap_prerequisites",
+        lambda config: None,
+    )
 
 
 def _config(database: str = "weather") -> DatabaseConfig:
@@ -133,6 +147,7 @@ def test_airflow_stop_failure_prevents_database_recreation(monkeypatch) -> None:
         "scripts.destroy_all._stop_all_airflow_processes",
         lambda: (_ for _ in ()).throw(RuntimeError("cannot stop airflow")),
     )
+    monkeypatch.setattr(destroy_all, "_require_no_database_sessions", lambda config: None)
     monkeypatch.setattr(
         "scripts.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: (_ for _ in ()).throw(
@@ -210,6 +225,7 @@ def test_execute_destroy_uses_failure_safe_order(monkeypatch) -> None:
     result = destroy_all.execute_destroy(_config())
 
     assert calls == [
+        "sessions",
         "airflow",
         "sessions",
         "database",
@@ -327,3 +343,124 @@ def test_direct_script_execution_hard_denies_prod() -> None:
     assert result.returncode == 3
     assert "Destroy-all unavailable | APP_ENV=prod" in result.stderr
     assert "ImportError" not in result.stderr
+
+
+def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, capsys) -> None:
+    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr("scripts.destroy_all._stop_all_airflow_processes", lambda: 0)
+    monkeypatch.setattr("scripts.destroy_all._database_sessions", lambda config: [
+        {"pid": 15381, "user": "postgres", "application_name": "PyCharm",
+         "client_addr": "127.0.0.1", "state": "idle"}
+    ])
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        lambda config: pytest.fail("Database recreation must not start."),
+    )
+
+    with caplog.at_level("INFO"):
+        assert destroy_all.main(["--execute"]) == 5
+    stderr = capsys.readouterr().err
+    assert "PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions" in stderr
+    assert "DESTROY ALL | FAILED" in stderr
+    assert "INFO | \n" not in stderr
+    assert "pid=15381" in caplog.text
+    assert "PyCharm" in caplog.text
+    assert "disconnect the listed database sessions" in caplog.text
+    assert "file cleanup have NOT started" in caplog.text
+
+
+def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> None:
+    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        lambda config: None,
+    )
+    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr(
+        "scripts.destroy_all._stop_all_airflow_processes", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all._require_no_database_sessions", lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_data.clear_data_contents", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_airflow_logs.clear_airflow_logs", lambda: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "scripts.destroy_all._verify_clean_state", lambda config: {
+            "airflow_processes_remaining": 0,
+            "airflow_runtime_files_remaining": 0,
+            "data_entries_remaining": 0,
+            "airflow_log_entries_remaining": 0,
+            "database_ready": 1,
+        },
+    )
+    with caplog.at_level("INFO"):
+        assert destroy_all.main(["--execute"]) == 0
+    stderr = capsys.readouterr().err
+    for step in range(1, 7):
+        assert f"STEP {step}/6" in stderr
+    assert "DESTROY ALL | SUCCESS" in stderr
+    assert "DROP, CREATE and bootstrap database (8 tables + PostGIS)" in stderr
+    assert "Remove generated NetCDF/Parquet data" in stderr
+    assert "Remove Airflow logs" in stderr
+    assert "Verify database and clean runtime state" in stderr
+    assert "DESTROY | Remove Airflow runtime state" in caplog.text
+    assert "INFO | \n" not in stderr
+    assert "database_ready=1" in caplog.text
+
+
+def test_destroy_contract_requires_all_eight_canonical_tables() -> None:
+    from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
+
+    assert set(destroy_all.EXPECTED_APPLICATION_TABLES) == (
+        CLIMATE_TABLES | GEOSPATIAL_TABLES
+    )
+    assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 8
+
+
+def test_session_preflight_blocks_airflow_termination(monkeypatch) -> None:
+    """A blocked PostgreSQL preflight must not stop even one Airflow process."""
+    monkeypatch.setattr(
+        destroy_all, "_require_no_database_sessions",
+        lambda config: (_ for _ in ()).throw(RuntimeError("sessions blocked")),
+    )
+    monkeypatch.setattr(
+        destroy_all, "_stop_all_airflow_processes",
+        lambda: pytest.fail("Airflow termination must not begin"),
+    )
+    with pytest.raises(RuntimeError, match="sessions blocked"):
+        destroy_all.execute_destroy(_config())
+
+
+def test_postgis_preflight_blocks_airflow_termination(monkeypatch) -> None:
+    monkeypatch.setattr(
+        destroy_all.recreate_postgres_database,
+        "_validate_bootstrap_prerequisites",
+        lambda config: (_ for _ in ()).throw(RuntimeError("PostGIS unavailable")),
+    )
+    monkeypatch.setattr(
+        destroy_all, "_stop_all_airflow_processes",
+        lambda: pytest.fail("Airflow termination must not begin"),
+    )
+    with pytest.raises(RuntimeError, match="PostGIS unavailable"):
+        destroy_all.execute_destroy(_config())

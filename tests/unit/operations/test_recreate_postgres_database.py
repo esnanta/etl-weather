@@ -9,9 +9,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.database import DatabaseConfig
+from database.config import DatabaseConfig
 from scripts import recreate_postgres_database as maintenance
 from ..._paths import REPOSITORY_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _mock_destructive_postgis_preflight(monkeypatch):
+    """Keep unrelated CLI tests independent of live PostgreSQL."""
+    monkeypatch.setattr(
+        maintenance, "_validate_bootstrap_prerequisites", lambda config: None,
+    )
 
 
 def _config(database: str = "weather_dev"):
@@ -188,7 +196,7 @@ def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
     )
 
     assert maintenance.main(["--execute"]) == 0
-    assert calls == ["preflight", "confirm", "recreate"]
+    assert calls == ["preflight", "confirm", "preflight", "recreate"]
 
 
 def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
