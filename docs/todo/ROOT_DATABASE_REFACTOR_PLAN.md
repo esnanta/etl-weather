@@ -229,6 +229,15 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - No destructive `--execute` was performed during verification; live destruction/recreation is intentionally untested against the populated `weather` database.
 - Remaining before final DB-R4 closure: inspect-only CLI verification and any outstanding policy/documentation review. Unit regression is complete.
 
+## DB-R4 inspect-only verification (user report, 2026-10-17)
+
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.recreate_postgres_database`: target `localhost:5432/weather`, `climate_data`; Airflow task and DagRun blocking counts all zero; Airflow blocking processes 0; other PostgreSQL sessions 0; inspect-only preflight passed.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all`: displayed database, generated data, Airflow logs/runtime, preserved `airflow.cfg`; recognized Airflow processes 0; inspect-only completed with explicit no-change message. This mode does **not** execute all checks performed inside destructive `execute_destroy`.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.reset_all`: same intended targets, all Airflow blocking states zero, other PostgreSQL sessions zero; inspect-only preflight passed.
+- Earlier unit regression: **93 operations passed in 1.40s** and **366 unit tests passed in 7.14s**.
+- No live destructive execution was performed. DB-R4 inspect-only and unit acceptance verified; DROP/CREATE/bootstrap remains intentionally untested live on populated `weather`.
+- Follow-up hardening opportunity: consider making DESTROY inspect-only run the same read-only PostgreSQL privilege/PostGIS prerequisites as execution, without changing or stopping services.
+
 ## DB-R4 lifecycle log ownership (2026-10-17)
 
 - User-reported baseline before log changes: **366 unit tests passed in 8.24s**, including **93 operations tests passed in 1.37s**.
