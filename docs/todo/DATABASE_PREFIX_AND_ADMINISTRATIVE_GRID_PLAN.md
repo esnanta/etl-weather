@@ -8,6 +8,23 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.1 audit and P5.2 implementation checkpoint (2026-10-17)
+
+**P5.1 audited source:** `database/geospatial.py` already defines `t_grid_region` with `DOUBLE PRECISION` latitude/longitude, a unique coordinate key, allowed `matched/unmatched/ambiguous` statuses, match count checks, nullable administrative IDs on non-unique/no matches, and a composite district/province FK. `database/climate.py` stores observation coordinates as `DOUBLE PRECISION`. No schema migration is required for this mapping step. `geospatial.importers.districts` previously loaded and verified 23 districts and 1 Aceh province; polygon shapes are MultiPolygonZ/SRID 4326.
+
+**P5.2 initial implementation:** `geospatial/mapping.py` provides preview by default and `python -m geospatial.mapping --execute` to upsert mappings **only for distinct persisted observations** from `climate_data.t_daily_climate_detail`. `ST_Covers` tests point (longitude, latitude) against every district polygon, including boundary points. Exactly one candidate gives both province and district IDs; zero gives `unmatched`; multiple gives `ambiguous` with NULL IDs (no arbitrary tie-breaking). Idempotent coordinate UPSERT preserves `mapped_at` when classification is unchanged. Preview does not write. This work deliberately does not create climate observations, administrative query views, or Airflow tasks.
+
+**Fixture coverage written:** `tests/unit/geospatial/test_mapping.py` checks query and guard contracts; `tests/integration/geospatial/test_grid_mapping.py` is an isolated TEST_POSTGRES-only fixture with one inside point, one external point, and one shared-boundary point, asserting 1/1/1 match classes and identical repeated writes. Tests **have not yet been run by the operator**. The integration fixture refuses nonempty test tables, inserts synthetic source/observations only into `weather_test`, and cleans fixture rows on completion.
+
+- [x] P5.1 inspect schema, coordinate types and mapping identity.
+- [x] P5.1 define `ST_Covers` match semantics and no arbitrary assignment.
+- [x] P5.2 add isolated fixture and mapping implementation in `geospatial/` without changing ETL or Airflow.
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q`.
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_grid_mapping.py -q`; review SQL compilation/runtime and report any failure before accepting P5.2.
+- [ ] Run full `tests/integration/geospatial -q` after fixture regression.
+- [ ] Populate representative real climate points using an approved standalone pilot (the last DESTROY cleared observations), then preview mapping and inspect matched/unmatched/ambiguous counts against Aceh polygons before `--execute` on `weather`.
+- [ ] Implement/verify read-only region query views and benchmark joins; keep observational LEFT JOIN row count invariant.
+
 ## P4 re-verification after DESTROY — accepted (2026-10-17)
 
 Operator ran `python -m geospatial.importers.districts` (dry-run: 23 valid source features) and `python -m geospatial.importers.districts --execute` on freshly recreated `weather.climate_data`. Import committed **23 districts, 1 province** with source SHA-256 `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. Read-only database query confirmed PostGIS **3.4.2** installed in schema `climate_data`.
