@@ -2,7 +2,7 @@
 
 Unlike reset commands, destroy is a clean-slate operation. It is available only
 when APP_ENV=dev, requires the exact DESTROY confirmation, stops recognized
-Airflow runtime processes, drops the configured PostgreSQL database, clears
+Airflow runtime processes, recreates the configured PostgreSQL database, clears
 generated data/log/runtime state, and verifies the resulting clean state.
 
 Tracked project configuration, source code, .env, airflow.cfg, and the Airflow
@@ -17,13 +17,14 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from psycopg import connect, sql
+from psycopg import connect
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
-from database.config import DatabaseConfig
+from database.config import DatabaseConfig, APPLICATION_SCHEMA
+from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
 from scripts import recreate_postgres_database
 from scripts import reset_airflow_logs
 from scripts import reset_airflow_runtime
@@ -44,12 +45,14 @@ def _section(title: str) -> None:
     print(f"\n{'=' * 68}\n{title}", file=sys.stderr, flush=True)
 
 
+EXPECTED_APPLICATION_TABLES = tuple(sorted(CLIMATE_TABLES | GEOSPATIAL_TABLES))
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Inspect or intentionally destroy all local development runtime/data "
-            "state and drop the configured application database without recreating it."
+            "state and recreate the configured application database."
         )
     )
     parser.add_argument(
@@ -140,12 +143,12 @@ def _require_no_database_sessions(config: DatabaseConfig) -> None:
         for session in sessions
     )
     raise RuntimeError(
-        f"Cannot destroy database {config.database!r}: "
+        f"Cannot recreate database {config.database!r}: "
         f"{len(sessions)} external PostgreSQL connection(s) are still open.\n"
         f"{rendered}\n"
         "Action: disconnect the listed database sessions in PhpStorm/DataGrip "
         "or other clients, then rerun the command. "
-        "Database deletion and file cleanup have NOT started."
+        "Database recreation and file cleanup have NOT started."
     )
 
 
@@ -196,29 +199,33 @@ def _directory_entry_count(path: Path) -> int:
     return sum(1 for _ in path.iterdir())
 
 
-def _drop_database(config: DatabaseConfig) -> None:
-    """Drop only the explicitly configured application database; never recreate it."""
+def _database_tables_ready(config: DatabaseConfig) -> bool:
     with connect(
-        host=config.host, port=config.port, dbname="postgres",
-        user=config.user, password=config.password, autocommit=True,
+        host=config.host,
+        port=config.port,
+        dbname=config.database,
+        user=config.user,
+        password=config.password,
+        autocommit=True,
     ) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                sql.SQL("DROP DATABASE {}").format(sql.Identifier(config.database))
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = %s",
+                (config.schema,),
             )
-
-
-def _database_absent(config: DatabaseConfig) -> bool:
-    """Verify absence through the maintenance connection without mutations."""
-    with connect(
-        host=config.host, port=config.port, dbname="postgres",
-        user=config.user, password=config.password, autocommit=True,
-    ) as connection:
-        with connection.cursor() as cursor:
+            found = {row[0] for row in cursor.fetchall()}
             cursor.execute(
-                "SELECT 1 FROM pg_database WHERE datname = %s", (config.database,)
+                "SELECT n.nspname FROM pg_extension e "
+                "JOIN pg_namespace n ON n.oid=e.extnamespace "
+                "WHERE e.extname='postgis'"
             )
-            return cursor.fetchone() is None
+            extension_row = cursor.fetchone()
+    return (
+        set(EXPECTED_APPLICATION_TABLES).issubset(found)
+        and extension_row is not None
+        and extension_row[0] == APPLICATION_SCHEMA
+    )
 
 
 def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
@@ -226,14 +233,14 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
     remaining_runtime_files = _runtime_files_remaining()
     data_entries = _directory_entry_count(reset_data.DATA_DIRECTORY)
     log_entries = _directory_entry_count(reset_airflow_logs.AIRFLOW_LOG_DIRECTORY)
-    database_absent = _database_absent(config)
+    database_ready = _database_tables_ready(config)
 
     result = {
         "airflow_processes_remaining": len(remaining_processes),
         "airflow_runtime_files_remaining": len(remaining_runtime_files),
         "data_entries_remaining": data_entries,
         "airflow_log_entries_remaining": log_entries,
-        "database_absent": int(database_absent),
+        "database_ready": int(database_ready),
     }
 
     if (
@@ -241,7 +248,7 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
         or result["airflow_runtime_files_remaining"]
         or result["data_entries_remaining"]
         or result["airflow_log_entries_remaining"]
-        or not database_absent
+        or not database_ready
     ):
         raise RuntimeError(
             "Destroy final verification failed | "
@@ -253,8 +260,8 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
 
 def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     """Execute clean-slate destruction in failure-safe order."""
-    _section("PREFLIGHT | Check PostgreSQL sessions before stopping Airflow")
-    recreate_postgres_database._validate_static_guards(config)
+    _section("PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions")
+    recreate_postgres_database._validate_bootstrap_prerequisites(config)
     _require_no_database_sessions(config)
 
     _section("STEP 1/6 | Stop Airflow processes")
@@ -262,15 +269,15 @@ def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     _section("STEP 2/6 | Check open PostgreSQL sessions")
     _require_no_database_sessions(config)
 
-    _section("STEP 3/6 | Drop PostgreSQL database (no recreation)")
-    _drop_database(config)
+    _section("STEP 3/6 | Recreate PostgreSQL database")
+    recreate_postgres_database._recreate_database(config)
     _section("STEP 4/6 | Remove generated data")
     data_removed = reset_data.clear_data_contents()
     _section("STEP 5/6 | Remove Airflow logs and runtime state")
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()
     runtime_files_removed = len(reset_airflow_runtime.clear_airflow_runtime_state())
 
-    _section("STEP 6/6 | Verify database removal and clean runtime")
+    _section("STEP 6/6 | Verify clean state")
     verification = _verify_clean_state(config)
     return {
         "stopped_airflow_processes": stopped_processes,
@@ -351,20 +358,17 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "Destroy verification | airflow_processes_remaining=%d | "
         "airflow_runtime_files_remaining=%d | data_entries_remaining=%d | "
-        "airflow_log_entries_remaining=%d | database_absent=%d",
+        "airflow_log_entries_remaining=%d | database_ready=%d",
         result["airflow_processes_remaining"],
         result["airflow_runtime_files_remaining"],
         result["data_entries_remaining"],
         result["airflow_log_entries_remaining"],
-        result["database_absent"],
+        result["database_ready"],
     )
     logger.info(
         "Preserved project configuration | airflow_cfg=%s",
         reset_airflow_runtime.PRESERVED_AIRFLOW_CONFIG,
     )
-    logger.warning("Database %s successfully removed; no database was recreated.", config.database)
-    logger.warning("To create the databases again, run: python -m database.setup --execute")
-    logger.warning("To initialize an existing application database, run: python -m database.bootstrap --execute")
     return 0
 
 
