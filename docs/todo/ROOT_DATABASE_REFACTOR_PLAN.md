@@ -210,6 +210,16 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/operations -q` then full unit suite. No local tests or destructive execution have been performed by this source change.
 - [ ] Update CLI/maintenance documentation after the full DB-R4 safety design is resolved.
 
+## DB-R4 safety gate correction (2026-10-17)
+
+- User-confirmed regression before this change: `tests/unit/operations -q` **91 passed in 1.73s**; full `tests/unit -q` **364 passed in 9.94s**.
+- [x] Added read-only `_validate_bootstrap_prerequisites(config)` to `scripts/recreate_postgres_database.py`, checking canonical schema, target database existence, owner membership, database creation privileges, PostGIS server availability and superuser authorization for PostGIS activation **before DROP**. This check is a conservative prerequisite, not a guarantee of future DDL success.
+- [x] The standalone recreation CLI runs privilege/PostGIS preflight together with runtime preflight before confirmation, then repeats them immediately before `_recreate_database`.
+- [x] `scripts/destroy_all.execute_destroy` now runs privilege/PostGIS preflight and checks external database sessions **before terminating Airflow**. It retains the second session check directly before DROP to catch new connections.
+- [x] Added targeted tests ensuring failing PostgreSQL/PostGIS preflight cannot terminate Airflow, and updated order assertions to include early session preflight.
+- [ ] **Regression pending** after these modifications. No destructive commands were executed.
+- [ ] Existing tests and operational behavior should be reviewed for roles that can create PostGIS without superuser; conservative policy deliberately rejects such roles rather than risk data loss. PostgreSQL permissions and server state can change after preflight: a successful preflight is not transactional protection across DROP/CREATE.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
