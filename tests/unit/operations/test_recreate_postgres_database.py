@@ -196,7 +196,7 @@ def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
     )
 
     assert maintenance.main(["--execute"]) == 0
-    assert calls == ["preflight", "confirm", "recreate"]
+    assert calls == ["preflight", "confirm", "preflight", "recreate"]
 
 
 def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
