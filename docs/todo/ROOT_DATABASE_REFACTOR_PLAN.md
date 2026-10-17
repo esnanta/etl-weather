@@ -1,6 +1,6 @@
 # Root Database Package Refactor Plan
 
-**Status:** DB-R2 pipeline, geospatial, and orchestration import/DDL migration completed at unit-test level (355 passed, user-reported 2026-10-16). Legacy package cleanup pending; PostgreSQL integration and DB-R1 live checks remain open.  
+**Status:** DB-R3 provisioning and isolated PostgreSQL integration verified; DB-R4 unit regressions (366 unit, 93 operations) and maintenance inspect-only checks passed. Next: DB-R5 controlled live PostgreSQL verification; user permits deletion of currently unused application database, subject to checking the broader DESTROY targets. Historical checklist items below retain their original planning context.  
 **Target branch:** `dev` exclusively.  
 **Current priority:** Database refactor before P5 grid-to-region mapping; Airflow orchestration remains deferred.
 
@@ -228,6 +228,15 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - The restored destroy → recreate → bootstrap behavior and distinct DESTROY/RESET logging assertions pass unit regression.
 - No destructive `--execute` was performed during verification; live destruction/recreation is intentionally untested against the populated `weather` database.
 - Remaining before final DB-R4 closure: inspect-only CLI verification and any outstanding policy/documentation review. Unit regression is complete.
+
+## Current decision and next gate (2026-10-17)
+
+- The operator confirms that the current application database `weather` is **not yet in use** and **may be deleted** for a controlled live DB-R5 verification. This supersedes previous advice to categorically avoid using `weather` for a destructive test. It is permission in principle, **not evidence that deletion has happened**.
+- Keep `destroy_all` behavior: guarded DESTROY → DROP → CREATE → root bootstrap (8 canonical tables and PostGIS), plus generated data and Airflow cleanup. `weather_test` remains separate and is not implicitly destroyed.
+- [ ] **Follow-up hardening:** bring the default inspect-only `destroy_all` path closer to execution preflight using read-only database identity, privilege, PostGIS and session checks, while retaining zero mutation and no Airflow termination.
+- [ ] **DB-R5 next:** run a controlled *real PostgreSQL* verification only after checking `weather` contains no data that should be retained and confirming the generated NetCDF/Parquet artifacts and Airflow runtime/logs are also disposable (DESTROY removes these too). Keep `.env`, source and `geospatial/sources/` protected. Confirm `weather_test` identity and isolation.
+- [ ] Record before/after DB existence, eight tables, PostGIS schema, empty row counts, session counts and full CLI logs; rerun `tests/integration -q` and applicable unit tests. Do not claim live destroy success until user-provided execution evidence exists.
+- Passing evidence: `tests/unit/operations` **93 passed**, full `tests/unit` **366 passed**, and all three maintenance commands passed inspect-only checks.
 
 ## DB-R4 inspect-only verification (user report, 2026-10-17)
 
