@@ -220,6 +220,13 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - [ ] **Regression pending** after these modifications. No destructive commands were executed.
 - [ ] Existing tests and operational behavior should be reviewed for roles that can create PostGIS without superuser; conservative policy deliberately rejects such roles rather than risk data loss. PostgreSQL permissions and server state can change after preflight: a successful preflight is not transactional protection across DROP/CREATE.
 
+## DB-R4 repeated-preflight test correction (user report, 2026-10-17)
+
+- After early-preflight change, local `tests/unit/operations -q`: **92 passed, 1 failed**; full `tests/unit -q`: **365 passed, 1 failed in 8.83s**.
+- The same test failed in both suites: `test_execute_yes_recreates_only_after_preflight` still expected `preflight → confirm → recreate`, while the intentional guarded runtime order is `preflight → confirm → preflight → recreate`.
+- Updated only the expected assertion in `tests/unit/operations/test_recreate_postgres_database.py` to match and protect the second preflight; no destructive behavior was changed.
+- Awaiting rerun of unit suites. Do not run destructive `--execute` commands for test verification.
+
 ## DB-R3 initial implementation (2026-10-17)
 
 - [x] Recorded DB-R2 final user regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **355 passed in 8.01s**.
