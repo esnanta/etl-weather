@@ -209,7 +209,7 @@ For a **development environment only** (`APP_ENV=dev`), configure both `POSTGRES
 python -m database.setup
 ```
 
-After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same five climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
+For an already existing target, `python -m database.bootstrap` previews and `python -m database.bootstrap --execute` initializes the combined climate and spatial schema without creating the database. After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same five climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
 
 ## Project Structure
 
@@ -262,7 +262,7 @@ After confirming the displayed PostgreSQL database, data directory, and Airflow 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
 ```
 
-Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **It is broader than a weather-data-only reset.** It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
+Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **RESET ALL is also destructive** (database recreation, NetCDF/Parquet, logs and runtime cleanup), but requires Airflow to be inactive and does not terminate Airflow processes; DESTROY performs its own preflight and stops recognized processes. It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
 
 The combined runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; the existing daily and monthly Parquet artifacts are validated and reused on later runs.
 
