@@ -262,7 +262,7 @@ After confirming the displayed PostgreSQL database, data directory, and Airflow 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
 ```
 
-Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, **drops the configured `POSTGRES_*` database without recreating it**, and clears generated `data/`, Airflow logs, and Airflow runtime state. **It is broader than a weather-data-only reset.** It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command. After successful destroy, explicitly run `python -m database.setup --execute` to create missing databases, and use `python -m database.bootstrap --execute` only to initialize an existing application database.
+Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **It is broader than a weather-data-only reset.** It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
 
 The combined runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; the existing daily and monthly Parquet artifacts are validated and reused on later runs.
 
