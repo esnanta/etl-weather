@@ -8,6 +8,17 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.2 real ERA5-Land pilot and spatial preview (operator report, 2026-10-17)
+
+Operator ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-03 python -m scripts.run_pipeline_cds`. The CDS download used 2024-04-30 context and May 1–3 target in two chunks; RAW NetCDF had 96 hourly timestamps and 1,505 bounding-box grid locations (43 × 35); transformed output had 530 valid grid positions per local day × 3 days = **1,590** observations. Temporal/spatial/dataframe validation passed, with no duplicate grid records. PostgreSQL `weather.climate_data` accepted 1,590 observations, `daily_climate_id=1`, and the total runtime was 289.98s. Source artifact checkpoints were created.
+
+Operator ran `python -m geospatial.mapping` in preview mode: **530 coordinates; 450 matched; 80 unmatched; 0 ambiguous** (84.91% covered by exactly one district, 15.09% with no covering district). The preview made no mapping writes. Do not assume that all unmatched coordinates are coastal/ocean without inspecting their spatial distribution; absence of ambiguous classifications is encouraging but not a standalone geometry-coverage proof.
+
+- [x] Populate a limited real ERA5-Land observation pilot and preview P5 district assignment.
+- [ ] Diagnose/report geographic distribution of the 80 unmatched points (coastal/offshore/outside district coverage); do not force match them.
+- [ ] After reviewing the preview, run `python -m geospatial.mapping --execute` and verify 530 rows and match statuses in PostgreSQL; repeat to prove no duplicates and unchanged timestamps.
+- [ ] Build read-only region views only after verifying mapping persistence and LEFT JOIN row-count invariants.
+
 ## P5.2 regression checkpoint and mapping README (2026-10-17)
 
 Operator previewed `python -m geospatial.mapping` against `weather.climate_data`: **coordinates=0, matched=0, unmatched=0, ambiguous=0**. This is expected because climate observation rows have not been restored after DESTROY. No mapping rows were written.
