@@ -257,7 +257,7 @@ def test_final_verification_rejects_remaining_runtime_state(
         lambda path: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._database_tables_ready",
+        "scripts.destroy_all._database_absent",
         lambda config: True,
     )
 
@@ -273,7 +273,7 @@ def test_final_verification_accepts_clean_state(monkeypatch) -> None:
         lambda path: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._database_tables_ready",
+        "scripts.destroy_all._database_absent",
         lambda config: True,
     )
 
@@ -361,7 +361,7 @@ def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, caps
     ])
     monkeypatch.setattr(
         "scripts.destroy_all._drop_database",
-        lambda config: pytest.fail("Database recreation must not start."),
+        lambda config: pytest.fail("Database deletion must not start."),
     )
 
     with caplog.at_level("INFO"):
