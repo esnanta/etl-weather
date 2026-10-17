@@ -155,6 +155,50 @@ def _validate_static_guards(config: DatabaseConfig) -> None:
         )
 
 
+def _validate_bootstrap_prerequisites(config: DatabaseConfig) -> None:
+    """Read-only privilege and PostGIS checks before a destructive database drop.
+
+    Preflight cannot guarantee success of future DDL; it rejects known blockers.
+    """
+    _validate_static_guards(config)
+    if config.schema != "climate_data":
+        raise RuntimeError("Recreation requires the canonical climate_data schema.")
+    with connect(
+        host=config.host, port=config.port, dbname="postgres",
+        user=config.user, password=config.password, autocommit=True,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_has_role(d.datdba, 'MEMBER'), "
+                "(r.rolcreatedb OR r.rolsuper), r.rolsuper "
+                "FROM pg_database d CROSS JOIN pg_roles r "
+                "WHERE d.datname = %s AND r.rolname = current_user",
+                (config.database,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError(
+                    f"Database {config.database!r} does not exist; use database.setup."
+                )
+            owns_database, can_create, is_superuser = row
+            if not owns_database or not can_create:
+                raise RuntimeError(
+                    "Database recreation requires owner membership and CREATEDB privileges."
+                )
+            cursor.execute(
+                "SELECT default_version FROM pg_available_extensions WHERE name='postgis'"
+            )
+            if cursor.fetchone() is None:
+                raise RuntimeError(
+                    "PostGIS server package is unavailable; refusing database DROP."
+                )
+            if not is_superuser:
+                raise RuntimeError(
+                    "Recreation requires superuser permission for PostGIS activation "
+                    "in the newly created database."
+                )
+
+
 def _validate_runtime_guards(config: DatabaseConfig) -> None:
     if campaign_schedule() is not None:
         raise RuntimeError(
@@ -277,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         _validate_runtime_guards(config)
+        _validate_bootstrap_prerequisites(config)
     except (RuntimeError, ValueError) as error:
         logger.warning("Database recreation preflight failed | %s", error)
         return 4
@@ -297,6 +342,8 @@ def main(argv: list[str] | None = None) -> int:
         config.database,
         config.host,
     )
+    _validate_runtime_guards(config)
+    _validate_bootstrap_prerequisites(config)
     _recreate_database(config)
     logger.info(
         "Database recreation complete | database=%s | schema=%s",
