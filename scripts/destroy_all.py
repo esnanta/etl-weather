@@ -260,6 +260,10 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
 
 def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     """Execute clean-slate destruction in failure-safe order."""
+    _section("PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions")
+    recreate_postgres_database._validate_bootstrap_prerequisites(config)
+    _require_no_database_sessions(config)
+
     _section("STEP 1/6 | Stop Airflow processes")
     stopped_processes = _stop_all_airflow_processes()
     _section("STEP 2/6 | Check open PostgreSQL sessions")
