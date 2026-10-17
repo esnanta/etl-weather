@@ -8,6 +8,21 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## Current work after root database refactor (2026-10-17)
+
+The separate root database consolidation DB-R1–DB-R6 has passed its documented acceptance scope. Root `database/` now owns the canonical eight-table DDL and PostGIS lifecycle; `weather` was successfully destroyed/recreated and bootstrapped, followed by **15 PostgreSQL integration tests passed**, **366 unit tests passed**, and **93 operations tests passed**. The original detailed refactor plan was removed from `docs/todo/` after completion; its history remains available in Git.
+
+**Important state reset:** the latest `destroy_all --execute` recreated **empty** `weather`, and reported zero data entries remaining. Historical P2 observations (May 2024 pilot) and P4 Aceh administrative imports recorded below are evidence of **earlier runs**, not records assumed to exist now. Before P5 spatial mapping, restore or regenerate validated climate observations and explicitly re-import `geospatial/sources/id/districts/Aceh.geojson`; confirm persisted province/district counts and geometry validity using read-only SQL. Do not infer that previous imported rows survived database recreation.
+
+**Remaining mainline scope:** P3 verification of Airflow scheduling contract where not yet evidenced, P4 current-database administrative import verification, P5 grid-to-region association, spatial query views and performance, and P6 end-to-end documentation/acceptance.
+
+**Separate maintenance follow-ups (not P5 prerequisites):**
+- [ ] Make `destroy_all` inspect-only run its full read-only privileges/PostGIS/session preflight, without stopping processes or altering data.
+- [ ] Revisit the conservative superuser requirement for PostGIS extension activation only with explicit security review.
+- [ ] Optionally test RESET and cleanup against disposable populated fixtures; prior live DESTROY reported `*_entries_removed=0`, so populated-artifact deletion was not specifically exercised.
+
+Historical statuses and superseded PostGIS-in-`public` instructions further below are **not** current deployment instructions. Canonical PostGIS schema is `climate_data`.
+
 ## 1. Scope and constraints
 
 - One PostgreSQL application database: `weather` (configured through `POSTGRES_DATABASE`).
