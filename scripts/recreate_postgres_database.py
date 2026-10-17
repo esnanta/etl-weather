@@ -278,9 +278,12 @@ def _recreate_database(config: DatabaseConfig) -> None:
         autocommit=True,
     ) as connection:
         with connection.cursor() as cursor:
+            logger.info("DATABASE | DROP %s | starting", config.database)
             cursor.execute(
                 sql.SQL("DROP DATABASE {}").format(sql.Identifier(config.database))
             )
+            logger.info("DATABASE | DROP %s | complete", config.database)
+            logger.info("DATABASE | CREATE %s | starting", config.database)
             cursor.execute(
                 sql.SQL("CREATE DATABASE {} OWNER {}").format(
                     sql.Identifier(config.database),
@@ -288,8 +291,11 @@ def _recreate_database(config: DatabaseConfig) -> None:
                 )
             )
 
+    logger.info("DATABASE | CREATE %s | complete", config.database)
+    logger.info("DATABASE | Bootstrap 8 tables + PostGIS | starting")
     # Canonical root bootstrap initializes all eight application tables.
     bootstrap(config)
+    logger.info("DATABASE | Bootstrap 8 tables + PostGIS | complete")
 
 
 def main(argv: list[str] | None = None) -> int:
