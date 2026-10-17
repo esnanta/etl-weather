@@ -431,3 +431,31 @@ def test_destroy_contract_requires_all_eight_canonical_tables() -> None:
         CLIMATE_TABLES | GEOSPATIAL_TABLES
     )
     assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 8
+
+
+def test_session_preflight_blocks_airflow_termination(monkeypatch) -> None:
+    """A blocked PostgreSQL preflight must not stop even one Airflow process."""
+    monkeypatch.setattr(
+        destroy_all, "_require_no_database_sessions",
+        lambda config: (_ for _ in ()).throw(RuntimeError("sessions blocked")),
+    )
+    monkeypatch.setattr(
+        destroy_all, "_stop_all_airflow_processes",
+        lambda: pytest.fail("Airflow termination must not begin"),
+    )
+    with pytest.raises(RuntimeError, match="sessions blocked"):
+        destroy_all.execute_destroy(_config())
+
+
+def test_postgis_preflight_blocks_airflow_termination(monkeypatch) -> None:
+    monkeypatch.setattr(
+        destroy_all.recreate_postgres_database,
+        "_validate_bootstrap_prerequisites",
+        lambda config: (_ for _ in ()).throw(RuntimeError("PostGIS unavailable")),
+    )
+    monkeypatch.setattr(
+        destroy_all, "_stop_all_airflow_processes",
+        lambda: pytest.fail("Airflow termination must not begin"),
+    )
+    with pytest.raises(RuntimeError, match="PostGIS unavailable"):
+        destroy_all.execute_destroy(_config())
