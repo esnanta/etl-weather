@@ -199,6 +199,15 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - No `Creating missing PostgreSQL database` message appeared in the repeat run. This verifies successful repeated initialization on the tested state, not byte-for-byte data/index preservation.
 - DB-R3 acceptance evidence: **363 unit passed**, **15 PostgreSQL integration passed**, initial test database empty across eight tables, dual-target first provisioning successful, and repeat setup successful. DB-R3 functional acceptance complete; partial-failure compensation and destructive operations are separate hardening / DB-R4 concerns.
 
+## DB-R4 user decision: restore destroy → recreate → bootstrap (2026-10-17)
+
+**Latest decision supersedes the temporary drop-only contract:** `scripts.destroy_all` intentionally drops **and immediately recreates** the configured application database through guarded `scripts.recreate_postgres_database._recreate_database`, which invokes the root `database.bootstrap.bootstrap(config)` (five climate/operational plus three geospatial tables, PostGIS). It then clears generated ETL data, Airflow logs and runtime. Isolated `weather_test` is not a destroy target.
+
+- [x] Restored `scripts/destroy_all.py`, `tests/unit/operations/test_destroy_all.py`, `README.md`, and `orchestration/README.md` from the last pre-drop-only behavior at commit `6869ec6`, preserving prior security preflight improvements. The requested reference `b9482e4` was itself within the drop-only change series, so restoring its literal tree would not implement the requested behavior.
+- [x] Preserved exact `DESTROY` confirmation, `APP_ENV=dev`, early PostgreSQL session check before stopping Airflow, repeat session check before DROP, and the eight-table plus PostGIS final readiness contract.
+- [ ] Run local `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/operations -q` and full `tests/unit -q`; no destructive operations were executed here.
+- [ ] After passing unit regression, continue DB-R4 with review of non-destructive preflight / static role safeguards and inspect-only commands; **do not run destroy/recreate --execute** on the user's current `weather` database as a test.
+
 ## DB-R4 approved DESTROY contract change (2026-10-17)
 
 **User decision (supersedes earlier planning assumptions): `DESTROY` means delete; it must NOT recreate or bootstrap a database.** After successful deletion, the CLI must print explicit commands to re-provision separately.
