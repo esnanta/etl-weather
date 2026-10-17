@@ -464,18 +464,16 @@ DESTROY
 
 Unlike reset, destroy intentionally stops all recognized Airflow services/workers using SIGTERM followed by SIGKILL only for recognized processes that remain alive. If Airflow cannot be stopped, destructive database/data actions do not begin.
 
-Before Airflow is stopped, destroy checks PostgreSQL connections and repeats the check just before DROP. It refuses to drop PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
+After Airflow is stopped, destroy refuses to drop PostgreSQL while unrelated sessions remain connected to the target database. It reports the blocking PID, user, application, client address, and state rather than silently terminating arbitrary clients.
 
 The destroy order is:
 
 ```text
-check PostgreSQL sessions before stopping Airflow
-        ↓
 stop recognized Airflow runtime
         ↓
 verify Airflow process count = 0
         ↓
-recheck PostgreSQL session safety
+verify PostgreSQL session safety
         ↓
 drop application PostgreSQL database (no recreation)
         ↓
@@ -485,10 +483,10 @@ clear Airflow logs
         ↓
 clear generated Airflow SQLite/auth/PID runtime state
         ↓
-verify application database is absent and runtime/data are cleared
+verify clean state and canonical application tables
 ```
 
-After a successful destroy, create missing development/test databases explicitly with `python -m database.setup --execute`; use `python -m database.bootstrap --execute` only for an already existing application database. Both maintenance paths preserve project configuration and source. In particular, destroy does not delete:
+Both maintenance paths preserve project configuration and source. In particular, destroy does not delete:
 
 ```text
 .env
