@@ -94,9 +94,13 @@ def _confirmation(
 
 def execute_reset(config: DatabaseConfig) -> dict[str, int]:
     """Reset only after preflight proved that no Airflow work can resume."""
+    logger.info("RESET | 1/4 | Reinitialize PostgreSQL database %s", config.database)
     recreate_postgres_database._recreate_database(config)
+    logger.info("RESET | 2/4 | Clear generated NetCDF/Parquet data")
     data_removed = reset_data.clear_data_contents()
+    logger.info("RESET | 3/4 | Clear Airflow logs")
     log_entries_removed = reset_airflow_logs.clear_airflow_logs()
+    logger.info("RESET | 4/4 | Clear Airflow runtime state")
     runtime_files_removed = len(reset_airflow_runtime.clear_airflow_runtime_state())
     return {
         "data_entries_removed": data_removed,
