@@ -420,6 +420,11 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
     for step in range(1, 7):
         assert f"STEP {step}/6" in stderr
     assert "DESTROY ALL | SUCCESS" in stderr
+    assert "DROP, CREATE and bootstrap database (8 tables + PostGIS)" in stderr
+    assert "Remove generated NetCDF/Parquet data" in stderr
+    assert "Remove Airflow logs" in stderr
+    assert "Verify database and clean runtime state" in stderr
+    assert "DESTROY | Remove Airflow runtime state" in caplog.text
     assert "INFO | \n" not in stderr
     assert "database_ready=1" in caplog.text
 
