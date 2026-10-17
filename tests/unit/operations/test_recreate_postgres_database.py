@@ -14,6 +14,14 @@ from scripts import recreate_postgres_database as maintenance
 from ..._paths import REPOSITORY_ROOT
 
 
+@pytest.fixture(autouse=True)
+def _mock_destructive_postgis_preflight(monkeypatch):
+    """Keep unrelated CLI tests independent of live PostgreSQL."""
+    monkeypatch.setattr(
+        maintenance, "_validate_bootstrap_prerequisites", lambda config: None,
+    )
+
+
 def _config(database: str = "weather_dev"):
     return SimpleNamespace(
         host="localhost",
