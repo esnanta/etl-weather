@@ -17,7 +17,6 @@ from database.config import (
     DAILY_CLIMATE_DETAIL_TABLE,
     DISTRICT_TABLE,
     GRID_REGION_TABLE,
-    PROVINCE_TABLE,
     DatabaseConfig,
     resolve_database_config,
 )
@@ -62,7 +61,7 @@ classified AS (
     GROUP BY latitude, longitude
 ),
 written AS (
-    INSERT INTO {APPLICATION_SCHEMA}.{GRID_REGION_TABLE}
+    INSERT INTO {APPLICATION_SCHEMA}.{GRID_REGION_TABLE} AS target
         (latitude, longitude, province_id, district_id, match_status, match_count)
     SELECT latitude, longitude, province_id, district_id,
            CASE WHEN match_count = 0 THEN 'unmatched'
@@ -76,15 +75,13 @@ written AS (
         match_status = EXCLUDED.match_status,
         match_count = EXCLUDED.match_count,
         mapped_at = CASE
-            WHEN ({APPLICATION_SCHEMA}.{GRID_REGION_TABLE}.province_id,
-                  {APPLICATION_SCHEMA}.{GRID_REGION_TABLE}.district_id,
-                  {APPLICATION_SCHEMA}.{GRID_REGION_TABLE}.match_status,
-                  {APPLICATION_SCHEMA}.{GRID_REGION_TABLE}.match_count)
+            WHEN (target.province_id, target.district_id,
+                  target.match_status, target.match_count)
                  IS DISTINCT FROM
                  (EXCLUDED.province_id, EXCLUDED.district_id,
                   EXCLUDED.match_status, EXCLUDED.match_count)
             THEN CURRENT_TIMESTAMP
-            ELSE {APPLICATION_SCHEMA}.{GRID_REGION_TABLE}.mapped_at
+            ELSE target.mapped_at
         END
     RETURNING match_status
 )
