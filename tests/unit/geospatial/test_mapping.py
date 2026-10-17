@@ -27,8 +27,8 @@ def test_spatial_matching_queries_keep_all_candidates_and_all_source_points():
 
 
 def test_ambiguous_and_unmatched_never_get_assigned_districts():
-    assert "WHEN match_count = 1 THEN MIN(district_id)" in _MAPPING_SQL
-    assert "WHEN match_count = 1 THEN MIN(province_id)" in _MAPPING_SQL
+    assert "WHEN COUNT(district_id) = 1 THEN MIN(district_id)" in _MAPPING_SQL
+    assert "WHEN COUNT(district_id) = 1 THEN MIN(province_id)" in _MAPPING_SQL
     assert "WHEN match_count = 0 THEN 'unmatched'" in _MAPPING_SQL
     assert "ELSE 'ambiguous'" in _MAPPING_SQL
 
