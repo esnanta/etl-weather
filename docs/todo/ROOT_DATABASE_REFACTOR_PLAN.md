@@ -221,6 +221,14 @@ CLI/documentation references remain in `README.md`, `geospatial/README.md`, `que
 - [ ] Unit regression after this change still pending; no real DROP or filesystem cleanup executed by the assistant.
 - [ ] Historical sections of this plan mentioning recreate remain historical context and are superseded by this decision.
 
+## DB-R4 lifecycle log ownership (2026-10-17)
+
+- User-reported baseline before log changes: **366 unit tests passed in 8.24s**, including **93 operations tests passed in 1.37s**.
+- Destroy remains **destroy → recreate → root bootstrap**, not drop-only. `destroy_all.py` logs preflight, confirmation, stopping Airflow, shared database lifecycle, generated NetCDF/Parquet cleanup, Airflow log/runtime cleanup, and final verification. Database helper `_recreate_database` owns detailed DROP, CREATE and 8-table/PostGIS bootstrap logs, so wrappers need not repeat them.
+- Reset and destroy **do not invoke one another**; they share lower-level database and filesystem functions. `reset_all.py` now logs its own RESET-prefixed phase markers without DESTROY headings or duplicated outer orchestration.
+- Targeted destroy log assertion was strengthened. Source changes have **not** been locally tested yet; no maintenance `--execute` was run.
+- [ ] Rerun `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/operations -q` and full unit suite and reconcile any assertion failures before closing DB-R4.
+
 ## DB-R4 initial destructive-maintenance alignment (2026-10-17)
 
 - [x] Audited `scripts/recreate_postgres_database.py` and `scripts/destroy_all.py` against root `database/` ownership. Existing recreation already had `APP_ENV=dev`, inactive campaign/Airflow checks, PostgreSQL-session checks, interactive confirmation and safely quoted DROP/CREATE identifiers; destroy additionally requires exact `DESTROY` and stops recognized Airflow processes before database recreation.
