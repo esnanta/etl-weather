@@ -18,6 +18,16 @@ from scripts import destroy_all
 from ..._paths import REPOSITORY_ROOT
 
 
+@pytest.fixture(autouse=True)
+def _mock_destructive_postgis_preflight(monkeypatch):
+    """Unit tests never open a live PostgreSQL maintenance connection."""
+    monkeypatch.setattr(
+        destroy_all.recreate_postgres_database,
+        "_validate_bootstrap_prerequisites",
+        lambda config: None,
+    )
+
+
 def _config(database: str = "weather") -> DatabaseConfig:
     return DatabaseConfig(
         host="localhost",
@@ -137,6 +147,7 @@ def test_airflow_stop_failure_prevents_database_recreation(monkeypatch) -> None:
         "scripts.destroy_all._stop_all_airflow_processes",
         lambda: (_ for _ in ()).throw(RuntimeError("cannot stop airflow")),
     )
+    monkeypatch.setattr(destroy_all, "_require_no_database_sessions", lambda config: None)
     monkeypatch.setattr(
         "scripts.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: (_ for _ in ()).throw(
@@ -214,6 +225,7 @@ def test_execute_destroy_uses_failure_safe_order(monkeypatch) -> None:
     result = destroy_all.execute_destroy(_config())
 
     assert calls == [
+        "sessions",
         "airflow",
         "sessions",
         "database",
@@ -355,7 +367,7 @@ def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, caps
     with caplog.at_level("INFO"):
         assert destroy_all.main(["--execute"]) == 5
     stderr = capsys.readouterr().err
-    assert "STEP 2/6 | Check open PostgreSQL sessions" in stderr
+    assert "PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions" in stderr
     assert "DESTROY ALL | FAILED" in stderr
     assert "INFO | \n" not in stderr
     assert "pid=15381" in caplog.text
