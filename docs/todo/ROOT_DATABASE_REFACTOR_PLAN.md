@@ -1,8 +1,27 @@
 # Root Database Package Refactor Plan
 
-**Status:** DB-R3 provisioning and isolated PostgreSQL integration verified; DB-R4 unit regressions (366 unit, 93 operations) and maintenance inspect-only checks passed. Next: DB-R5 controlled live PostgreSQL verification; user permits deletion of currently unused application database, subject to checking the broader DESTROY targets. Historical checklist items below retain their original planning context.  
+**Status:** DB-R6 documentation and acceptance consolidation completed for the tested scope. Live DESTROY → recreate → bootstrap and isolated integration passed; outstanding limitations and follow-ups are documented below.
 **Target branch:** `dev` exclusively.  
 **Current priority:** Database refactor before P5 grid-to-region mapping; Airflow orchestration remains deferred.
+
+## DB-R6 acceptance summary — current status (2026-10-17)
+
+**Scope and result.** Root `database/` is the canonical configuration/connection/DDL/bootstrap owner; application and isolated test targets are separately configured. Airflow metadata remains SQLite. The application schema contains five climate/operational and three geospatial tables; PostGIS resides in `climate_data`. Domain repository/importer roles remain separate. Historic plans and checkbox snapshots further below describe earlier states; this summary supersedes their stale status text.
+
+| Gate | Evidence | Status |
+| --- | --- | --- |
+| DB-R1/R2 architecture and migration | Legacy `pipeline/database/` and `geospatial/database/` packages removed and root database paths adopted; domain boundaries documented | Completed at source/documentation level |
+| DB-R3 provisioning | `database.setup --execute` created missing `weather_test`, initialized application and test targets; repeat setup succeeded; PostGIS 3.4.2 reported in both | Verified by operator |
+| DB-R4 maintenance | `tests/unit/operations -q`: **93 passed**; all three CLI inspect-only commands succeeded; explicit `DESTROY` guards and phase logging | Verified for tested scenarios |
+| DB-R5 end-to-end | `destroy_all --execute` returned **SUCCESS**, DROP/CREATE `weather`, 8-table bootstrap, PostGIS 3.4.2, runtime/data clean and `database_ready=1`; `tests/integration -q`: **15 passed in 2.03s** | Verified by operator |
+| DB-R6 regression | `tests/unit -q`: **366 passed in 7.14s**; **93 operations passed in 1.40s** before live destroy | Verified by operator |
+| DB-R6 documentation | Root README and orchestration README corrected for separate bootstrap and actual RESET vs DESTROY semantics | Updated in dev |
+
+**Remaining limits:** logs show `*_entries_removed=0` for actual DESTROY, so removal of populated artifact directories has not been demonstrated; live RESET execution has not been demonstrated. A successful live bootstrap and `database_ready=1` do not separately establish row-by-row/index-by-index SQL verification. Do not claim these specific verifications passed without evidence.
+
+**Follow-up (not a blocker for source-level DB-R6):** [ ] Extend DESTROY inspect-only to run the same read-only privilege/PostGIS/session checks as the execution preflight, without stopping Airflow. [ ] Review role policy requiring superuser for PostGIS activation. [ ] If desired, test RESET and cleanup with disposable populated fixtures in an isolated environment.
+
+**Documentation policy:** active commands are in root `README.md`, `orchestration/README.md`, `geospatial/README.md`, `tests/README.md` and root `AGENTS.md`. Earlier proposal/checklist sections below are retained as dated historical records, not current implementation instructions.
 
 ## Objective and approved layout
 
