@@ -43,7 +43,7 @@ source activate-airflow.sh -q
 python -m database.bootstrap --execute  # climate + geospatial (8 tables)
 ```
 
-With `--execute`, this command connects through `POSTGRES_*`, initializes five climate/operational and three spatial tables, enables PostGIS if missing, and does **not** create or reset the database, delete observations, import GeoJSON, or start Airflow. The independent alternatives are `python -m database.climate --execute` (climate only) and `python -m database.geospatial --execute` (spatial only). It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The district importer is implemented in `geospatial/importers/districts.py`.
+With `--execute`, this command connects through `POSTGRES_*`, initializes seven climate/operational and three spatial tables, enables PostGIS if missing, and does **not** create or reset the database, delete observations, import GeoJSON, or start Airflow. The independent alternatives are `python -m database.climate --execute` (climate only) and `python -m database.geospatial --execute` (spatial only). It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The district importer is implemented in `geospatial/importers/districts.py`.
 
 For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
 
@@ -61,6 +61,8 @@ input              : hourly NetCDF
 transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
+
+> **P6 implementation-status note (2026-10-18):** The active `pipeline/runtime.py` runs checkpoint-backed **daily** ETL in monthly request partitions; it does not itself compute or load monthly climatological aggregates. Empty `t_monthly_climate` and `t_monthly_climate_detail` tables and `vw_monthly_climate_region` have been bootstrapped, but live monthly aggregation/load behavior described elsewhere in this README must be treated as **proposed/not verified** until its implementation and integration tests are audited. Current physical SQL names are composed from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`); changing a prefix on an existing database requires coordinated migration. This note flags a documentation inconsistency, not authorization to alter climate calculations.
 
 ## Environment Setup
 
@@ -209,7 +211,7 @@ For a **development environment only** (`APP_ENV=dev`), configure both `POSTGRES
 python -m database.setup
 ```
 
-For an already existing target, `python -m database.bootstrap` previews and `python -m database.bootstrap --execute` initializes the combined climate and spatial schema without creating the database. After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same five climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
+For an already existing target, `python -m database.bootstrap` previews and `python -m database.bootstrap --execute` initializes the combined climate and spatial schema without creating the database. After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same seven climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
 
 ## Project Structure
 

@@ -1,3 +1,49 @@
+## P6 final regression operator evidence (2026-10-18)
+
+Operator ran `source activate-airflow.sh -q` and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`: **377 passed in 8.10s**. The full `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` suite: **17 passed in 2.40s**. Total **394 passing tests** across these two distinct suites; no failures or skips appeared in the reported output. These runs confirm the current unit/integration regression gate only; no full operations-suite result, live scheduled CDS pilot, monthly science loader, or six-query SQL acceptance is implied.
+
+- [x] Full unit tests: 377 PASS.
+- [x] Full integration tests: 17 PASS.
+- [ ] Review and accept the six read-only PostgreSQL queries using the separate query-audit checklist.
+- [ ] Reconcile root monthly pipeline documentation with actual implementation before final P6 acceptance.
+- [ ] Evaluate any remaining operations-suite checks under non-destructive conditions.
+
+## P6 documentation audit and final regression gate (2026-10-18)
+
+P6 started with source inspection of root README, AGENTS, test README, orchestration README, geospatial README, query acceptance TODO and current `pipeline/runtime.py`. Airflow DAG ID and dynamic PostgreSQL prefix semantics had already been corrected during P3. P6 corrected stale bootstrap counts in root/geospatial READMEs (seven climate/operational + three geospatial tables, two region views), and replaced a stale geospatial claim that monthly tables did not exist. **Important drift:** root README describes working monthly statistics processing and persistence, but active `pipeline/runtime.py` runs daily ETL in calendar-month partitions, and currently verified DB evidence shows empty monthly tables and empty monthly view. The README has an explicit warning; full reconciliation of proposed scientific monthly workflow with actual modules requires separate review and must not be represented as a working monthly pipeline. No ETL or Airflow code was edited.
+
+- [x] Review key architecture/operations documents and resolve known bootstrap count drift.
+- [x] Preserve prefix configurability in documentation; physical names shown only as current examples.
+- [x] Flag root monthly workflow implementation/documentation inconsistency for explicit follow-up.
+- [ ] Operator run `source activate-airflow.sh -q` then `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` and report output.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` against isolated `TEST_POSTGRES_*`; report skips and failures, if any.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/operations -q` **only if** that directory exists and tests do not perform destructive operations without explicit fixtures.
+- [ ] Verify six-query PostgreSQL catalog independently using `docs/todo/POSTGRESQL_QUERY_AUDIT_PLAN.md`; do not mark query acceptance until actual read-only results reported.
+- [ ] Resolve monthly workflow documentation drift and final P6 acceptance after regressions; do not run live CDS, Airflow scheduled campaign, or reset database.
+
+## P3 accepted — Airflow scheduling contract verification (2026-10-18)
+
+**P3 code/runtime contract ACCEPTED; operational scheduled pilot explicitly NOT performed.** Operator evidence: orchestration unit suite 122 PASS (5.37s), isolated PostgreSQL orchestration + pipeline idempotency suite 11 PASS (1.70s), Airflow DAG `cds-era5-land` registered from `orchestration/dags/cds_era5_land_etl.py` with `is_paused=True`, import-error list empty, standalone/scheduler/DAG-processor/triggerer processes active, `cds_api` pool with exactly 1 slot, and current metadata `airflow dags list-runs cds-era5-land` returned `No data found`. The schedule flag true/false behavior, serial max-active-run, manual/scheduled selection, monthly offsets and retry/pacing boundaries are covered by the existing code audit and passing unit/integration tests; do not infer a successful live DagRun. Campaign keys and years remain intentionally mutable configuration values and are not P3 acceptance constraints.
+
+The Airflow README was aligned with the actual DAG ID, existing physical filename, seven climate/operational and three spatial tables, two region views, and centralized `database/config.py` prefix-driven PostgreSQL identifiers. No DAG, pipeline, schema, scheduling, database data, or metadata writes were performed by the assistant for this acceptance. Scheduled pilot (requiring unpause and potential CDS requests) is a separately authorized future operational gate, not a requirement for P3 contract-only sign-off.
+
+- [x] Verify orchestration unit and isolated PostgreSQL integration suites.
+- [x] Verify live Airflow DAG discovery, import errors, runtime component processes, one-slot `cds_api` pool and current DagRun state.
+- [x] Align Airflow documentation with current identifiers and flexible database prefixes.
+- [x] **Close P3 scheduling contract verification within the non-executing scope.**
+- [ ] P6 cross-suite regression, SQL/query acceptance and final documentation audit.
+- [ ] Separately plan a controlled scheduled pilot before claiming end-to-end operational scheduler/CDS acceptance.
+
+## P3 initial unit/integration acceptance and metadata discovery gate (2026-10-18)
+
+Operator executed (explicit subprocess environment `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`) `tests/unit/orchestration -q`: **122 passed (5.37s)**; `tests/integration/orchestration` plus `tests/integration/pipeline/test_postgresql_idempotency.py -q`: **11 passed (1.70s)**. Total **133 distinct tests passed**. Operator also ran `airflow dags list`, accepted first-time SQLite metadata database initialization, and received `No data found`; `airflow dags list-import-errors` also showed `No data found`. Neither list output yet establishes successful DAG processor registration. The first-time DB initialization is not an application data reset. Next gate: verify configured dags_folder, run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false airflow dag-processor` only, and recheck CLI list/import errors while no scheduler is running. Do not trigger/unpause DAG or issue CDS requests. Campaign key/year values are mutable configuration, and the operator explicitly instructed not to flag their current numerical/string mismatch as a P3 issue.
+
+- [x] Run P3 unit orchestration tests: 122 PASS.
+- [x] Run P3 orchestration/PostgreSQL idempotency integration tests: 11 PASS.
+- [x] Record fresh SQLite metadata initialization and currently empty DAG list.
+- [ ] Confirm configured dags_folder and DAG processor discovery in metadata; then compare real DAG ID with source.
+- [ ] Verify read-only schedule flag true/false registration, before considering scheduled pilot.
+
 ## P3 Airflow scheduling verification — code audit checkpoint (2026-10-18)
 
 Read-only audit of current `dev` sources: `orchestration/dags/cds_era5_land_etl.py`, `orchestration/scheduling/schedule.py`, `orchestration/tasks/build_monthly_requests.py`, `tests/unit/orchestration/test_dag.py`, `test_schedule.py` and `orchestration/README.md`. The production DAG and existing DAG fixture identify `DAG_ID = "cds-era5-land"`, while Airflow README still documents `cds_era5_land_etl`; do not rename active DAG without a separate migration decision. Flag false yields `schedule=None`, true yields ten-minute timedelta, invalid flag values raise. DAG policy: Jakarta zone, catchup false, max active runs 1, max active tasks 2; scheduled earliest monthly slots +0/+15/+30 minutes, manual slots None, and mapped depth-first monthly tasks preserve their retry/pool policies. No scheduler/CDS execution was initiated during audit.

@@ -55,7 +55,7 @@ Standalone mode starts the scheduler, API server, DAG processor, and triggerer. 
 The DAG ID is:
 
 ```text
-cds_era5_land_etl
+cds-era5-land
 ```
 
 The basic operating flow is:
@@ -65,7 +65,7 @@ activate Airflow
       ↓
 start Airflow
       ↓
-inspect cds_era5_land_etl
+inspect cds-era5-land
       ↓
 run scheduled campaign or manual range
       ↓
@@ -139,7 +139,7 @@ The selected months use the same extraction, transformation, and load boundaries
 A manual DagRun must supply `start_date` and `end_date`:
 
 ```bash
-airflow dags trigger cds_era5_land_etl \
+airflow dags trigger cds-era5-land \
   --conf '{"start_date":"2024-02-01","end_date":"2024-02-29"}'
 ```
 
@@ -183,13 +183,7 @@ on/off switch. Waiting tasks defer without occupying a worker.
 
 Campaign progress is stored durably in PostgreSQL rather than inferred only from Airflow task history. This allows campaign state to survive Airflow process restarts and individual DagRuns.
 
-The relevant operational tables are:
-
-```text
-climate_data.pipeline_progress
-climate_data.pipeline_progress_detail
-climate_data.submission_pacing
-```
+The operational table identifiers are defined in `database/config.py` as `PIPELINE_PROGRESS_TABLE`, `PIPELINE_PROGRESS_DETAIL_TABLE`, and `PACING_TABLE`, under `APPLICATION_SCHEMA`. With the current `TABLE_PREFIX = "t_"` and schema `climate_data`, the physical names are `climate_data.t_pipeline_progress`, `climate_data.t_pipeline_progress_detail`, and `climate_data.t_submission_pacing`. Both table and view prefixes are configurable; these names are examples, not independent hard-coded contracts.
 
 A quarter is complete only when all expected monthly partitions have valid persisted evidence.
 
@@ -275,7 +269,7 @@ Trigger one explicit manual range:
 ```bash
 source activate-airflow.sh -q
 
-airflow dags trigger cds_era5_land_etl \
+airflow dags trigger cds-era5-land \
   --conf '{"start_date":"2024-01-01","end_date":"2024-01-31"}'
 ```
 
@@ -284,7 +278,7 @@ airflow dags trigger cds_era5_land_etl \
 Check existing runs with:
 
 ```bash
-airflow dags list-runs cds_era5_land_etl
+airflow dags list-runs cds-era5-land
 ```
 
 Use the returned `run_id` to identify the exact run in the CLI or Airflow UI.
@@ -292,7 +286,7 @@ Use the returned `run_id` to identify the exact run in the CLI or Airflow UI.
 For a failed campaign month, prefer the smallest complete calendar-month repair:
 
 ```bash
-airflow dags trigger cds_era5_land_etl \
+airflow dags trigger cds-era5-land \
   --conf '{"start_date":"2024-02-01","end_date":"2024-02-29"}'
 ```
 
@@ -403,6 +397,12 @@ resume scheduled operation
 
 Preserve Airflow metadata, PostgreSQL progress, and checkpoint files while doing this.
 
+## P3 Scheduling Contract Verification (2026-10-18)
+
+P3 contract-only verification is accepted based on operator-reported results: 122 orchestration unit tests passed (5.37s), and 11 isolated PostgreSQL orchestration/pipeline integration tests passed (1.70s). Airflow CLI listed the actual DAG ID `cds-era5-land` under the file `orchestration/dags/cds_era5_land_etl.py`, `is_paused=True`, and no import errors. The local Airflow standalone, scheduler, DAG processor, and triggerer processes were running. The `cds_api` pool had one slot; `airflow dags list-runs cds-era5-land` reported `No data found` on current SQLite metadata. The scheduling switch is tested in unit tests: false resolves to no schedule, true resolves to a ten-minute interval. Values in campaign key and year settings are deliberately configurable and not acceptance invariants.
+
+**Acceptance boundary:** these checks validate code contracts, DAG registration, and runtime configuration; they do **not** prove that a new scheduled DagRun completed or that CDS was contacted. No unpause/trigger or live campaign pilot was performed for this checkpoint. Keep the existing DAG paused unless an operator separately authorizes a live run.
+
 ## Tests
 
 Run orchestration regression tests with scheduling disabled:
@@ -425,13 +425,13 @@ python -m pytest \
   -q
 ```
 
-The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`. Airflow storage bootstrap initializes only the five climate/operational tables via root `database/`; geospatial table initialization is an independent explicit CLI operation (`python -m database.geospatial --execute`), never part of DAG execution. Airflow metadata remains SQLite.
+The integration suite must use the isolated `TEST_POSTGRES_*` database configured in `env-example`. Airflow progress-storage initialization uses the central `database/` schema definitions rather than activating PostGIS or running administrative imports. The climate schema initializer now defines seven climate/operational tables, including the empty prospective monthly parent/detail pair. The separate geospatial initializer creates three spatial tables and two region views; it is not part of DAG task execution. Airflow metadata remains SQLite.
 
 Detailed test contracts remain in [`tests/README.md`](../tests/README.md).
 
 ## Maintenance, Reset, and Clean-Slate Destroy
 
-Both commands are destructive in their current implementation: each recreates the configured application PostgreSQL database using the canonical eight-table/PostGIS bootstrap and deletes generated data, Airflow logs and Airflow runtime. RESET requires Airflow to be fully inactive and does not stop processes; DESTROY additionally stops recognized Airflow processes after guarded PostgreSQL preflight. Neither command recreates or deletes the separate test database.
+Both commands are destructive in their current implementation: each recreates the configured application PostgreSQL database using the canonical ten-table/PostGIS bootstrap and deletes generated data, Airflow logs and Airflow runtime. RESET requires Airflow to be fully inactive and does not stop processes; DESTROY additionally stops recognized Airflow processes after guarded PostgreSQL preflight. Neither command recreates or deletes the separate test database.
 
 Use `reset_all.py` for a confirmed full reset **only after Airflow is fully inactive**. RESET does not preserve existing NetCDF/Parquet artifacts:
 
@@ -479,7 +479,7 @@ verify Airflow process count = 0 and recheck sessions
         ↓
 DROP and CREATE application PostgreSQL database
         ↓
-bootstrap five climate/operational and three geospatial tables + PostGIS
+bootstrap seven climate/operational and three geospatial tables + PostGIS and region views
         ↓
 clear project data/
         ↓
@@ -504,4 +504,4 @@ Python virtual environment
 
 Generated Airflow runtime state such as `orchestration/airflow.db`, its SQLite sidecar files, generated auth files, PID files, and `orchestration/logs/` are not canonical climate data. Do not remove them manually while Airflow is running.
 
-The root `config.py` is the single lightweight project configuration module. There is no `orchestration/config.py`; orchestration imports shared constants and pure resolvers from the root module.
+Root `config.py` owns lightweight application and campaign configuration; `database/config.py` owns physical PostgreSQL table/view identifiers and prefix helpers. There is no `orchestration/config.py`. Prefix changes require coordinated schema migration and query-reference auditing, not merely changing `TABLE_PREFIX` or `VIEW_PREFIX` while existing data remains in place.
