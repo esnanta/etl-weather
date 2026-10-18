@@ -55,6 +55,7 @@ Re-running the mapping updates existing coordinate rows rather than duplicating 
 python -m pytest tests/unit/geospatial -q
 python -m pytest tests/integration/geospatial/test_import_idempotency.py -q
 python -m pytest tests/integration/geospatial/test_grid_mapping.py -q
+python -m pytest tests/integration/geospatial/test_daily_region_view.py -q
 ```
 
 Integration tests require an **isolated** `TEST_POSTGRES_*` database; never point them at `weather` or shared data. The test database must satisfy the current PostGIS-in-`climate_data` contract. If a legacy `weather_test` database has PostGIS in `public`, the integration fixture fails before writing test tables. It deliberately does **not** remove or relocate the extension. On a dedicated disposable test database only, after confirming no dependent data must be preserved, connect to `weather_test` and run `DROP EXTENSION postgis RESTRICT;` (it will refuse removal if other objects depend on it). Then run `CREATE SCHEMA IF NOT EXISTS climate_data; CREATE EXTENSION postgis WITH SCHEMA climate_data;`. Otherwise provision a new isolated test database with the proper extension location and update `TEST_POSTGRES_DATABASE`. Never perform this operation on `weather` or shared databases.
@@ -77,4 +78,15 @@ The canonical daily observations remain in `climate_data.t_daily_climate_detail`
 
 `MONTHLY_CLIMATE_REGION_VIEW` is already named in `database/config.py`, but the project has **no persisted monthly climate observations schema**. A monthly view cannot be safely implemented yet; the existing *monthly batch* process loads daily climate observations. Do not invent monthly observations from daily records during this refactor. This remains a separately gated design decision.
 
-Operator screenshots (2026-10-18) confirmed manual CREATE VIEW and verification `PASS`: 1,590 original/view/unique IDs, 1,350 matched observations, 240 unmatched, no missing/ambiguous/invalid assignments. A baseline SELECT EXPLAIN returned 1,590 rows with 0.266 ms execution (sequential scan); both view EXPLAIN plans remain unreported. The newly integrated initializer and added unit tests must be rerun locally; no assistant access to local PostgreSQL.
+Operator screenshots (2026-10-18) confirmed manual CREATE VIEW and verification `PASS`: 1,590 original/view/unique IDs, 1,350 matched observations, 240 unmatched, no missing/ambiguous/invalid assignments. A baseline SELECT EXPLAIN returned 1,590 rows with 0.266 ms execution (sequential scan); both view EXPLAIN plans remain unreported. The operator verified 28 geospatial unit tests passed in 0.81s, ran the geospatial initializer successfully, and again verified the daily view as PASS on 2026-10-18. The isolated daily view PostgreSQL integration fixture has been added, but its local execution result is pending; no assistant access to local PostgreSQL.
+
+### P5 isolated daily view regression
+
+`tests/integration/geospatial/test_daily_region_view.py` uses only `TEST_POSTGRES_*`, requires empty canonical test tables, and exercises matched/unmatched/no-mapping rows, one-to-one view membership, and repeated geospatial schema initialization. It cleans up only fixture rows and does not drop test schemas or change `weather`. Execute with:
+
+```bash
+source activate-airflow.sh -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_daily_region_view.py -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial -q
+```
