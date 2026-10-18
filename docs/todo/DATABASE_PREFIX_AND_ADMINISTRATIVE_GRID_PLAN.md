@@ -17,15 +17,15 @@ The six implemented query files are described in [`query/README.md`](../../query
 
 ### Final documentation and regression checks
 
-- [x] Reconcile root `README.md` descriptions of monthly aggregation and persistence with current implementation. Verified `pipeline/runtime.py` executes daily ETL in calendar-month request partitions; `pipeline/monthly.py`, `scripts/run_monthly_climate.py` and `scripts/run_pipeline.py` do not exist on `dev`. Updated README in commit `33ddbc8`; no scientific or runtime changes.
+- [x] Reconcile root `README.md` with daily-only runtime; daily CLI renamed from `scripts/run_pipeline_cds.py` to `scripts/run_pipeline.py`. A separate experimental `scripts/run_monthly_climate.py` is now present; it is not invoked by Airflow or daily ETL.
 - [ ] Review remaining operations tests for destructive side effects and run applicable non-destructive regression checks. Previously accepted: `tests/unit` **377 passed** and `tests/integration` **17 passed**; repeat only if changes warrant it.
-- [ ] Review root/test/Airflow/geospatial READMEs and AGENTS for stale implementation claims, duplicated guidance and configurable table/view prefix semantics. Physical PostgreSQL names derive from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`); SQL containing literal names requires reassessment when prefixes change.
+- [x] Review root/test/Airflow/geospatial READMEs and AGENTS for daily/monthly boundary claims and update them to reflect the separate CLI.\n- [ ] Resolve **prefix audit finding**: `database/vw_monthly_climate_region.py` uses a literal `climate_data.vw_monthly_climate_region` definition and literal `climate_data.t_*` joins despite importing configurable identifiers. Inspect other SQL/view definitions before declaring prefix semantics verified; changing prefixes needs coordinated migration.\n- [ ] Test standalone monthly aggregation in isolated fixtures (full calendar-day/grid coverage, missing values, duplicates, rerun refusal, atomic rollback, PostgreSQL schema compatibility). No acceptance or execution against live `weather` yet.
 - [ ] Record residual limitations and obtain explicit approval before closing P6. Once accepted, remove this TODO file rather than retaining completed checklists.
 
 ## Separately authorized future work — not P6 acceptance blockers
 
 - [ ] Conduct a controlled scheduled Airflow → CDS pilot before claiming end-to-end operational scheduler acceptance. P3's contract/discovery and single-slot `cds_api` pool are verified, but the current SQLite metadata had no DagRun.
-- [ ] Define and test scientific monthly aggregation and idempotent monthly loading if the project elects to implement them; existing empty monthly tables/view are insufficient.
+- [ ] Review scientific monthly aggregation semantics and complete isolated testing/acceptance of the separately implemented experimental monthly CLI. Do not treat the new, untested write path as production-ready.
 - [ ] Rebenchmark regional joins and six-query SQL performance after representative historical data have accumulated (current regional baseline: 1,590 pilot observations).
 - [ ] Optionally verify destructive reset/cleanup using only disposable isolated fixtures and explicit approval, never the live `weather` database.
 
