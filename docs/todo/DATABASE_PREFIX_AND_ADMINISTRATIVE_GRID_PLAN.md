@@ -1,25 +1,34 @@
-# Outstanding Work — ETL Weather
+# ETL Weather — Outstanding Work
 
 Branch: `dev`  
 Updated: 2026-10-18
 
-This file tracks **only work not yet accepted**. Completed P0–P5 tasks, P3 scheduling-contract checks, database/geospatial implementation history, and successful regression checklists have been removed from the TODO. Historical decisions and evidence remain in Git commits and maintained project documentation.
+Only unfinished work appears here. Completed work and its test evidence remain in Git history and the relevant README files.
 
-## P6 — Final acceptance
+## P6 — Final regression, SQL acceptance, and documentation
 
-- [ ] Complete the six-query PostgreSQL catalog execution/acceptance in [POSTGRESQL_QUERY_AUDIT_PLAN.md](POSTGRESQL_QUERY_AUDIT_PLAN.md). Do not equate query implementation with successful execution.
-- [ ] Reconcile root `README.md` monthly-processing/persistence claims with the actual current code. The active `pipeline/runtime.py` runs daily ETL in calendar-month request partitions, while the monthly parent/detail tables and monthly regional view were accepted as schema-only. Confirm any separately implemented monthly modules before describing monthly output as operational; do not change scientific methodology in this documentation task.
-- [ ] Review remaining operations tests for non-destructive execution and run applicable regression coverage. Full `tests/unit` (**377 passed**) and `tests/integration` (**17 passed**) are already accepted and should not be repeated without a reason.
-- [ ] Perform final cross-document consistency review (root/test/airflow/geospatial READMEs and AGENTS), including configurable PostgreSQL table/view prefixes; correct residual stale statements without changing code execution.
-- [ ] Record final limitations and obtain explicit sign-off before closing P6.
+### Six read-only PostgreSQL queries
 
-## Separate future work (not blockers for P6 contract-only validation)
+The six implemented query files are described in [`query/README.md`](../../query/README.md). Implementation is complete, but execution and acceptance have **not** been reported.
 
-- [ ] Plan and authorize a controlled scheduled Airflow pilot before claiming end-to-end scheduler → CDS operational acceptance. P3 verified scheduling contract, DAG discovery, paused state and one-slot `cds_api` pool; no DagRun was present on current SQLite metadata.
-- [ ] Define, implement, and separately validate scientific monthly aggregation and idempotent monthly loading **if desired**. Empty monthly database tables/view are not evidence of a working monthly ETL.
-- [ ] Repeat regional query benchmarks when representative historical climate volume has accumulated; existing measurements cover the limited 1,590-observation pilot.
-- [ ] Consider optional destructive-reset/cleanup fixture tests only in an isolated disposable environment, with explicit approval; never run on `weather` as part of documentation cleanup.
+- [ ] Run all six SQL files against the intended `weather` database; retain outputs and verify database/connection identity, physical identifiers and schema inventory (currently seven climate/operational tables, three geospatial tables and two views).
+- [ ] Compare partition and campaign summaries to *actual* persisted data; verify daily completeness, duplicates, UTC+7 date boundaries and completed-load evidence. Investigate `FAIL`/`NOT_EVALUATED` without altering data automatically.
+- [ ] Where practical, test that the read-only checks detect missing days, duplicates, invalid timestamps and mismatched metadata in isolated fixtures.
 
-## Boundaries
+### Final documentation and regression checks
 
-Only branch `dev` may be edited. Keep `pipeline/` and `orchestration/` behavior unchanged without explicit approval. No CDS retrieval, DAG unpause, destructive database actions, or automatic prefix migration are authorized by this TODO.
+- [ ] Reconcile root `README.md` descriptions of monthly aggregation and persistence with current implementation. `pipeline/runtime.py` executes daily ETL in calendar-month request partitions; monthly tables and region view are schema-only in the accepted pilot. Examine any other monthly modules before concluding the monthly workflow is operational. Do not introduce scientific changes as a documentation fix.
+- [ ] Review remaining operations tests for destructive side effects and run applicable non-destructive regression checks. Previously accepted: `tests/unit` **377 passed** and `tests/integration` **17 passed**; repeat only if changes warrant it.
+- [ ] Review root/test/Airflow/geospatial READMEs and AGENTS for stale implementation claims, duplicated guidance and configurable table/view prefix semantics. Physical PostgreSQL names derive from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`); SQL containing literal names requires reassessment when prefixes change.
+- [ ] Record residual limitations and obtain explicit approval before closing P6. Once accepted, remove this TODO file rather than retaining completed checklists.
+
+## Separately authorized future work — not P6 acceptance blockers
+
+- [ ] Conduct a controlled scheduled Airflow → CDS pilot before claiming end-to-end operational scheduler acceptance. P3's contract/discovery and single-slot `cds_api` pool are verified, but the current SQLite metadata had no DagRun.
+- [ ] Define and test scientific monthly aggregation and idempotent monthly loading if the project elects to implement them; existing empty monthly tables/view are insufficient.
+- [ ] Rebenchmark regional joins and six-query SQL performance after representative historical data have accumulated (current regional baseline: 1,590 pilot observations).
+- [ ] Optionally verify destructive reset/cleanup using only disposable isolated fixtures and explicit approval, never the live `weather` database.
+
+## Safety boundary
+
+Edit only branch `dev`. No changes to `pipeline/` or `orchestration/` behavior without separate approval. Do not retrieve CDS data, unpause/trigger Airflow, reset application data or change schema/prefixes as part of TODO maintenance.
