@@ -62,7 +62,7 @@ transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
 
-> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped but a separate monthly CLI has been added but its SQL loading path has not passed integration acceptance. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
+> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped. A separate monthly CLI now exists, but its SQL loading path has not passed integration acceptance. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
 
 ## Environment Setup
 
@@ -312,7 +312,7 @@ The dataset and bounding-box directories keep different requests separate. RAW h
 
 ## Persistence and Modelling Access
 
-PostgreSQL stores canonical daily observations through an idempotent loader. Monthly tables and a regional view are schema objects only; the active runtime does not populate them. Physical names follow the configured schema and table/view prefixes.
+PostgreSQL stores canonical daily observations through an idempotent loader. Monthly tables and a regional view are provisioned; the daily runtime does not populate them. A separate, unverified monthly CLI can populate monthly tables when explicitly executed. Physical names follow the configured schema and table/view prefixes.
 
 For example, if January 2024 has already been processed and the identical January request is run again, the pipeline validates and reuses the same logical partition rather than appending duplicate daily grid observations.
 
