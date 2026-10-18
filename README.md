@@ -249,7 +249,7 @@ Run daily ETL in calendar-month request partitions:
 source activate-airflow.sh -q
 STANDALONE_PIPELINE_START_DATE=2024-01-01 \\
 STANDALONE_PIPELINE_END_DATE=2024-01-31 \\
-python -m scripts.run_pipeline_cds
+python -m scripts.run_pipeline
 ```
 
 **Clean-slate development run (destructive):** If you need to discard all existing generated data and restart from zero, first inspect the targets:
@@ -275,11 +275,11 @@ A **checkpoint** is a saved, validated artifact that can be reused after interru
 - **RAW checkpoint:** hourly ERA5-Land NetCDF in `raw/YYYY/`.
 - **Daily transformed checkpoint:** UTC+7 daily Parquet in `transformed/YYYY/`.
 
-The active CLI is `python -m scripts.run_pipeline_cds`. Its `run_monthly_batch` function in `pipeline/runtime.py` splits a request into calendar-month **request partitions** and runs daily extraction, transformation and loading. Despite its name, this function does not compute monthly climate statistics.
+The active CLI is `python -m scripts.run_pipeline`. Its `run_monthly_batch` function in `pipeline/runtime.py` splits a request into calendar-month **request partitions** and runs daily extraction, transformation and loading. Despite its name, this function does not compute monthly climate statistics.
 
 ### Monthly climate: future work
 
-Monthly aggregation from complete UTC+7 daily observations, monthly Parquet output and idempotent monthly loading are **not implemented** in the active runtime. The `pipeline/` tree contains no `monthly.py`, and the `scripts/` tree contains no `run_monthly_climate.py` or `run_pipeline.py`. Monthly tables and a regional view are schema objects, not proof of operational monthly outputs.
+Monthly aggregation from complete UTC+7 daily observations, monthly Parquet output and idempotent monthly loading are **not implemented** in the active runtime. No `pipeline/monthly.py` is required. The monthly command is separate from `scripts/run_pipeline.py` and is not part of the daily ETL workflow. Monthly tables and a regional view are schema objects, not proof of operational monthly outputs.
 
 Current daily values are calculated for each UTC+7 local day and grid point—not as averages over Aceh. Their calculations and units are described in [Variables and Daily Outputs](#variables-and-daily-outputs) and [Local-Day Time Semantics](#local-day-time-semantics).
 
