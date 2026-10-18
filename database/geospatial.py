@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from database.bootstrap import ensure_postgis_extension
+from database.region_views import create_daily_region_view
 from database.config import (
     APPLICATION_SCHEMA,
     DISTRICT_TABLE,
@@ -125,16 +126,20 @@ def create_spatial_tables(
             f"ON {grid} (province_id)"
         ))
 
+    # The administrative view depends on both existing climate tables and the
+    # spatial tables just initialized. Do not create climate tables implicitly.
+    create_daily_region_view(engine)
+
 
 def main() -> None:
     """Apply the spatial DDL only after explicit CLI confirmation."""
     import argparse
     from database.connection import create_database_engine
 
-    parser = argparse.ArgumentParser(description="Create non-destructive spatial tables.")
+    parser = argparse.ArgumentParser(description="Create non-destructive spatial tables and daily region view.")
     parser.add_argument(
         "--execute", action="store_true",
-        help="Apply CREATE TABLE/INDEX to the configured PostgreSQL database.",
+        help="Apply spatial CREATE TABLE/INDEX and daily region VIEW (requires climate tables).",
     )
     args = parser.parse_args()
     config = resolve_database_config()
@@ -147,7 +152,7 @@ def main() -> None:
     engine = create_database_engine(config)
     try:
         create_spatial_tables(engine, config)
-        print("Spatial tables ready; no GeoJSON imported.")
+        print("Spatial tables and daily region view ready; no GeoJSON imported.")
     finally:
         engine.dispose()
 
