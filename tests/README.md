@@ -191,6 +191,8 @@ The README intentionally does not keep a permanent numeric pass-count baseline b
 - Use temporary directories for generated artifacts.
 - Never write test artifacts into the real project `data/` directory.
 
+The separate `scripts/run_monthly_climate.py` command is experimental and must have focused aggregation/completeness tests and isolated PostgreSQL integration coverage before database execution is accepted. It must not trigger CDS or Airflow.
+
 ## Definition of Done
 
 A behavior change is normally complete when it has:
