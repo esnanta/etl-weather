@@ -1,6 +1,6 @@
 # ERA5-Land Orchestration with Apache Airflow
 
-Apache Airflow coordinates the existing Copernicus CDS ERA5-Land ETL pipeline. Scientific transformation, validation, artifact handling, and canonical PostgreSQL persistence remain owned by `pipeline/`; Airflow controls when work runs, how monthly partitions are scheduled, how failures are retried, and how campaign progress is tracked.
+Apache Airflow coordinates the existing Copernicus CDS ERA5-Land ETL pipeline. Scientific transformation, validation, artifact handling, and canonical PostgreSQL persistence remain owned by `pipeline/`; Airflow controls when daily-ETL request partitions are scheduled by calendar month, how failures are retried, and how campaign progress is tracked. The separate experimental monthly climate aggregation CLI is not part of this DAG.
 
 Run commands in this document from the repository root unless stated otherwise.
 
