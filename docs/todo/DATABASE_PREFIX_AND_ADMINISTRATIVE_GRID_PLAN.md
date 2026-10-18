@@ -8,6 +8,65 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.2 real grid mapping persisted (operator report, 2026-10-17)
+
+Operator ran `python -m geospatial.mapping --execute` against `weather.climate_data`: **530 coordinates, 450 matched, 80 unmatched, 0 ambiguous**, with terminal `Grid mapping committed`. This confirms the CLI write transaction completed; independent read-only persisted-row verification and repeated-run timestamp/idempotency verification are next.
+
+- [x] Complete live-grid mapping commit after successful 1–3 May 2024 ETL pilot.
+- [x] Add `geospatial/sql/03_grid_mapping_verification.sql` with SELECT-only status, coordinate membership and LEFT JOIN row-count checks and a CSV export of exact coordinate/status pairs for a precise map.
+- [ ] Run verification SQL on `weather` and capture `validation_status=PASS`, ideally 530 mapped rows, 450 matched, 80 unmatched, and 1,590 source/joined daily observations.
+- [ ] Export **all 530** classified coordinates (not only unmatched coordinates) plus admin geometries to plot an exact, reproducible geographical map. Generated conceptual artwork is not geospatial evidence.
+- [ ] Rerun mapping and confirm unchanged coordinates and `mapped_at` timestamps.
+- [ ] Continue P5 region views and performance only after persisted mapping is verified.
+
+## P5.2 real ERA5-Land pilot and spatial preview (operator report, 2026-10-17)
+
+Operator ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-03 python -m scripts.run_pipeline_cds`. The CDS download used 2024-04-30 context and May 1–3 target in two chunks; RAW NetCDF had 96 hourly timestamps and 1,505 bounding-box grid locations (43 × 35); transformed output had 530 valid grid positions per local day × 3 days = **1,590** observations. Temporal/spatial/dataframe validation passed, with no duplicate grid records. PostgreSQL `weather.climate_data` accepted 1,590 observations, `daily_climate_id=1`, and the total runtime was 289.98s. Source artifact checkpoints were created.
+
+Operator ran `python -m geospatial.mapping` in preview mode: **530 coordinates; 450 matched; 80 unmatched; 0 ambiguous** (84.91% covered by exactly one district, 15.09% with no covering district). The preview made no mapping writes. Do not assume that all unmatched coordinates are coastal/ocean without inspecting their spatial distribution; absence of ambiguous classifications is encouraging but not a standalone geometry-coverage proof.
+
+- [x] Populate a limited real ERA5-Land observation pilot and preview P5 district assignment.
+- [ ] Diagnose/report geographic distribution of the 80 unmatched points (coastal/offshore/outside district coverage); do not force match them.
+- [ ] After reviewing the preview, run `python -m geospatial.mapping --execute` and verify 530 rows and match statuses in PostgreSQL; repeat to prove no duplicates and unchanged timestamps.
+- [ ] Build read-only region views only after verifying mapping persistence and LEFT JOIN row-count invariants.
+
+## P5.2 regression checkpoint and mapping README (2026-10-17)
+
+Operator previewed `python -m geospatial.mapping` against `weather.climate_data`: **coordinates=0, matched=0, unmatched=0, ambiguous=0**. This is expected because climate observation rows have not been restored after DESTROY. No mapping rows were written.
+
+Operator tests before targeted fix: `tests/unit/geospatial -q` **1 failed, 23 passed (0.29s)**. The sole failure, `test_ambiguous_and_unmatched_never_get_assigned_districts`, asserted an incorrect text fragment `WHEN match_count = 1 THEN MIN(...)`. Actual SQL uses `CASE WHEN COUNT(district_id) = 1 THEN MIN(...)` in the classification CTE; the unit assertion was corrected without changing the mapping implementation. `tests/integration/geospatial/test_grid_mapping.py -q` **1 passed (0.91s)** and `tests/integration/geospatial -q` **5 passed (0.84s)**.
+
+Documented both preview and explicit `--execute` in `geospatial/README.md`, including the empty-observations case, `ST_Covers` classifications, idempotency and isolated verification. Root README expansion is explicitly **pending** by operator decision.
+
+- [x] Re-ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after the assertion correction: **24 passed in 0.22s** (operator report, 2026-10-17).
+- [x] Isolated PostgreSQL mapping integration test passed and full geospatial integration subset passed.
+- [ ] Restore a limited real pilot of climate observations before previewing P5 mapping against `weather`. Do not execute mapping on empty observations merely to claim coverage.
+
+## P5.1 audit and P5.2 implementation checkpoint (2026-10-17)
+
+**P5.1 audited source:** `database/geospatial.py` already defines `t_grid_region` with `DOUBLE PRECISION` latitude/longitude, a unique coordinate key, allowed `matched/unmatched/ambiguous` statuses, match count checks, nullable administrative IDs on non-unique/no matches, and a composite district/province FK. `database/climate.py` stores observation coordinates as `DOUBLE PRECISION`. No schema migration is required for this mapping step. `geospatial.importers.districts` previously loaded and verified 23 districts and 1 Aceh province; polygon shapes are MultiPolygonZ/SRID 4326.
+
+**P5.2 initial implementation:** `geospatial/mapping.py` provides preview by default and `python -m geospatial.mapping --execute` to upsert mappings **only for distinct persisted observations** from `climate_data.t_daily_climate_detail`. `ST_Covers` tests point (longitude, latitude) against every district polygon, including boundary points. Exactly one candidate gives both province and district IDs; zero gives `unmatched`; multiple gives `ambiguous` with NULL IDs (no arbitrary tie-breaking). Idempotent coordinate UPSERT preserves `mapped_at` when classification is unchanged. Preview does not write. This work deliberately does not create climate observations, administrative query views, or Airflow tasks.
+
+**Fixture coverage written:** `tests/unit/geospatial/test_mapping.py` checks query and guard contracts; `tests/integration/geospatial/test_grid_mapping.py` is an isolated TEST_POSTGRES-only fixture with one inside point, one external point, and one shared-boundary point, asserting 1/1/1 match classes and identical repeated writes. Tests **have not yet been run by the operator**. The integration fixture refuses nonempty test tables, inserts synthetic source/observations only into `weather_test`, and cleans fixture rows on completion.
+
+- [x] P5.1 inspect schema, coordinate types and mapping identity.
+- [x] P5.1 define `ST_Covers` match semantics and no arbitrary assignment.
+- [x] P5.2 add isolated fixture and mapping implementation in `geospatial/` without changing ETL or Airflow.
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q`.
+- [ ] Run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_grid_mapping.py -q`; review SQL compilation/runtime and report any failure before accepting P5.2.
+- [ ] Run full `tests/integration/geospatial -q` after fixture regression.
+- [ ] Populate representative real climate points using an approved standalone pilot (the last DESTROY cleared observations), then preview mapping and inspect matched/unmatched/ambiguous counts against Aceh polygons before `--execute` on `weather`.
+- [ ] Implement/verify read-only region query views and benchmark joins; keep observational LEFT JOIN row count invariant.
+
+## P4 re-verification after DESTROY — accepted (2026-10-17)
+
+Operator ran `python -m geospatial.importers.districts` (dry-run: 23 valid source features) and `python -m geospatial.importers.districts --execute` on freshly recreated `weather.climate_data`. Import committed **23 districts, 1 province** with source SHA-256 `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. Read-only database query confirmed PostGIS **3.4.2** installed in schema `climate_data`.
+
+The operator then executed `geospatial/sql/02_import_verification.sql` against `weather` and provided a screenshot of **1 province, 0 invalid provinces, 23 districts, 23 unique source references, 0 invalid districts, 0 unexpected first-Z values, validation_status=PASS**. Automated regression: `tests/unit/geospatial -q` **19 passed in 0.33s**, and `tests/integration/geospatial/test_import_idempotency.py -q` **4 passed in 0.91s**. P4 live import/reverification acceptance is complete.
+
+**Next P5 dependency:** the earlier DESTROY wiped existing climate observations. Before building a grid-to-region mapping using actual observations, run a controlled standalone ETL pilot or use an isolated, representative coordinate fixture. Do not treat 1,505 bounding-box positions as 1,505 verified persisted observation locations (the earlier three-day pilot reported 530 complete-variable points per local day). Keep spatial mapping independent from Airflow and scientific ETL stages.
+
 ## Current work after root database refactor (2026-10-17)
 
 The separate root database consolidation DB-R1–DB-R6 has passed its documented acceptance scope. Root `database/` now owns the canonical eight-table DDL and PostGIS lifecycle; `weather` was successfully destroyed/recreated and bootstrapped, followed by **15 PostgreSQL integration tests passed**, **366 unit tests passed**, and **93 operations tests passed**. The original detailed refactor plan was removed from `docs/todo/` after completion; its history remains available in Git.
