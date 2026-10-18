@@ -8,6 +8,19 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5 daily-region acceptance — operator regression (2026-10-18)
+
+Operator ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` suites after the Python module rename: **28 unit geospatial tests passed in 0.61s**; isolated `test_daily_region_view.py` **1 passed in 0.87s**; complete `tests/integration/geospatial` **6 passed in 0.98s**. The single view test is included in the six integration tests, not additional to them. Prior live `weather` read-only verification: 1,590 source/view/detail IDs, 1,350 matched and 240 unmatched observations, 0 missing mappings, `PASS`. Benchmark execution times (pilot scale only): baseline 0.344 ms; daily region view 1.391 ms; administrative grouping 2.928 ms; Aceh Besar time series 1.558 ms. No new index is justified by the current small pilot.
+
+**Acceptance:** P5 daily grid mapping and `vw_daily_climate_region` implementation/regression are accepted. Monthly region view remains deferred pending a genuine monthly-statistics persistence contract; this is not an implicit instruction to build monthly climate tables. Long-horizon performance still needs representative-volume benchmarks.
+
+- [x] Rerun unit geospatial suite after module rename (28 passed).
+- [x] Run isolated daily view PostgreSQL integration (1 passed).
+- [x] Run complete geospatial integration suite (6 passed).
+- [x] Accept P5 daily regional mapping/view within its defined scope, without additional indexes or climate/airflow changes.
+- [ ] Return to deferred P3 Airflow contract verification.
+- [ ] Repeat regional-query benchmarking when materially more climate observations have accumulated.
+
 ## P5 daily region view integration fixture (2026-10-18)
 
 Implemented `tests/integration/geospatial/test_daily_region_view.py` in `dev`: isolated `TEST_POSTGRES_*` runtime fixture using actual PostgreSQL schema/bootstrap, one matched coordinate, one unmatched coordinate, and one coordinate with no mapping; assert row identity, metadata NULL semantics, preserved observation count, repeat bootstrap idempotency and single view catalog entry. Do not execute it against `weather`. Renamed `database/region_views.py` to `database/vw_daily_climate_region.py`, and updated dependent imports/tests/docs. No changes to scientific ETL or orchestration.
