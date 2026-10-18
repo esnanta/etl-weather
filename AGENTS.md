@@ -39,7 +39,7 @@ Do not add another provider path without an explicit design decision, isolated a
 - Treat GeoJSON files under `geospatial/sources/` as immutable source inputs. Importers must read and validate them without modifying, replacing, or deleting the source files.
 - Store Indonesian sources under `geospatial/sources/id/` (ISO 3166-1 alpha-2, lowercase); for Aceh district boundaries use `geospatial/sources/id/districts/Aceh.geojson`.
 
-- Use `scripts/` only for thin entrypoints and wrappers.
+- Use `scripts/` for CLI entrypoints; daily ETL uses `scripts/run_pipeline.py` and the separate experimental monthly aggregation CLI is `scripts/run_monthly_climate.py`. Neither monthly processing nor its database writes belong in the daily Airflow DAG.
 - Keep the active provider and dataset identity explicit in requests, artifacts, logs, and database metadata.
 - Do not restore ARCO entrypoints, dependencies, artifacts, or runtime branches without an approved design and dedicated tests.
 
