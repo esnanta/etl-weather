@@ -12,9 +12,9 @@ PostGIS must be installed on the PostgreSQL **server** before the Python bootstr
 
 ```bash
 source activate-airflow.sh -q
-python -m database.climate               # dry run: five climate/operational tables
+python -m database.climate               # dry run: seven climate/operational tables
 python -m database.geospatial            # dry run: three spatial tables + daily region view
-python -m database.bootstrap             # dry run: all eight tables
+python -m database.bootstrap             # dry run: all ten tables and two views
 python -m database.climate --execute     # climate/operational only
 python -m database.geospatial --execute  # spatial tables + daily region view; climate tables required
 python -m database.bootstrap --execute   # both independent initialization paths
@@ -76,7 +76,7 @@ The canonical daily observations remain in `climate_data.t_daily_climate_detail`
 
 `vw_daily_climate_region` has exactly one result per existing daily detail row, preserving records with `unmatched`, `ambiguous`, or absent grid mappings (nullable region labels). Administrative classifications are **point assignment**, not area-weighted climate averages; a grouped query across grid points should not be interpreted as an area-weighted district statistic.
 
-`MONTHLY_CLIMATE_REGION_VIEW` is already named in `database/config.py`, but the project has **no persisted monthly climate observations schema**. A monthly view cannot be safely implemented yet; the existing *monthly batch* process loads daily climate observations. Do not invent monthly observations from daily records during this refactor. This remains a separately gated design decision.
+`MONTHLY_CLIMATE_REGION_VIEW` is defined in `database/config.py`. The empty monthly parent/detail tables and `vw_monthly_climate_region` now exist after bootstrap. Creation of these objects does not imply monthly scientific aggregation or loading is implemented. The active `pipeline/runtime.py` processes daily observations in calendar-month request partitions.
 
 Operator screenshots (2026-10-18) confirmed manual CREATE VIEW and verification `PASS`: 1,590 original/view/unique IDs, 1,350 matched observations, 240 unmatched, no missing/ambiguous/invalid assignments. A baseline SELECT EXPLAIN returned 1,590 rows with 0.266 ms execution (sequential scan); both view EXPLAIN plans remain unreported. The operator verified 28 geospatial unit tests passed in 0.81s, ran the geospatial initializer successfully, and again verified the daily view as PASS on 2026-10-18. The isolated daily view PostgreSQL integration fixture has been added, but its local execution result is pending; no assistant access to local PostgreSQL.
 
