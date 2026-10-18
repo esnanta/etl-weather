@@ -1,3 +1,16 @@
+## P3 Airflow scheduling verification — code audit checkpoint (2026-10-18)
+
+Read-only audit of current `dev` sources: `orchestration/dags/cds_era5_land_etl.py`, `orchestration/scheduling/schedule.py`, `orchestration/tasks/build_monthly_requests.py`, `tests/unit/orchestration/test_dag.py`, `test_schedule.py` and `orchestration/README.md`. The production DAG and existing DAG fixture identify `DAG_ID = "cds-era5-land"`, while Airflow README still documents `cds_era5_land_etl`; do not rename active DAG without a separate migration decision. Flag false yields `schedule=None`, true yields ten-minute timedelta, invalid flag values raise. DAG policy: Jakarta zone, catchup false, max active runs 1, max active tasks 2; scheduled earliest monthly slots +0/+15/+30 minutes, manual slots None, and mapped depth-first monthly tasks preserve their retry/pool policies. No scheduler/CDS execution was initiated during audit.
+
+Observed earlier operator activation output printed `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` despite a separately scoped `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest ...`: the activation log alone does not prove the environment of the later subprocess. The campaign key ends `2016_2025` while logged `CAMPAIGN_END_YEAR=2016`; clarify intended pilot scope before scheduling any live run. Airflow README still has stale unprefixed table names and bootstrap counts and must be harmonized after tests, without changing behavior.
+
+- [x] Audit core DAG schedule flag, run-mode entrypoint, mapped slots, and existing unit tests on `dev`.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` and report output.
+- [ ] Operator run isolated `tests/integration/orchestration` and `tests/integration/pipeline/test_postgresql_idempotency.py` with `TEST_POSTGRES_*`.
+- [ ] Operator perform read-only Airflow DAG parsing/list commands with both schedule flag values; confirm actual DAG ID, avoid triggering any DagRun.
+- [ ] Resolve documentation ID/table/count inconsistencies after confirming the installed runtime; no DAG ID or behavior changes authorized.
+- [ ] Decide whether a controlled scheduled pilot is needed once current metadata state and campaign year settings are inspected.
+
 ## Monthly schema bootstrap acceptance — operator evidence (2026-10-18)
 
 Operator reported `source activate-airflow.sh -q` followed by **30 passed** geospatial unit tests (0.61s) and **6 passed** isolated geospatial integration tests (1.02s). `python -m database.bootstrap --execute` succeeded on `weather` with seven climate/operational tables, three spatial tables and two region views; PostgreSQL PostGIS reported version **3.4.2**. Read-only screenshots confirm `t_monthly_climate` and `t_monthly_climate_detail` exist; `SELECT COUNT(*) FROM climate_data.vw_monthly_climate_region` returns **0**; `SELECT COUNT(*) FROM climate_data.vw_daily_climate_region` still returns **1,590**. Monthly schema/bootstrap presence and daily read-regression are accepted. Monthly data ingestion/aggregation and populated-monthly-view correctness remain intentionally unimplemented/untested. Existing geospatial integration suite does not itself establish real PostgreSQL monthly fixture coverage.
