@@ -1,3 +1,13 @@
+## P3 initial unit/integration acceptance and metadata discovery gate (2026-10-18)
+
+Operator executed (explicit subprocess environment `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`) `tests/unit/orchestration -q`: **122 passed (5.37s)**; `tests/integration/orchestration` plus `tests/integration/pipeline/test_postgresql_idempotency.py -q`: **11 passed (1.70s)**. Total **133 distinct tests passed**. Operator also ran `airflow dags list`, accepted first-time SQLite metadata database initialization, and received `No data found`; `airflow dags list-import-errors` also showed `No data found`. Neither list output yet establishes successful DAG processor registration. The first-time DB initialization is not an application data reset. Next gate: verify configured dags_folder, run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false airflow dag-processor` only, and recheck CLI list/import errors while no scheduler is running. Do not trigger/unpause DAG or issue CDS requests. Campaign key/year values are mutable configuration, and the operator explicitly instructed not to flag their current numerical/string mismatch as a P3 issue.
+
+- [x] Run P3 unit orchestration tests: 122 PASS.
+- [x] Run P3 orchestration/PostgreSQL idempotency integration tests: 11 PASS.
+- [x] Record fresh SQLite metadata initialization and currently empty DAG list.
+- [ ] Confirm configured dags_folder and DAG processor discovery in metadata; then compare real DAG ID with source.
+- [ ] Verify read-only schedule flag true/false registration, before considering scheduled pilot.
+
 ## P3 Airflow scheduling verification — code audit checkpoint (2026-10-18)
 
 Read-only audit of current `dev` sources: `orchestration/dags/cds_era5_land_etl.py`, `orchestration/scheduling/schedule.py`, `orchestration/tasks/build_monthly_requests.py`, `tests/unit/orchestration/test_dag.py`, `test_schedule.py` and `orchestration/README.md`. The production DAG and existing DAG fixture identify `DAG_ID = "cds-era5-land"`, while Airflow README still documents `cds_era5_land_etl`; do not rename active DAG without a separate migration decision. Flag false yields `schedule=None`, true yields ten-minute timedelta, invalid flag values raise. DAG policy: Jakarta zone, catchup false, max active runs 1, max active tasks 2; scheduled earliest monthly slots +0/+15/+30 minutes, manual slots None, and mapped depth-first monthly tasks preserve their retry/pool policies. No scheduler/CDS execution was initiated during audit.
