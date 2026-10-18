@@ -1,3 +1,15 @@
+## Monthly schema bootstrap acceptance — operator evidence (2026-10-18)
+
+Operator reported `source activate-airflow.sh -q` followed by **30 passed** geospatial unit tests (0.61s) and **6 passed** isolated geospatial integration tests (1.02s). `python -m database.bootstrap --execute` succeeded on `weather` with seven climate/operational tables, three spatial tables and two region views; PostgreSQL PostGIS reported version **3.4.2**. Read-only screenshots confirm `t_monthly_climate` and `t_monthly_climate_detail` exist; `SELECT COUNT(*) FROM climate_data.vw_monthly_climate_region` returns **0**; `SELECT COUNT(*) FROM climate_data.vw_daily_climate_region` still returns **1,590**. Monthly schema/bootstrap presence and daily read-regression are accepted. Monthly data ingestion/aggregation and populated-monthly-view correctness remain intentionally unimplemented/untested. Existing geospatial integration suite does not itself establish real PostgreSQL monthly fixture coverage.
+
+- [x] Operator local geospatial unit suite: 30 passed.
+- [x] Operator geospatial PostgreSQL integration suite: 6 passed.
+- [x] Operator live PostgreSQL bootstrap: successful; both monthly tables exist.
+- [x] Operator empty monthly view: query succeeds and returns zero rows.
+- [x] Operator daily view unchanged: 1,590 rows.
+- [ ] Separate scientific monthly aggregation contract and loader acceptance, if later requested.
+- [ ] Continue deferred P3 Airflow schedule-contract verification.
+
 ## Monthly schema/view preparation (2026-10-18)
 
 At operator request, schema-only monthly parent/detail tables (`t_monthly_climate`, `t_monthly_climate_detail`) are now part of climate bootstrap and `vw_monthly_climate_region` is part of geospatial bootstrap. DDL uses unique request/coordinate-month identities, a parent/detail FK and matching latitude/longitude LEFT JOINs. These objects are **not a monthly calculation implementation**. Empty monthly view is expected before an independently specified and tested monthly loader exists. No direct PostgreSQL operator test has been reported yet.
