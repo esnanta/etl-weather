@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from database.region_views import (
+from database.vw_daily_climate_region import (
     _DAILY_REGION_VIEW_QUERY,
     _REQUIRED_TABLES,
     create_daily_region_view,
@@ -75,7 +75,7 @@ def test_geospatial_initializer_orders_tables_before_view():
     engine = _Engine()
     with (
         patch("database.geospatial.create_spatial_tables") as tables,
-        patch("database.region_views.create_daily_region_view") as view,
+        patch("database.vw_daily_climate_region.create_daily_region_view") as view,
     ):
         initialize_geospatial_schema(engine)
     tables.assert_called_once_with(engine, None)
