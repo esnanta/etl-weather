@@ -170,7 +170,7 @@ def initialize_climate_schema(engine: Engine, config: DatabaseConfig | None = No
 def initialize_geospatial_schema(engine: Engine, config: DatabaseConfig | None = None) -> None:
     """Initialize spatial tables and the dependent daily region view."""
     from database.geospatial import create_spatial_tables
-    from database.region_views import create_daily_region_view
+    from database.vw_daily_climate_region import create_daily_region_view
 
     create_spatial_tables(engine, config)
     create_daily_region_view(engine)
