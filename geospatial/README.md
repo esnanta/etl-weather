@@ -90,3 +90,7 @@ ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_daily_region_view.py -q
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial -q
 ```
+
+## Prospective monthly climate region view
+
+The climate bootstrap now creates empty `climate_data.t_monthly_climate` and `climate_data.t_monthly_climate_detail` parent/detail tables, and geospatial bootstrap creates `climate_data.vw_monthly_climate_region` after spatial tables. The monthly view uses coordinate-based LEFT JOINs to preserve unmatched or not-yet-mapped monthly observations. These are **schema-only objects**: no monthly aggregation, write path, or scientific completeness policy has been implemented. Monthly statistics must not be inferred or inserted before their scientific definition is approved. Run `python -m database.bootstrap --execute` after review to apply all objects, or run `python -m database.climate --execute` followed by `python -m database.geospatial --execute`. Both are additive and do not reset existing daily observations. Run `source activate-airflow.sh -q` before commands.
