@@ -131,10 +131,10 @@ def main() -> None:
     import argparse
     from database.connection import create_database_engine
 
-    parser = argparse.ArgumentParser(description="Create non-destructive spatial tables.")
+    parser = argparse.ArgumentParser(description="Create non-destructive spatial tables and daily region view.")
     parser.add_argument(
         "--execute", action="store_true",
-        help="Apply CREATE TABLE/INDEX to the configured PostgreSQL database.",
+        help="Apply spatial CREATE TABLE/INDEX and daily region VIEW (requires climate tables).",
     )
     args = parser.parse_args()
     config = resolve_database_config()
@@ -146,8 +146,10 @@ def main() -> None:
 
     engine = create_database_engine(config)
     try:
-        create_spatial_tables(engine, config)
-        print("Spatial tables ready; no GeoJSON imported.")
+        from database.schema import initialize_geospatial_schema
+
+        initialize_geospatial_schema(engine, config)
+        print("Spatial tables and daily region view ready; no GeoJSON imported.")
     finally:
         engine.dispose()
 

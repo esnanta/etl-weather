@@ -159,16 +159,23 @@ def create_submission_pacing_table(engine: Engine) -> None:
 
 
 def initialize_climate_schema(engine: Engine, config: DatabaseConfig | None = None) -> None:
-    """Initialize only the five climate and operational tables in FK order."""
+    """Initialize climate and operational tables in FK order."""
     create_schema(engine, config)
     create_daily_climate_table(engine, config)
     create_daily_climate_detail_table(engine, config)
+    from database.monthly_climate import create_monthly_climate_tables
+
+    create_monthly_climate_tables(engine, config)
     create_pipeline_progress_tables(engine)
     create_submission_pacing_table(engine)
 
 
 def initialize_geospatial_schema(engine: Engine, config: DatabaseConfig | None = None) -> None:
-    """Initialize only the three spatial tables, including PostGIS dependency."""
+    """Initialize spatial tables and the dependent daily region view."""
     from database.geospatial import create_spatial_tables
+    from database.vw_daily_climate_region import create_daily_region_view
+    from database.vw_monthly_climate_region import create_monthly_region_view
 
     create_spatial_tables(engine, config)
+    create_daily_region_view(engine)
+    create_monthly_region_view(engine)

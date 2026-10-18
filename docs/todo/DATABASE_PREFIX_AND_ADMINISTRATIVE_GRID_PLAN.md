@@ -1,3 +1,39 @@
+## P3 Airflow scheduling verification — code audit checkpoint (2026-10-18)
+
+Read-only audit of current `dev` sources: `orchestration/dags/cds_era5_land_etl.py`, `orchestration/scheduling/schedule.py`, `orchestration/tasks/build_monthly_requests.py`, `tests/unit/orchestration/test_dag.py`, `test_schedule.py` and `orchestration/README.md`. The production DAG and existing DAG fixture identify `DAG_ID = "cds-era5-land"`, while Airflow README still documents `cds_era5_land_etl`; do not rename active DAG without a separate migration decision. Flag false yields `schedule=None`, true yields ten-minute timedelta, invalid flag values raise. DAG policy: Jakarta zone, catchup false, max active runs 1, max active tasks 2; scheduled earliest monthly slots +0/+15/+30 minutes, manual slots None, and mapped depth-first monthly tasks preserve their retry/pool policies. No scheduler/CDS execution was initiated during audit.
+
+Observed earlier operator activation output printed `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` despite a separately scoped `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest ...`: the activation log alone does not prove the environment of the later subprocess. The campaign key ends `2016_2025` while logged `CAMPAIGN_END_YEAR=2016`; clarify intended pilot scope before scheduling any live run. Airflow README still has stale unprefixed table names and bootstrap counts and must be harmonized after tests, without changing behavior.
+
+- [x] Audit core DAG schedule flag, run-mode entrypoint, mapped slots, and existing unit tests on `dev`.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration -q` and report output.
+- [ ] Operator run isolated `tests/integration/orchestration` and `tests/integration/pipeline/test_postgresql_idempotency.py` with `TEST_POSTGRES_*`.
+- [ ] Operator perform read-only Airflow DAG parsing/list commands with both schedule flag values; confirm actual DAG ID, avoid triggering any DagRun.
+- [ ] Resolve documentation ID/table/count inconsistencies after confirming the installed runtime; no DAG ID or behavior changes authorized.
+- [ ] Decide whether a controlled scheduled pilot is needed once current metadata state and campaign year settings are inspected.
+
+## Monthly schema bootstrap acceptance — operator evidence (2026-10-18)
+
+Operator reported `source activate-airflow.sh -q` followed by **30 passed** geospatial unit tests (0.61s) and **6 passed** isolated geospatial integration tests (1.02s). `python -m database.bootstrap --execute` succeeded on `weather` with seven climate/operational tables, three spatial tables and two region views; PostgreSQL PostGIS reported version **3.4.2**. Read-only screenshots confirm `t_monthly_climate` and `t_monthly_climate_detail` exist; `SELECT COUNT(*) FROM climate_data.vw_monthly_climate_region` returns **0**; `SELECT COUNT(*) FROM climate_data.vw_daily_climate_region` still returns **1,590**. Monthly schema/bootstrap presence and daily read-regression are accepted. Monthly data ingestion/aggregation and populated-monthly-view correctness remain intentionally unimplemented/untested. Existing geospatial integration suite does not itself establish real PostgreSQL monthly fixture coverage.
+
+- [x] Operator local geospatial unit suite: 30 passed.
+- [x] Operator geospatial PostgreSQL integration suite: 6 passed.
+- [x] Operator live PostgreSQL bootstrap: successful; both monthly tables exist.
+- [x] Operator empty monthly view: query succeeds and returns zero rows.
+- [x] Operator daily view unchanged: 1,590 rows.
+- [ ] Separate scientific monthly aggregation contract and loader acceptance, if later requested.
+- [ ] Continue deferred P3 Airflow schedule-contract verification.
+
+## Monthly schema/view preparation (2026-10-18)
+
+At operator request, schema-only monthly parent/detail tables (`t_monthly_climate`, `t_monthly_climate_detail`) are now part of climate bootstrap and `vw_monthly_climate_region` is part of geospatial bootstrap. DDL uses unique request/coordinate-month identities, a parent/detail FK and matching latitude/longitude LEFT JOINs. These objects are **not a monthly calculation implementation**. Empty monthly view is expected before an independently specified and tested monthly loader exists. No direct PostgreSQL operator test has been reported yet.
+
+- [x] Add prospective monthly climate tables and wire into climate schema bootstrap.
+- [x] Add monthly region view and wire into geospatial schema bootstrap.
+- [x] Add unit contracts for monthly DDL.
+- [ ] Run local unit and isolated PostgreSQL integration regressions.
+- [ ] Verify both monthly tables and view exist and are empty on live `weather` after explicit bootstrap.
+- [ ] Specify monthly aggregation methodology, eligibility/completeness and idempotent load contract separately before monthly ETL work.
+
 # TODO — Global Database Prefix and Administrative Grid Mapping
 
 Status: **PLANNING / IMPLEMENTATION PAUSED**
@@ -7,6 +43,60 @@ Repository: `esnanta/etl-weather`
 
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
+
+## P5 daily-region acceptance — operator regression (2026-10-18)
+
+Operator ran `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false` suites after the Python module rename: **28 unit geospatial tests passed in 0.61s**; isolated `test_daily_region_view.py` **1 passed in 0.87s**; complete `tests/integration/geospatial` **6 passed in 0.98s**. The single view test is included in the six integration tests, not additional to them. Prior live `weather` read-only verification: 1,590 source/view/detail IDs, 1,350 matched and 240 unmatched observations, 0 missing mappings, `PASS`. Benchmark execution times (pilot scale only): baseline 0.344 ms; daily region view 1.391 ms; administrative grouping 2.928 ms; Aceh Besar time series 1.558 ms. No new index is justified by the current small pilot.
+
+**Acceptance:** P5 daily grid mapping and `vw_daily_climate_region` implementation/regression are accepted. Monthly region view remains deferred pending a genuine monthly-statistics persistence contract; this is not an implicit instruction to build monthly climate tables. Long-horizon performance still needs representative-volume benchmarks.
+
+- [x] Rerun unit geospatial suite after module rename (28 passed).
+- [x] Run isolated daily view PostgreSQL integration (1 passed).
+- [x] Run complete geospatial integration suite (6 passed).
+- [x] Accept P5 daily regional mapping/view within its defined scope, without additional indexes or climate/airflow changes.
+- [ ] Return to deferred P3 Airflow contract verification.
+- [ ] Repeat regional-query benchmarking when materially more climate observations have accumulated.
+
+## P5 daily region view integration fixture (2026-10-18)
+
+Implemented `tests/integration/geospatial/test_daily_region_view.py` in `dev`: isolated `TEST_POSTGRES_*` runtime fixture using actual PostgreSQL schema/bootstrap, one matched coordinate, one unmatched coordinate, and one coordinate with no mapping; assert row identity, metadata NULL semantics, preserved observation count, repeat bootstrap idempotency and single view catalog entry. Do not execute it against `weather`. Renamed `database/region_views.py` to `database/vw_daily_climate_region.py`, and updated dependent imports/tests/docs. No changes to scientific ETL or orchestration.
+
+- [x] Implement isolated PostgreSQL daily region view integration fixture.
+- [x] Rename Python view module and update imports.
+- [ ] Operator run `source activate-airflow.sh -q` and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after rename.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_daily_region_view.py -q`.
+- [ ] Operator run complete `tests/integration/geospatial -q` and capture actual results before P5 acceptance.
+
+## P5 daily region view bootstrap revision (2026-10-18)
+
+Operator executed manual `CREATE VIEW` against `weather`; read-only verification returned `PASS`: source/view/distinct = 1,590, missing mapping=0, matched observations=1,350, unmatched=240, ambiguous=0, invalid assignments=0. Baseline `EXPLAIN (ANALYZE, BUFFERS)` used sequential scan on 1,590 rows with execution time 0.266 ms; the two region-view/grouping plans have not yet been provided.
+
+Operator requested daily view automatic creation during geospatial schema initialization. Implemented `database/region_views.py` and hooked `initialize_geospatial_schema()` (used by `database.geospatial --execute` and combined bootstrap), maintaining table-before-view order and existing low-level schema builder test isolation. Geospatial-only CLI now requires pre-existing climate parent/detail tables and fails explicitly if absent; combined bootstrap creates those first. No live DB deployment or local test run has been performed by the assistant.
+
+- [x] Persist operator daily-region-view verification PASS results.
+- [x] Integrate daily region view creation into geospatial initializer; do not require manual SQL in normal deployment.
+- [x] Add unit checks for dependencies, view LEFT JOIN contract, and initialization order.
+- [ ] Operator rerun `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q`.
+- [ ] Operator rerun `python -m database.geospatial --execute` against existing `weather` and verify the view and `06_daily_region_view_verification.sql` still return PASS.
+- [ ] Operator capture remaining two region-view/grouped EXPLAIN plans; no index decision until evaluated.
+- [ ] Add and execute isolated PostgreSQL integration test for the view, including unmatched/no mapping and stable 1:1 row membership.
+- [ ] Align or retire the manual `05_daily_climate_region_view.sql` reference if the canonical runtime view definition changes.
+
+## P5.2 acceptance and P5 region-view rollout (2026-10-18)
+
+Operator screenshots and logs verified persisted `weather.climate_data`: 530 source coordinates = 530 mapping rows; 450 matched, 80 unmatched, 0 ambiguous; no missing mappings or inconsistent assignments; 1,590 source and joined observations, `validation_status=PASS`. Explicit repeat `python -m geospatial.mapping --execute` committed the same classifications. Snapshot comparison showed 530 original rows, 0 missing rows, 0 changed classifications and 0 changed `mapped_at` timestamps; current mapped rows remained 530. Export of all 530 coordinate/status records was supplied and independently compared against the attached 23-feature Aceh geometry; 80 unmatched were retained rather than forcibly assigned. P5.2 database/idempotency/spatial comparison acceptance is complete; external authoritative boundary validation is out of this acceptance scope.
+
+P5 view implementation is now staged as **SQL files on dev only**; no view creation has been executed against operator PostgreSQL by the assistant.
+
+- [x] P5.2 verify live mapping, invariant row counts and repeated-run stability.
+- [x] P5.2 export 530 coordinates and analyze 80 unmatched using Aceh geometry.
+- [x] Audit canonical daily/detail/mapping schema: daily observations exist, monthly statistic storage does not.
+- [x] Add `geospatial/sql/05_daily_climate_region_view.sql` (normal daily view), `06_daily_region_view_verification.sql` and `07_daily_region_view_performance.sql`.
+- [ ] Operator apply daily region view on `weather` and capture verification PASS with actual row counts.
+- [ ] Operator run and report all three EXPLAIN ANALYZE plans; evaluate real join costs and whether indexes are justified.
+- [ ] Add isolated PostgreSQL region-view integration fixture and run regression tests before final P5 acceptance.
+- [ ] Decide independently whether to implement monthly statistics persistence; **do not create monthly view** before a real monthly detail schema exists.
+- [ ] Complete P5 review and sign-off prior to deferred P3 Airflow checks.
 
 ## P5.2 real grid mapping persisted (operator report, 2026-10-17)
 

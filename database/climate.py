@@ -150,6 +150,7 @@ def main() -> None:
     from database.connection import create_database_engine
     from database.config import (
         DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE,
+        MONTHLY_CLIMATE_TABLE, MONTHLY_CLIMATE_DETAIL_TABLE,
         PIPELINE_PROGRESS_TABLE, PIPELINE_PROGRESS_DETAIL_TABLE, PACING_TABLE,
     )
     from database.schema import initialize_climate_schema
@@ -159,13 +160,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--execute", action="store_true",
-        help="Create the five missing climate/operational tables.",
+        help="Create the seven missing climate/operational tables.",
     )
     args = parser.parse_args()
     config = resolve_database_config()
     print(f"Climate schema target: database={config.database}, schema={config.schema}")
     print("Tables: " + ", ".join((
         DAILY_CLIMATE_TABLE, DAILY_CLIMATE_DETAIL_TABLE,
+        MONTHLY_CLIMATE_TABLE, MONTHLY_CLIMATE_DETAIL_TABLE,
         PIPELINE_PROGRESS_TABLE, PIPELINE_PROGRESS_DETAIL_TABLE, PACING_TABLE,
     )))
     if not args.execute:
