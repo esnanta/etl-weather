@@ -1,6 +1,6 @@
 # ETL Weather
 
-ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations, then derives complete local-calendar monthly statistics from validated daily Parquet. It preserves reproducible NetCDF/Parquet artifacts and stores daily and monthly observations separately in PostgreSQL.
+ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations. It preserves reproducible NetCDF/Parquet artifacts and stores canonical daily observations in PostgreSQL. Monthly database objects exist, but the active pipeline does not populate them.
 
 The ETL pipeline can run directly from the command line or be coordinated by Apache Airflow. Airflow remains an orchestration layer; the scientific processing and persistence behavior stay in `pipeline/`.
 
@@ -62,7 +62,7 @@ transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
 
-> **P6 implementation-status note (2026-10-18):** The active `pipeline/runtime.py` runs checkpoint-backed **daily** ETL in monthly request partitions; it does not itself compute or load monthly climatological aggregates. Empty `t_monthly_climate` and `t_monthly_climate_detail` tables and `vw_monthly_climate_region` have been bootstrapped, but live monthly aggregation/load behavior described elsewhere in this README must be treated as **proposed/not verified** until its implementation and integration tests are audited. Current physical SQL names are composed from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`); changing a prefix on an existing database requires coordinated migration. This note flags a documentation inconsistency, not authorization to alter climate calculations.
+> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped but monthly computation and loading remain future work. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
 
 ## Environment Setup
 
@@ -243,13 +243,13 @@ The root README documents the project as a whole. Airflow-specific runtime files
 
 ## Running the Pipeline
 
-Run the daily and monthly stages together:
+Run daily ETL in calendar-month request partitions:
 
 ```bash
 source activate-airflow.sh -q
 STANDALONE_PIPELINE_START_DATE=2024-01-01 \\
 STANDALONE_PIPELINE_END_DATE=2024-01-31 \\
-python -m scripts.run_pipeline
+python -m scripts.run_pipeline_cds
 ```
 
 **Clean-slate development run (destructive):** If you need to discard all existing generated data and restart from zero, first inspect the targets:
@@ -266,55 +266,22 @@ ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
 
 Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **RESET ALL is also destructive** (database recreation, NetCDF/Parquet, logs and runtime cleanup), but requires Airflow to be inactive and does not terminate Airflow processes; DESTROY performs its own preflight and stops recognized processes. It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
 
-The combined runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; the existing daily and monthly Parquet artifacts are validated and reused on later runs.
+The standalone runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; existing RAW and daily Parquet checkpoints are validated and reused on later runs.
 
 ### Checkpoint stages
 
-A **checkpoint** is a saved, validated artifact at a processing stage that can be reused after interruption or retry. It is not an additional download or a separate file format.
+A **checkpoint** is a saved, validated artifact that can be reused after interruption or retry.
 
-- **RAW checkpoint:** hourly ERA5-Land data stored as NetCDF in `raw/YYYY/`.
-- **Daily transformed checkpoint:** UTC+7 daily observations stored as Parquet in `transformed/YYYY/daily/`.
-- **Monthly transformed checkpoint:** complete UTC+7 monthly observations stored as Parquet in `transformed/YYYY/monthly/`.
+- **RAW checkpoint:** hourly ERA5-Land NetCDF in `raw/YYYY/`.
+- **Daily transformed checkpoint:** UTC+7 daily Parquet in `transformed/YYYY/`.
 
-The combined `pipeline/runtime.py` runs `pipeline/daily.py` and then `pipeline/monthly.py` for every complete calendar month. The combined terminal command is `python -m scripts.run_pipeline`. Use `scripts/run_monthly_climate.py` to process existing daily Parquet files separately.
+The active CLI is `python -m scripts.run_pipeline_cds`. Its `run_monthly_batch` function in `pipeline/runtime.py` splits a request into calendar-month **request partitions** and runs daily extraction, transformation and loading. Despite its name, this function does not compute monthly climate statistics.
 
-### Monthly climate: processing and statistics
+### Monthly climate: future work
 
-Monthly climate data is calculated from **daily observations in UTC+7**. The processing steps are:
+Monthly aggregation from complete UTC+7 daily observations, monthly Parquet output and idempotent monthly loading are **not implemented** in the active runtime. The `pipeline/` tree contains no `monthly.py`, and the `scripts/` tree contains no `run_monthly_climate.py` or `run_pipeline.py`. Monthly tables and a regional view are schema objects, not proof of operational monthly outputs.
 
-| Step | What happens | Saved result |
-|---|---|---|
-| 1. Download | Retrieve hourly weather data from CDS. | RAW NetCDF: `raw/YYYY/*.nc` |
-| 2. Daily processing | Convert hourly data into daily observations and validate the results. | Daily Parquet: `transformed/YYYY/daily/*.parquet` |
-| 3. Monthly processing | Combine all daily observations for one complete calendar month, separately for each grid point. | Monthly Parquet: `transformed/YYYY/monthly/YYYY_MM_<sorted_variables>.parquet` |
-| 4. Database loading | Save validated daily and monthly observations in their respective PostgreSQL tables. | PostgreSQL observations |
-
-**What do the daily values mean?**
-
-Each daily observation covers one local calendar day (UTC+7), separately for each grid point.
-
-| Daily output column | Meaning | How it is calculated |
-|---|---|---|
-| `tp_daily_total_mm` | Total rainfall during the day (mm). | Add the hourly precipitation contributions for the local day. |
-| `ssrd_daily_total_j_m2` | Total solar energy reaching the surface during the day (J/m²). | Add the hourly radiation contributions for the local day. |
-| `t2m_daily_mean_c` | Average air temperature during the day (°C). | Average hourly temperatures for the local day. |
-| `d2m_daily_mean_c` | Average dew-point temperature during the day (°C). | Average hourly dew-point temperatures for the local day. |
-| `swvl1_daily_mean_m3_m3` | Average moisture in the top soil layer during the day (m³/m³). | Average hourly soil-moisture values for the local day. |
-
-The daily results become the input for monthly calculations. Each daily Parquet row corresponds to one day and one grid point; it is not an average over Aceh.
-
-**What do the monthly values mean?**
-
-| Monthly output column | Meaning | How it is calculated |
-|---|---|---|
-| `tp_monthly_total_mm` | Total rainfall for the month (mm). | Add all daily rainfall totals. |
-| `tp_monthly_daily_mean_mm` | Average rainfall per day (mm/day). | Monthly rainfall total ÷ number of days in the month. |
-| `ssrd_monthly_total_j_m2` | Total surface solar radiation for the month (J/m²). | Add all daily radiation totals. |
-| `ssrd_monthly_daily_mean_j_m2` | Average daily solar radiation (J/m²/day). | Monthly radiation total ÷ number of days in the month. |
-| `t2m_monthly_mean_c` | Average air temperature (°C). | Average the daily mean temperatures. |
-| `d2m_monthly_mean_c` | Average dew-point temperature (°C). | Average the daily mean dew-point temperatures. |
-| `swvl1_monthly_mean_m3_m3` | Average soil moisture in the top layer (m³/m³). | Average the daily mean soil-moisture values. |
-
+Current daily values are calculated for each UTC+7 local day and grid point—not as averages over Aceh. Their calculations and units are described in [Variables and Daily Outputs](#variables-and-daily-outputs) and [Local-Day Time Semantics](#local-day-time-semantics).
 
 ## Data Layout
 
@@ -336,7 +303,7 @@ The dataset and bounding-box directories keep different requests separate. RAW h
 
 ## Persistence and Modelling Access
 
-PostgreSQL stores canonical daily observations and separately stores UTC+7-derived monthly observations in `climate_data.monthly_climate` and `climate_data.monthly_climate_detail`. Idempotent loading does not create duplicate logical partitions.
+PostgreSQL stores canonical daily observations through an idempotent loader. Monthly tables and a regional view are schema objects only; the active runtime does not populate them. Physical names follow the configured schema and table/view prefixes.
 
 For example, if January 2024 has already been processed and the identical January request is run again, the pipeline validates and reuses the same logical partition rather than appending duplicate daily grid observations.
 
