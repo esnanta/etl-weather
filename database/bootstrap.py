@@ -89,12 +89,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--execute", action="store_true",
-        help="Create five climate/operational and three spatial tables, including PostGIS.",
+        help="Create seven climate/operational and three spatial tables, including PostGIS.",
     )
     args = parser.parse_args()
     config = resolve_database_config()
     print(f"Database bootstrap target: database={config.database}, schema={config.schema}")
-    print("Climate/operational tables: 5; geospatial tables: 3 (PostGIS required).")
+    print("Climate/operational tables: 7; geospatial tables: 3; regional views: 2 (PostGIS required).")
     if not args.execute:
         print("Dry run: database unchanged. Pass --execute to initialize both schema paths.")
         return
