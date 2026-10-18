@@ -1,3 +1,14 @@
+## Monthly schema/view preparation (2026-10-18)
+
+At operator request, schema-only monthly parent/detail tables (`t_monthly_climate`, `t_monthly_climate_detail`) are now part of climate bootstrap and `vw_monthly_climate_region` is part of geospatial bootstrap. DDL uses unique request/coordinate-month identities, a parent/detail FK and matching latitude/longitude LEFT JOINs. These objects are **not a monthly calculation implementation**. Empty monthly view is expected before an independently specified and tested monthly loader exists. No direct PostgreSQL operator test has been reported yet.
+
+- [x] Add prospective monthly climate tables and wire into climate schema bootstrap.
+- [x] Add monthly region view and wire into geospatial schema bootstrap.
+- [x] Add unit contracts for monthly DDL.
+- [ ] Run local unit and isolated PostgreSQL integration regressions.
+- [ ] Verify both monthly tables and view exist and are empty on live `weather` after explicit bootstrap.
+- [ ] Specify monthly aggregation methodology, eligibility/completeness and idempotent load contract separately before monthly ETL work.
+
 # TODO — Global Database Prefix and Administrative Grid Mapping
 
 Status: **PLANNING / IMPLEMENTATION PAUSED**
