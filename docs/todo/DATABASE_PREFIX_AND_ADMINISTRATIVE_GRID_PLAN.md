@@ -17,7 +17,7 @@ The six implemented query files are described in [`query/README.md`](../../query
 
 ### Final documentation and regression checks
 
-- [ ] Reconcile root `README.md` descriptions of monthly aggregation and persistence with current implementation. `pipeline/runtime.py` executes daily ETL in calendar-month request partitions; monthly tables and region view are schema-only in the accepted pilot. Examine any other monthly modules before concluding the monthly workflow is operational. Do not introduce scientific changes as a documentation fix.
+- [x] Reconcile root `README.md` descriptions of monthly aggregation and persistence with current implementation. Verified `pipeline/runtime.py` executes daily ETL in calendar-month request partitions; `pipeline/monthly.py`, `scripts/run_monthly_climate.py` and `scripts/run_pipeline.py` do not exist on `dev`. Updated README in commit `33ddbc8`; no scientific or runtime changes.
 - [ ] Review remaining operations tests for destructive side effects and run applicable non-destructive regression checks. Previously accepted: `tests/unit` **377 passed** and `tests/integration` **17 passed**; repeat only if changes warrant it.
 - [ ] Review root/test/Airflow/geospatial READMEs and AGENTS for stale implementation claims, duplicated guidance and configurable table/view prefix semantics. Physical PostgreSQL names derive from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`); SQL containing literal names requires reassessment when prefixes change.
 - [ ] Record residual limitations and obtain explicit approval before closing P6. Once accepted, remove this TODO file rather than retaining completed checklists.
