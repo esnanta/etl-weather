@@ -8,6 +8,22 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5.2 acceptance and P5 region-view rollout (2026-10-18)
+
+Operator screenshots and logs verified persisted `weather.climate_data`: 530 source coordinates = 530 mapping rows; 450 matched, 80 unmatched, 0 ambiguous; no missing mappings or inconsistent assignments; 1,590 source and joined observations, `validation_status=PASS`. Explicit repeat `python -m geospatial.mapping --execute` committed the same classifications. Snapshot comparison showed 530 original rows, 0 missing rows, 0 changed classifications and 0 changed `mapped_at` timestamps; current mapped rows remained 530. Export of all 530 coordinate/status records was supplied and independently compared against the attached 23-feature Aceh geometry; 80 unmatched were retained rather than forcibly assigned. P5.2 database/idempotency/spatial comparison acceptance is complete; external authoritative boundary validation is out of this acceptance scope.
+
+P5 view implementation is now staged as **SQL files on dev only**; no view creation has been executed against operator PostgreSQL by the assistant.
+
+- [x] P5.2 verify live mapping, invariant row counts and repeated-run stability.
+- [x] P5.2 export 530 coordinates and analyze 80 unmatched using Aceh geometry.
+- [x] Audit canonical daily/detail/mapping schema: daily observations exist, monthly statistic storage does not.
+- [x] Add `geospatial/sql/05_daily_climate_region_view.sql` (normal daily view), `06_daily_region_view_verification.sql` and `07_daily_region_view_performance.sql`.
+- [ ] Operator apply daily region view on `weather` and capture verification PASS with actual row counts.
+- [ ] Operator run and report all three EXPLAIN ANALYZE plans; evaluate real join costs and whether indexes are justified.
+- [ ] Add isolated PostgreSQL region-view integration fixture and run regression tests before final P5 acceptance.
+- [ ] Decide independently whether to implement monthly statistics persistence; **do not create monthly view** before a real monthly detail schema exists.
+- [ ] Complete P5 review and sign-off prior to deferred P3 Airflow checks.
+
 ## P5.2 real grid mapping persisted (operator report, 2026-10-17)
 
 Operator ran `python -m geospatial.mapping --execute` against `weather.climate_data`: **530 coordinates, 450 matched, 80 unmatched, 0 ambiguous**, with terminal `Grid mapping committed`. This confirms the CLI write transaction completed; independent read-only persisted-row verification and repeated-run timestamp/idempotency verification are next.
