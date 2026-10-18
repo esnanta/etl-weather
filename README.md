@@ -1,6 +1,6 @@
 # ETL Weather
 
-ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations. It preserves reproducible NetCDF/Parquet artifacts and stores canonical daily observations in PostgreSQL. Monthly database objects exist, but the active pipeline does not populate them.
+ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations. It preserves reproducible NetCDF/Parquet artifacts and stores canonical daily observations in PostgreSQL. Monthly aggregation and loading are available only through a separate, currently unverified opt-in CLI; the daily pipeline does not populate monthly tables.
 
 The ETL pipeline can run directly from the command line or be coordinated by Apache Airflow. Airflow remains an orchestration layer; the scientific processing and persistence behavior stay in `pipeline/`.
 
@@ -62,7 +62,7 @@ transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
 
-> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped but monthly computation and loading remain future work. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
+> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped but a separate monthly CLI has been added but its SQL loading path has not passed integration acceptance. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
 
 ## Environment Setup
 
@@ -277,9 +277,18 @@ A **checkpoint** is a saved, validated artifact that can be reused after interru
 
 The active CLI is `python -m scripts.run_pipeline`. Its `run_monthly_batch` function in `pipeline/runtime.py` splits a request into calendar-month **request partitions** and runs daily extraction, transformation and loading. Despite its name, this function does not compute monthly climate statistics.
 
-### Monthly climate: future work
+### Monthly climate: separate experimental command
 
-Monthly aggregation from complete UTC+7 daily observations, monthly Parquet output and idempotent monthly loading are **not implemented** in the active runtime. No `pipeline/monthly.py` is required. The monthly command is separate from `scripts/run_pipeline.py` and is not part of the daily ETL workflow. Monthly tables and a regional view are schema objects, not proof of operational monthly outputs.
+Monthly aggregation from complete UTC+7 daily observations and monthly PostgreSQL loading are implemented in a **separate, unverified CLI**, not in the daily runtime. No monthly Parquet output is implemented. No `pipeline/monthly.py` is required. The monthly command is separate from `scripts/run_pipeline.py` and is not part of the daily ETL workflow. Monthly tables and a regional view alone do not prove operational monthly outputs. The new monthly write path requires isolated integration tests and explicit acceptance before production use.
+
+To inspect a complete persisted month without modifying the database:
+
+```bash
+source activate-airflow.sh -q
+python -m scripts.run_monthly_climate --month 2024-05
+```
+
+The `--execute` option enables an atomic insert of the monthly parent/detail observations; **do not use it on `weather` until the monthly scientific contract and integration tests are accepted**. Repeated writes for an existing monthly request are refused rather than overwriting persisted observations.
 
 Current daily values are calculated for each UTC+7 local day and grid point—not as averages over Aceh. Their calculations and units are described in [Variables and Daily Outputs](#variables-and-daily-outputs) and [Local-Day Time Semantics](#local-day-time-semantics).
 
