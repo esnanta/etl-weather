@@ -8,6 +8,16 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5 daily region view integration fixture (2026-10-18)
+
+Implemented `tests/integration/geospatial/test_daily_region_view.py` in `dev`: isolated `TEST_POSTGRES_*` runtime fixture using actual PostgreSQL schema/bootstrap, one matched coordinate, one unmatched coordinate, and one coordinate with no mapping; assert row identity, metadata NULL semantics, preserved observation count, repeat bootstrap idempotency and single view catalog entry. Do not execute it against `weather`. Renamed `database/region_views.py` to `database/vw_daily_climate_region.py`, and updated dependent imports/tests/docs. No changes to scientific ETL or orchestration.
+
+- [x] Implement isolated PostgreSQL daily region view integration fixture.
+- [x] Rename Python view module and update imports.
+- [ ] Operator run `source activate-airflow.sh -q` and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q` after rename.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospatial/test_daily_region_view.py -q`.
+- [ ] Operator run complete `tests/integration/geospatial -q` and capture actual results before P5 acceptance.
+
 ## P5 daily region view bootstrap revision (2026-10-18)
 
 Operator executed manual `CREATE VIEW` against `weather`; read-only verification returned `PASS`: source/view/distinct = 1,590, missing mapping=0, matched observations=1,350, unmatched=240, ambiguous=0, invalid assignments=0. Baseline `EXPLAIN (ANALYZE, BUFFERS)` used sequential scan on 1,590 rows with execution time 0.266 ms; the two region-view/grouping plans have not yet been provided.
