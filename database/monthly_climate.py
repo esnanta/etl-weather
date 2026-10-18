@@ -33,7 +33,7 @@ def create_monthly_climate_tables(engine: Engine, config: DatabaseConfig | None 
                 west_lon DOUBLE PRECISION NOT NULL,
                 CONSTRAINT ck_{MONTHLY_CLIMATE_TABLE}_month CHECK (
                     EXTRACT(DAY FROM month_start) = 1
-                    AND month_end = (month_start + INTERVAL '1 month - 1 day')::date
+                    AND month_end = (month_start + INTERVAL '1 month' - INTERVAL '1 day')::date
                 )
             )
         """))
