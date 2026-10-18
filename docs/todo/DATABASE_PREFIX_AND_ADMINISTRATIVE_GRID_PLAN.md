@@ -8,6 +8,21 @@ Repository: `esnanta/etl-weather`
 > This is a plan and checklist, not approval to refactor code, reset a database, or load GeoJSON.
 > No production code, SQL schema, Airflow DAG, or data should be modified until the plan is reviewed.
 
+## P5 daily region view bootstrap revision (2026-10-18)
+
+Operator executed manual `CREATE VIEW` against `weather`; read-only verification returned `PASS`: source/view/distinct = 1,590, missing mapping=0, matched observations=1,350, unmatched=240, ambiguous=0, invalid assignments=0. Baseline `EXPLAIN (ANALYZE, BUFFERS)` used sequential scan on 1,590 rows with execution time 0.266 ms; the two region-view/grouping plans have not yet been provided.
+
+Operator requested daily view automatic creation during geospatial schema initialization. Implemented `database/region_views.py` and hooked `initialize_geospatial_schema()` (used by `database.geospatial --execute` and combined bootstrap), maintaining table-before-view order and existing low-level schema builder test isolation. Geospatial-only CLI now requires pre-existing climate parent/detail tables and fails explicitly if absent; combined bootstrap creates those first. No live DB deployment or local test run has been performed by the assistant.
+
+- [x] Persist operator daily-region-view verification PASS results.
+- [x] Integrate daily region view creation into geospatial initializer; do not require manual SQL in normal deployment.
+- [x] Add unit checks for dependencies, view LEFT JOIN contract, and initialization order.
+- [ ] Operator rerun `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/geospatial -q`.
+- [ ] Operator rerun `python -m database.geospatial --execute` against existing `weather` and verify the view and `06_daily_region_view_verification.sql` still return PASS.
+- [ ] Operator capture remaining two region-view/grouped EXPLAIN plans; no index decision until evaluated.
+- [ ] Add and execute isolated PostgreSQL integration test for the view, including unmatched/no mapping and stable 1:1 row membership.
+- [ ] Align or retire the manual `05_daily_climate_region_view.sql` reference if the canonical runtime view definition changes.
+
 ## P5.2 acceptance and P5 region-view rollout (2026-10-18)
 
 Operator screenshots and logs verified persisted `weather.climate_data`: 530 source coordinates = 530 mapping rows; 450 matched, 80 unmatched, 0 ambiguous; no missing mappings or inconsistent assignments; 1,590 source and joined observations, `validation_status=PASS`. Explicit repeat `python -m geospatial.mapping --execute` committed the same classifications. Snapshot comparison showed 530 original rows, 0 missing rows, 0 changed classifications and 0 changed `mapped_at` timestamps; current mapped rows remained 530. Export of all 530 coordinate/status records was supplied and independently compared against the attached 23-feature Aceh geometry; 80 unmatched were retained rather than forcibly assigned. P5.2 database/idempotency/spatial comparison acceptance is complete; external authoritative boundary validation is out of this acceptance scope.
