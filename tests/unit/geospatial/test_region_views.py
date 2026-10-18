@@ -76,7 +76,9 @@ def test_geospatial_initializer_orders_tables_before_view():
     with (
         patch("database.geospatial.create_spatial_tables") as tables,
         patch("database.vw_daily_climate_region.create_daily_region_view") as view,
+        patch("database.vw_monthly_climate_region.create_monthly_region_view") as monthly,
     ):
         initialize_geospatial_schema(engine)
     tables.assert_called_once_with(engine, None)
     view.assert_called_once_with(engine)
+    monthly.assert_called_once_with(engine)
