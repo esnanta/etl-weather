@@ -1,3 +1,13 @@
+## P6 final regression operator evidence (2026-10-18)
+
+Operator ran `source activate-airflow.sh -q` and `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`: **377 passed in 8.10s**. The full `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` suite: **17 passed in 2.40s**. Total **394 passing tests** across these two distinct suites; no failures or skips appeared in the reported output. These runs confirm the current unit/integration regression gate only; no full operations-suite result, live scheduled CDS pilot, monthly science loader, or six-query SQL acceptance is implied.
+
+- [x] Full unit tests: 377 PASS.
+- [x] Full integration tests: 17 PASS.
+- [ ] Review and accept the six read-only PostgreSQL queries using the separate query-audit checklist.
+- [ ] Reconcile root monthly pipeline documentation with actual implementation before final P6 acceptance.
+- [ ] Evaluate any remaining operations-suite checks under non-destructive conditions.
+
 ## P6 documentation audit and final regression gate (2026-10-18)
 
 P6 started with source inspection of root README, AGENTS, test README, orchestration README, geospatial README, query acceptance TODO and current `pipeline/runtime.py`. Airflow DAG ID and dynamic PostgreSQL prefix semantics had already been corrected during P3. P6 corrected stale bootstrap counts in root/geospatial READMEs (seven climate/operational + three geospatial tables, two region views), and replaced a stale geospatial claim that monthly tables did not exist. **Important drift:** root README describes working monthly statistics processing and persistence, but active `pipeline/runtime.py` runs daily ETL in calendar-month partitions, and currently verified DB evidence shows empty monthly tables and empty monthly view. The README has an explicit warning; full reconciliation of proposed scientific monthly workflow with actual modules requires separate review and must not be represented as a working monthly pipeline. No ETL or Airflow code was edited.
