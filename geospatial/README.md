@@ -62,3 +62,19 @@ Integration tests require an **isolated** `TEST_POSTGRES_*` database; never poin
 Latest user-reported clean-database results (2026-10-16): PostGIS **3.4.2** enabled in `weather.climate_data`; all three spatial tables created; **19 unit tests passed**; importer committed **23 districts and 1 province**, source SHA-256 `b64051d0ba5cf434ad2bd50a8ba71520a16f623e534529f9276f29a946e7d2b1`. The latest SQL screenshot confirms **23 district rows, 23 unique references, 0 invalid geometries and 0 unexpected first-Z values**; the final province status and `PASS` column were not visible. The earlier isolated four integration tests passed **before** the PostGIS extension-schema relocation, so rerun them against an appropriately configured test database before treating that coverage as current.
 
 The importer progress bar reports processed districts; transaction success is confirmed only by `Transaction committed successfully.`
+
+
+## P5 regional query views and performance
+
+The canonical daily observations remain in `climate_data.t_daily_climate_detail`. The P5 query layer adds a normal PostgreSQL view rather than copying observations or adding a foreign key. Apply deliberately on the configured `weather` database using PhpStorm:
+
+1. Execute `geospatial/sql/05_daily_climate_region_view.sql` once (non-destructive `CREATE OR REPLACE VIEW`).
+2. Execute `geospatial/sql/06_daily_region_view_verification.sql` and record the complete result. For the approved May 1–3, 2024 pilot, expect `source_rows=view_rows=distinct_detail_ids=1590`, `missing_mappings=0`, `matched_observations=1350`, `unmatched_observations=240`, `ambiguous_observations=0` and `validation_status=PASS`; actual counts should follow current observations if the database changes.
+3. Execute the three SELECT-only `EXPLAIN (ANALYZE, BUFFERS, VERBOSE)` statements in `geospatial/sql/07_daily_region_view_performance.sql` individually; capture actual rows, runtime, buffer hits/reads, scan and join types.
+4. Do not create new indexes or change observation tables until representative measured query plans justify it.
+
+`vw_daily_climate_region` has exactly one result per existing daily detail row, preserving records with `unmatched`, `ambiguous`, or absent grid mappings (nullable region labels). Administrative classifications are **point assignment**, not area-weighted climate averages; a grouped query across grid points should not be interpreted as an area-weighted district statistic.
+
+`MONTHLY_CLIMATE_REGION_VIEW` is already named in `database/config.py`, but the project has **no persisted monthly climate observations schema**. A monthly view cannot be safely implemented yet; the existing *monthly batch* process loads daily climate observations. Do not invent monthly observations from daily records during this refactor. This remains a separately gated design decision.
+
+These SQL files have not been executed on the operator's PostgreSQL server by the assistant. The local PASS and timing evidence must be supplied before P5 views/performance can be accepted.
