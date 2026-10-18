@@ -1,3 +1,16 @@
+## P6 documentation audit and final regression gate (2026-10-18)
+
+P6 started with source inspection of root README, AGENTS, test README, orchestration README, geospatial README, query acceptance TODO and current `pipeline/runtime.py`. Airflow DAG ID and dynamic PostgreSQL prefix semantics had already been corrected during P3. P6 corrected stale bootstrap counts in root/geospatial READMEs (seven climate/operational + three geospatial tables, two region views), and replaced a stale geospatial claim that monthly tables did not exist. **Important drift:** root README describes working monthly statistics processing and persistence, but active `pipeline/runtime.py` runs daily ETL in calendar-month partitions, and currently verified DB evidence shows empty monthly tables and empty monthly view. The README has an explicit warning; full reconciliation of proposed scientific monthly workflow with actual modules requires separate review and must not be represented as a working monthly pipeline. No ETL or Airflow code was edited.
+
+- [x] Review key architecture/operations documents and resolve known bootstrap count drift.
+- [x] Preserve prefix configurability in documentation; physical names shown only as current examples.
+- [x] Flag root monthly workflow implementation/documentation inconsistency for explicit follow-up.
+- [ ] Operator run `source activate-airflow.sh -q` then `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` and report output.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration -q` against isolated `TEST_POSTGRES_*`; report skips and failures, if any.
+- [ ] Operator run `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/operations -q` **only if** that directory exists and tests do not perform destructive operations without explicit fixtures.
+- [ ] Verify six-query PostgreSQL catalog independently using `docs/todo/POSTGRESQL_QUERY_AUDIT_PLAN.md`; do not mark query acceptance until actual read-only results reported.
+- [ ] Resolve monthly workflow documentation drift and final P6 acceptance after regressions; do not run live CDS, Airflow scheduled campaign, or reset database.
+
 ## P3 accepted — Airflow scheduling contract verification (2026-10-18)
 
 **P3 code/runtime contract ACCEPTED; operational scheduled pilot explicitly NOT performed.** Operator evidence: orchestration unit suite 122 PASS (5.37s), isolated PostgreSQL orchestration + pipeline idempotency suite 11 PASS (1.70s), Airflow DAG `cds-era5-land` registered from `orchestration/dags/cds_era5_land_etl.py` with `is_paused=True`, import-error list empty, standalone/scheduler/DAG-processor/triggerer processes active, `cds_api` pool with exactly 1 slot, and current metadata `airflow dags list-runs cds-era5-land` returned `No data found`. The schedule flag true/false behavior, serial max-active-run, manual/scheduled selection, monthly offsets and retry/pacing boundaries are covered by the existing code audit and passing unit/integration tests; do not infer a successful live DagRun. Campaign keys and years remain intentionally mutable configuration values and are not P3 acceptance constraints.
