@@ -21,7 +21,8 @@ The six implemented query files are described in [`query/README.md`](../../query
 - [ ] Review remaining operations tests for destructive side effects and run applicable non-destructive regression checks. Previously accepted: `tests/unit` **377 passed** and `tests/integration` **17 passed**; repeat only if changes warrant it.
 - [x] Review root/test/Airflow/geospatial READMEs and AGENTS for daily/monthly boundary claims and update them to reflect the separate CLI.
 - [x] Refactor daily/monthly view builders, spatial DDL, district importer and grid mapping to use canonical schema/table/view identifiers; preserve default SQL snapshots for existing contract tests. Add offline SQL-builder regression tests. Static `geospatial/sql/*.sql` files remain operator examples for current default names, not dynamically generated scripts.
-- [ ] Run local regression tests and verify the changed SQL against an isolated PostgreSQL test database; no acceptance of a changed prefix or migration on existing `weather` is implied.
+- [x] Local offline unit regression reported by operator (2026-10-19): `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` **380 passed in 8.69s**; focused `tests/unit/database tests/unit/geospatial` **46 passed in 1.02s**. These runs validate current default identifiers, not database prefix migration.
+- [ ] Verify changed SQL against isolated `TEST_POSTGRES_*` PostgreSQL with applicable integration tests; no acceptance of changed prefixes or migration on existing `weather` is implied.
 - [ ] Test standalone monthly aggregation in isolated fixtures (full calendar-day/grid coverage, missing values, duplicates, rerun refusal, atomic rollback, PostgreSQL schema compatibility). No acceptance or execution against live `weather` yet.
 - [ ] Record residual limitations and obtain explicit approval before closing P6. Once accepted, remove this TODO file rather than retaining completed checklists.
 
