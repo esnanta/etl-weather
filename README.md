@@ -252,6 +252,49 @@ python -m pytest tests/integration -q
 
 Integration tests must use the isolated `TEST_POSTGRES_*` database configuration, never the development `weather` database. See [tests/README.md](./tests/README.md) for focused suites and testing policy.
 
+
+### 5. Reset Development State
+
+Use **reset** when you want to rebuild the local development state but Airflow is already fully stopped.
+
+Preview the reset targets first:
+
+```bash
+python -m scripts.reset_all
+```
+
+Execute after reviewing the targets:
+
+```bash
+python -m scripts.reset_all --execute
+```
+
+Reset recreates the configured development PostgreSQL database and clears generated NetCDF/Parquet data, Airflow logs, and Airflow runtime state. It is restricted to `APP_ENV=dev` and refuses to continue if the Airflow runtime is still active.
+
+Use this when the environment is under your control and you have already stopped Airflow cleanly.
+
+### 6. Destroy Development State
+
+Use **destroy** when you intentionally want a clean-slate development environment and recognized Airflow processes may still be running.
+
+Preview all targets and detected Airflow processes:
+
+```bash
+python -m scripts.destroy_all
+```
+
+Execute the clean-slate operation:
+
+```bash
+python -m scripts.destroy_all --execute
+```
+
+Destroy is also restricted to `APP_ENV=dev`, requires typing the exact confirmation `DESTROY`, stops recognized Airflow processes, recreates the configured PostgreSQL database, clears generated data/log/runtime state, and verifies the resulting clean state.
+
+Use destroy only when you intentionally want to discard the current local development runtime and generated data. Project source code, `.env`, `orchestration/airflow.cfg`, and the Airflow JWT key are preserved.
+
+For lower-level maintenance and recovery details, see [orchestration/README.md](./orchestration/README.md).
+
 ## Data Layout
 
 Generated artifacts are stored by dataset, bounding box, layer, and year:
