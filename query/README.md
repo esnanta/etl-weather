@@ -1,95 +1,71 @@
 # PostgreSQL Operational Audit Queries
 
-This catalog provides **seven read-only checks** for the active ERA5-Land ETL.
-Run each file as a separate task, in numeric order, on the intended database.
-The code and examples target the `climate_data` schema in PostgreSQL 16.
+This directory contains seven read-only SQL checks for the active ERA5-Land ETL.
 
-| Order | File | Question answered |
+For database setup and project-level commands, see [`/README.md`](../README.md).
+
+## Query Catalog
+
+| Order | File | Purpose |
 | --- | --- | --- |
-| 00 | `00_connection__01_database_context.sql` | Am I connected to the intended PostgreSQL database? |
-| 01 | `01_schema__01_inventory.sql` | Do all five application tables exist? |
-| 02 | `02_daily_climate__01_partition_summary.sql` | Which daily-climate request partitions exist, and how many days/grid observations do they contain? |
-| 03 | `03_daily_climate_detail__01_data_quality.sql` | Are there missing local dates, duplicate observation keys, or invalid UTC+7 timestamps? |
-| 04 | `04_pipeline_progress__01_campaign_status.sql` | Which campaign batches are complete, incomplete, or failed? |
-| 05 | `05_pipeline_progress_detail__01_load_verification.sql` | Do completed load records match the persisted daily data and Parquet metadata? |
-| 06 | `06_p2__01_standalone_pilot_verification.sql` | Did the three-day May 2024 standalone pilot persist 530 grids per day without duplicate keys, orphans, or UTC+7 time errors? |
+| 00 | `00_connection__01_database_context.sql` | Confirm the intended PostgreSQL database and connection context |
+| 01 | `01_schema__01_inventory.sql` | Check the five core daily/operational audit tables |
+| 02 | `02_daily_climate__01_partition_summary.sql` | Summarize persisted daily request partitions |
+| 03 | `03_daily_climate_detail__01_data_quality.sql` | Check dates, duplicate keys, and UTC+7 timestamp rules |
+| 04 | `04_pipeline_progress__01_campaign_status.sql` | Inspect campaign-quarter status |
+| 05 | `05_pipeline_progress_detail__01_load_verification.sql` | Reconcile completed load evidence with persisted climate data |
+| 06 | `06_p2__01_standalone_pilot_verification.sql` | Verify the scoped standalone pilot request |
 
-## How to run
+The five tables checked by query 01 are the core daily/operational audit scope, not the complete bootstrapped application schema.
 
-In PhpStorm, select the **weather** database for the current development
-host, then execute each file independently. Start with query 00; it confirms
-the selected database and reports PostgreSQL version, user, and read-only mode.
-Its expected database name is `weather`, which must be adjusted if the
-deployment intentionally uses another database.
+## How to Run
 
-Prefer a SELECT-only database user or explicitly read-only transactions.
-The existing connection may report `transaction_read_only=off` even though
-these files contain SELECT statements only. Never run them against the
-administrative `postgres` database by mistake.
+Execute each SQL file independently, in numeric order, against the intended application database.
 
-## Large-dataset result limits
+Start with query 00 so the selected database, user, PostgreSQL version, and read-only state are visible before interpreting later results.
 
-**Use `LIMIT 1000` for any query that displays individual observation
-records (a SELECT-all-style preview).** Apply an explicit deterministic
-`ORDER BY` before `LIMIT`; use a selective date/request scope and indexed
-keys for efficient inspection. Never use an unrestricted `SELECT *` over
-`daily_climate_detail` as the campaign grows to millions of rows.
+Prefer a SELECT-only database user or an explicitly read-only transaction.
 
-**Do not limit the input rows of aggregate or integrity checks.** Partition
-counts, duplicate detection, missing-day checks, load reconciliation and
-campaign totals must examine all relevant records so a problem after the first
-1,000 rows is not concealed. These six operational queries return compact
-summaries, rather than individual observations; a blanket `LIMIT 1000`
-on them would hide later partitions when the campaign grows.
+Never run the audit against the administrative `postgres` database by mistake.
 
-For any future detailed inspection query, use `ORDER BY ... LIMIT 1000`
-at the final result stage and document that the result is a **sample**, not
-a complete validation. Large aggregate checks should be reviewed with
-`EXPLAIN` and appropriate indexes as data volume increases.
+## Result Limits
 
-## Output interpretation
+Use `ORDER BY ... LIMIT 1000` when displaying individual observation records.
 
-- `PASS`: the query's stated invariant holds in its declared scope.
-- `FAIL`: the query found an explicit integrity mismatch.
-- `INFO`: a descriptive result, not proof of correctness.
-- `NOT_EVALUATED`: evidence is absent or the batch is not yet complete.
+Do not limit the input rows of aggregate or integrity checks. Counts, duplicate checks, missing-day checks, campaign totals, and reconciliation must inspect the full relevant scope.
 
-The partition summary counts **observed** grid coordinates and must not demand
-all 1,505 possible coordinate pairs per day. Missing dates are checked,
-but scientific completeness and stable per-day grid membership require
-additional investigation if a problem is suspected.
+A limited detail query is a sample, not complete validation.
 
-The data quality report combines a few core checks into one row per partition:
-duplicate observation keys, missing local dates, UTC+7 offset/midnight
-violations and dates outside the declared request period. A PASS does not
-prove all scientific values are plausible or non-NULL.
+## Interpretation
 
-The load verification query checks the persisted rows, request metadata,
-period, transformed artifact path and SHA256 against operational progress.
-An incomplete or pending partition returns NOT_EVALUATED. This is not a
-filesystem checksum verification.
+- `PASS` — the declared invariant holds for the query scope;
+- `FAIL` — an explicit mismatch was found;
+- `INFO` — descriptive output only;
+- `NOT_EVALUATED` — required evidence is absent or incomplete.
 
-## SQL documentation rules
+A PASS does not prove every scientific value is plausible or non-null.
 
-Every SQL file begins with an English block comment containing **Title,
-Context, Purpose, Tables, Grain, Scope/parameters, Expected result,
-Interpretation, Limitations, Read-only**. SQL has no Python docstring syntax;
-this comment serves the equivalent documentation purpose.
+## Important Limitations
 
-All six files contain SELECT statements only and avoid hard-coded IDs and
-fixed observation counts. They do not create monthly tables, run EDA, or modify
-Airflow or climate observations.
+Partition summaries count observed grid coordinates and must not assume that every theoretical coordinate pair exists every day.
 
-## Source definitions
+Load verification checks database metadata and recorded artifact identity; it does not independently recompute filesystem checksums.
 
-The audit maps to root `database/climate.py` and `database/schema.py`,
-`pipeline/loaders/daily_climate_postgres.py`,
-`orchestration/repositories/pipeline_progress.py`, and
-`orchestration/repositories/submission_pacing.py` on branch `dev`.
+Query 06 is intentionally scoped to its recorded pilot request. An empty result means that request is absent, not that the check passed.
 
-The operator previously confirmed nine persisted monthly partitions for
-January–September 2016 and a healthy UTC+7 offset check. **The four newly
-consolidated files have not yet been executed against the database**; their
-results should be reviewed before closing the verification checklist.
+## SQL Documentation Rules
 
-The P2 pilot query (06) is deliberately scoped to the recorded request key and returns three daily rows with NULL counts. An empty result means that the specified request key is missing; it does not mean PASS. It does not replace a fresh-database bootstrap check or independent Airflow-state verification.
+Every SQL file begins with an English block comment documenting:
+
+- Title
+- Context
+- Purpose
+- Tables
+- Grain
+- Scope/parameters
+- Expected result
+- Interpretation
+- Limitations
+- Read-only status
+
+All seven audit files are SELECT-only and must not modify Airflow state, application tables, or climate observations.

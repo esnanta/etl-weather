@@ -44,9 +44,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128),
-                boundary_geometry climate_data.geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_province_geom_valid CHECK (climate_data.ST_IsValid(boundary_geometry)),
-                CONSTRAINT ck_province_geom_nonempty CHECK (NOT climate_data.ST_IsEmpty(boundary_geometry)),
+                boundary_geometry {schema}.geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_province_geom_valid CHECK ({schema}.ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_province_geom_nonempty CHECK (NOT {schema}.ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_province_country_name UNIQUE (country_code, province_name),
                 CONSTRAINT uq_province_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref)
@@ -61,9 +61,9 @@ def create_spatial_tables(
                 source_dataset VARCHAR(128) NOT NULL,
                 source_version VARCHAR(128) NOT NULL,
                 source_feature_ref VARCHAR(128) NOT NULL,
-                boundary_geometry climate_data.geometry(MultiPolygonZ, 4326) NOT NULL,
-                CONSTRAINT ck_district_geom_valid CHECK (climate_data.ST_IsValid(boundary_geometry)),
-                CONSTRAINT ck_district_geom_nonempty CHECK (NOT climate_data.ST_IsEmpty(boundary_geometry)),
+                boundary_geometry {schema}.geometry(MultiPolygonZ, 4326) NOT NULL,
+                CONSTRAINT ck_district_geom_valid CHECK ({schema}.ST_IsValid(boundary_geometry)),
+                CONSTRAINT ck_district_geom_nonempty CHECK (NOT {schema}.ST_IsEmpty(boundary_geometry)),
                 CONSTRAINT uq_district_province_name UNIQUE (province_id, district_name),
                 CONSTRAINT uq_district_source_feature UNIQUE
                     (source_dataset, source_version, source_feature_ref),
@@ -106,22 +106,22 @@ def create_spatial_tables(
             )
         """))
         for name, table in (
-            ("ix_t_province_geom", province),
-            ("ix_t_district_geom", district),
+            (f"ix_{PROVINCE_TABLE}_geom", province),
+            (f"ix_{DISTRICT_TABLE}_geom", district),
         ):
             connection.execute(text(
                 f"CREATE INDEX IF NOT EXISTS {name} ON {table} USING GIST (boundary_geometry)"
             ))
         connection.execute(text(
-            f"CREATE INDEX IF NOT EXISTS ix_t_district_province_id "
+            f"CREATE INDEX IF NOT EXISTS ix_{DISTRICT_TABLE}_province_id "
             f"ON {district} (province_id)"
         ))
         connection.execute(text(
-            f"CREATE INDEX IF NOT EXISTS ix_t_grid_region_district_id "
+            f"CREATE INDEX IF NOT EXISTS ix_{GRID_REGION_TABLE}_district_id "
             f"ON {grid} (district_id)"
         ))
         connection.execute(text(
-            f"CREATE INDEX IF NOT EXISTS ix_t_grid_region_province_id "
+            f"CREATE INDEX IF NOT EXISTS ix_{GRID_REGION_TABLE}_province_id "
             f"ON {grid} (province_id)"
         ))
 

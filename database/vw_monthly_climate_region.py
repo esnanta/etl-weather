@@ -15,7 +15,9 @@ _REQUIRED_MONTHLY_TABLES = (
     GRID_REGION_TABLE, PROVINCE_TABLE, DISTRICT_TABLE,
 )
 
-_MONTHLY_REGION_VIEW_QUERY = """CREATE OR REPLACE VIEW climate_data.vw_monthly_climate_region AS
+def _build_region_view_query() -> str:
+    """Build a region view from canonical configured PostgreSQL identifiers."""
+    return f"""CREATE OR REPLACE VIEW {APPLICATION_SCHEMA}.{MONTHLY_CLIMATE_REGION_VIEW} AS
 SELECT
     d.id AS monthly_climate_detail_id,
     d.monthly_climate_id,
@@ -40,15 +42,20 @@ SELECT
     p.province_name,
     g.district_id,
     dist.district_name
-FROM climate_data.t_monthly_climate_detail AS d
-JOIN climate_data.t_monthly_climate AS c
+FROM {APPLICATION_SCHEMA}.{MONTHLY_CLIMATE_DETAIL_TABLE} AS d
+JOIN {APPLICATION_SCHEMA}.{MONTHLY_CLIMATE_TABLE} AS c
     ON c.id = d.monthly_climate_id
-LEFT JOIN climate_data.t_grid_region AS g
+LEFT JOIN {APPLICATION_SCHEMA}.{GRID_REGION_TABLE} AS g
     ON g.latitude = d.latitude AND g.longitude = d.longitude
-LEFT JOIN climate_data.t_province AS p
+LEFT JOIN {APPLICATION_SCHEMA}.{PROVINCE_TABLE} AS p
     ON p.id = g.province_id
-LEFT JOIN climate_data.t_district AS dist
+LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} AS dist
     ON dist.id = g.district_id"""
+
+
+# Default-name SQL snapshot retained for existing read-only contract tests.
+# Runtime creation rebuilds SQL from current configured identifiers.
+_MONTHLY_REGION_VIEW_QUERY = _build_region_view_query()
 
 
 def create_monthly_region_view(engine: Engine) -> None:
@@ -63,8 +70,8 @@ def create_monthly_region_view(engine: Engine) -> None:
         ]
         if missing:
             raise RuntimeError("Monthly region view requires tables: " + ", ".join(missing))
-        conn.execute(text(_MONTHLY_REGION_VIEW_QUERY))
+        conn.execute(text(_build_region_view_query()))
         conn.execute(text(
             f"COMMENT ON VIEW {APPLICATION_SCHEMA}.{MONTHLY_CLIMATE_REGION_VIEW} IS "
-            "'Prospective monthly point-to-region read-only view; monthly aggregation not implemented.'"
+            "'Prospective monthly point-to-region read-only view; monthly data is loaded separately from daily ETL.'"
         ))

@@ -45,10 +45,10 @@ candidates AS (
     SELECT p.latitude, p.longitude, d.id AS district_id, d.province_id
     FROM points p
     LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} d
-      ON climate_data.ST_Covers(
+      ON {APPLICATION_SCHEMA}.ST_Covers(
           d.boundary_geometry,
-          climate_data.ST_SetSRID(
-              climate_data.ST_MakePoint(p.longitude, p.latitude), 4326
+          {APPLICATION_SCHEMA}.ST_SetSRID(
+              {APPLICATION_SCHEMA}.ST_MakePoint(p.longitude, p.latitude), 4326
           )
       )
 ),
@@ -101,10 +101,10 @@ candidates AS (
     SELECT p.latitude, p.longitude, d.id AS district_id
     FROM points p
     LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} d
-      ON climate_data.ST_Covers(
+      ON {APPLICATION_SCHEMA}.ST_Covers(
           d.boundary_geometry,
-          climate_data.ST_SetSRID(
-              climate_data.ST_MakePoint(p.longitude, p.latitude), 4326
+          {APPLICATION_SCHEMA}.ST_SetSRID(
+              {APPLICATION_SCHEMA}.ST_MakePoint(p.longitude, p.latitude), 4326
           )
       )
 ),
