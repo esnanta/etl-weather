@@ -61,6 +61,11 @@ LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} AS dist
     ON dist.id = g.district_id"""
 
 
+# Default-name SQL snapshot retained for existing read-only contract tests.
+# Runtime creation rebuilds SQL from current configured identifiers.
+_DAILY_REGION_VIEW_QUERY = _build_region_view_query()
+
+
 def create_daily_region_view(engine: Engine) -> None:
     """Create or replace the read-only daily region interpretation in place."""
     with engine.begin() as connection:
