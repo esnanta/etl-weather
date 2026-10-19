@@ -125,12 +125,12 @@ Root README should therefore answer “what single command should I normally run
 
 ### Phase 2 — Define content boundaries
 
-- [ ] Build a section ownership matrix before editing.
-- [ ] Identify duplicate explanations across root and domain READMEs.
-- [ ] Keep one canonical detailed explanation in the relevant domain README.
-- [ ] Replace duplicate root detail with a short summary plus link.
-- [ ] Preserve important warnings and operational decisions; shortening must not remove safety constraints.
-- [ ] Keep experimental/unverified features explicitly labelled.
+- [x] Build a section ownership matrix before editing.
+- [x] Identify duplicate explanations across root and domain READMEs.
+- [x] Keep one canonical detailed explanation in the relevant domain README.
+- [x] Replace duplicate root detail with a short summary plus link.
+- [x] Preserve important warnings and operational decisions; shortening must not remove safety constraints.
+- [x] Keep experimental/unverified features explicitly labelled.
 
 ### Phase 3 — Refactor `/README.md`
 
@@ -482,3 +482,264 @@ Primary issues to carry into Phase 2:
 7. domain READMEs contain dated verification/history material that should be separated from durable operating documentation;
 8. Python script invocation style should be made consistent where practical;
 9. CLI documentation should prefer combined one-step workflows (for example `database.setup`, `database.bootstrap`, `reset_all`, or `destroy_all`) and demote granular commands to secondary/troubleshooting references.
+
+
+## Phase 2 content-boundary decisions
+
+Phase 2 defines documentation ownership before any README is edited.
+
+### Canonical ownership matrix
+
+| Topic | Canonical location | Root README treatment |
+| --- | --- | --- |
+| Project purpose and scope | `/README.md` | Full concise summary |
+| Active ERA5-Land dataset | `/README.md` | Keep |
+| Variables and daily outputs | `/README.md` | Keep |
+| UTC+7 local-day semantics | `/README.md` | Keep |
+| High-level architecture | `/README.md` | Keep |
+| Project structure | `/README.md` | Keep |
+| Environment prerequisites | `/README.md` | Keep |
+| Installation/setup path | `/README.md` | Keep concise |
+| Main CLI entry points | `/README.md` | Keep as compact goal-oriented command index |
+| Detailed pipeline internals | code + existing design docs | Root keeps only high-level scientific/runtime summary; no new `pipeline/README.md` in this refactor |
+| Database initialization workflow | `/README.md` for primary commands; implementation details in code/domain docs | Root shows combined commands first |
+| PostGIS lifecycle and spatial schema contract | `/geospatial/README.md` | One short prerequisite/setup summary + link |
+| Administrative boundary source/import | `/geospatial/README.md` | Mention only as domain capability |
+| Grid-to-region mapping | `/geospatial/README.md` | Mention capability + primary CLI |
+| Regional views and spatial interpretation | `/geospatial/README.md` | Link only / very short summary |
+| Airflow installation/runtime setup | `/orchestration/README.md` | Root shows only minimum normal-use commands |
+| Scheduled/manual mode contract | `/orchestration/README.md` | One-sentence summary + link |
+| CDS pacing/concurrency | `/orchestration/README.md` | Link only |
+| Retry/deferral/recovery | `/orchestration/README.md` | Link only |
+| Campaign progress/reconciliation | `/orchestration/README.md` | Root may expose report CLI only |
+| Airflow observability/capacity | `/orchestration/README.md` | Root may expose concise report/inspection CLI |
+| Test organization and policy | `/tests/README.md` | Root keeps only quick-start commands |
+| Test isolation and fixture rules | `tests/README.md` + `tests/AGENTS.md` | Link only |
+| SQL audit catalog | `/query/README.md` | Root gives one-line purpose + link |
+| SQL PASS/FAIL/INFO interpretation | `/query/README.md` | Link only |
+| Destructive maintenance behavior | `/orchestration/README.md` for detail | Root keeps compact commands + explicit safety warning |
+| Historical pass counts/screenshots/operator evidence | not canonical README content | Remove unless still required to explain a current contract |
+| Experimental monthly aggregation | root for visibility + relevant domain notes | Must remain explicitly labelled experimental/unverified |
+
+### Duplication policy
+
+Allowed duplication:
+- primary CLI commands may appear in root and a domain README;
+- short safety warnings may appear in both places when omission would make a command unsafe;
+- one-sentence domain summaries may repeat terminology from domain README.
+
+Not allowed:
+- repeated multi-paragraph explanations;
+- repeated architecture descriptions with different wording;
+- duplicate historical verification narratives;
+- duplicate detailed setup alternatives in root and domain docs;
+- multiple equivalent CLI forms for the same normal workflow.
+
+Rule:
+> One detailed explanation, one canonical owner. Root points to it.
+
+### Root README boundary
+
+Root README must remain self-sufficient for a new operator to:
+1. understand what the project does;
+2. install/configure the environment;
+3. understand the active dataset and scientific daily outputs;
+4. see the architecture and project structure;
+5. execute the normal end-to-end workflows;
+6. find the correct deeper domain README.
+
+Root README must **not** become:
+- a full Airflow operations manual;
+- a full PostGIS deployment manual;
+- a full testing policy document;
+- a full SQL audit reference;
+- a chronological project-status log.
+
+### Root CLI boundary
+
+The root CLI section will be organized by user goal and should prefer one-step commands.
+
+#### Primary commands to keep in root
+
+Environment:
+```bash
+source activate-airflow.sh -q
+```
+
+Database preparation:
+```bash
+python -m database.setup
+python -m database.setup --execute
+```
+
+Existing-database schema initialization:
+```bash
+python -m database.bootstrap
+python -m database.bootstrap --execute
+```
+
+Daily ETL:
+```bash
+python -m scripts.run_pipeline
+```
+
+Experimental monthly aggregation:
+```bash
+python -m scripts.run_monthly_climate --month YYYY-MM
+```
+
+Geospatial:
+```bash
+python -m geospatial.importers.districts --execute
+python -m geospatial.mapping --execute
+```
+
+Airflow normal operation:
+```bash
+airflow standalone
+airflow dags trigger cds-era5-land --conf '{"start_date":"YYYY-MM-01","end_date":"YYYY-MM-DD"}'
+airflow dags list-runs cds-era5-land
+```
+
+Operational inspection:
+```bash
+python -m scripts.report_campaign_progress
+python -m scripts.inspect_campaign_capacity
+```
+
+Testing:
+```bash
+python -m pytest tests/unit -q
+python -m pytest tests/integration -q
+```
+
+Destructive development maintenance:
+```bash
+python -m scripts.reset_all
+python -m scripts.reset_all --execute
+
+python -m scripts.destroy_all
+python -m scripts.destroy_all --execute
+```
+
+These commands are candidates for the final compact root command reference. Phase 3 may compress preview/execute pairs further where readability permits.
+
+#### Secondary commands excluded from the root primary path
+
+These remain documented only where they are operationally useful:
+- `python -m database.climate`;
+- `python -m database.geospatial`;
+- `python -m scripts.reset_data`;
+- `python -m scripts.reset_airflow_logs`;
+- `python -m scripts.reset_airflow_runtime`;
+- `python -m scripts.recreate_postgres_database`;
+- focused test-domain commands;
+- lower-level SQL execution details;
+- Airflow recovery commands used only for troubleshooting.
+
+### Orchestration README boundary
+
+Keep:
+- Airflow-specific setup after base project installation;
+- DAG identity and task flow;
+- scheduled/manual contract;
+- scheduling/timing policy;
+- CDS pacing and concurrency;
+- mapped month start slots;
+- retries and deferrals;
+- progress/reconciliation;
+- trigger/status/recovery;
+- observability;
+- Airflow-specific maintenance and reset behavior;
+- important current operational decisions.
+
+Remove/condense:
+- generic Python/environment setup already owned by root;
+- generic scientific pipeline explanation;
+- generic PostgreSQL/PostGIS setup;
+- repeated test command catalog;
+- dated acceptance/pass-count narrative unless it encodes a still-current operational contract.
+
+### Geospatial README boundary
+
+Keep:
+- PostGIS requirements and extension-schema contract;
+- immutable administrative boundary source;
+- spatial bootstrap behavior;
+- district import;
+- grid-to-region mapping;
+- matched/unmatched/ambiguous semantics;
+- regional views;
+- static SQL identifier caveat;
+- spatial verification procedures;
+- geospatial-specific integration-test prerequisites.
+
+Remove/condense:
+- generic root environment setup;
+- generic daily ETL explanation;
+- historical screenshots/pass counts/operator reports;
+- duplicate database setup paths when a combined root command already exists.
+
+### Tests README boundary
+
+Keep:
+- actual test tree;
+- domain definitions;
+- unit vs integration responsibilities;
+- isolation rules;
+- what each suite protects;
+- canonical test commands;
+- test style;
+- definition of done.
+
+Correct during Phase 4:
+- add unit `database`;
+- add unit `geospatial`;
+- add integration `geospatial`.
+
+Avoid:
+- repeating project installation;
+- repeating Airflow operational instructions;
+- historical numeric pass-count baselines.
+
+### Query README boundary
+
+Keep:
+- exact seven-file catalog;
+- execution order;
+- read-only safety;
+- large-result policy;
+- PASS/FAIL/INFO/NOT_EVALUATED meaning;
+- limitations;
+- SQL documentation rules.
+
+Correct terminology:
+- query 01 currently audits five **core daily/operational tables**;
+- do not describe those five as the complete application schema.
+
+Remove/condense:
+- historical operator acceptance narrative;
+- project-status commentary that does not help execute or interpret the SQL.
+
+### Safety and status-label policy
+
+Safety text that must survive shortening:
+- `APP_ENV=dev` restrictions on destructive operations;
+- preview-before-`--execute` behavior;
+- dedicated `TEST_POSTGRES_*` requirement for integration tests;
+- PostGIS wrong-schema refusal;
+- `destroy_all` clean-slate semantics and confirmation;
+- monthly aggregation remains experimental/unverified;
+- SQL audit is read-only and must target the intended database.
+
+### Phase 2 conclusion
+
+Phase 2 is complete. Documentation ownership is now fixed before editing begins.
+
+Phase 3 must follow these rules:
+1. root is the project overview and command-discovery page;
+2. root keeps the scientific contract needed to understand daily outputs;
+3. root CLI is compact and goal-oriented;
+4. detailed domain behavior has one canonical README owner;
+5. historical status/evidence is removed from durable README content unless still operationally necessary;
+6. safety constraints and experimental labels are never removed for brevity.
