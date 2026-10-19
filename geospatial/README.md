@@ -94,3 +94,10 @@ ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/integration/geospati
 ## Prospective monthly climate region view
 
 The climate bootstrap now creates empty `climate_data.t_monthly_climate` and `climate_data.t_monthly_climate_detail` parent/detail tables, and geospatial bootstrap creates `climate_data.vw_monthly_climate_region` after spatial tables. The monthly view uses coordinate-based LEFT JOINs to preserve unmatched or not-yet-mapped monthly observations. These objects were initially deployed without a loader. A separate experimental monthly aggregation/write CLI now exists at `scripts/run_monthly_climate.py`, but its scientific completeness policy and PostgreSQL writes require isolated integration tests and acceptance before use against `weather`. Run `python -m database.bootstrap --execute` after review to apply all objects, or run `python -m database.climate --execute` followed by `python -m database.geospatial --execute`. Both are additive and do not reset existing daily observations. Run `source activate-airflow.sh -q` before commands.
+
+
+## PostgreSQL identifier configuration
+
+Runtime schema and table/view names originate in `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`, and their derived constants). The Python spatial DDL, administrative importer, mapping, and region view builders use these identifiers. PostGIS functions/types are schema-qualified using `APPLICATION_SCHEMA`.
+
+The files under `geospatial/sql/` are **static operator examples** written for the default `climate_data.t_*` and `climate_data.vw_*` names. They are not dynamically reconfigured by Python: review and adapt them before executing with alternate identifiers. Changing names on an existing PostgreSQL database requires a coordinated migration and revalidation; changing config values alone never renames stored objects.
