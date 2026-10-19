@@ -756,13 +756,16 @@ Key outcomes:
 - added direct links to orchestration, geospatial, query, and tests READMEs;
 - removed detailed Airflow, PostGIS, test-policy, and SQL-audit narrative from root;
 - corrected database bootstrap wording to 7 climate/operational + 3 geospatial tables + 2 regional views;
-- replaced the broad CLI catalog with four compact user-goal groups:
+- replaced the broad CLI catalog with six compact user-goal groups:
   1. setup database;
   2. run pipeline manually;
   3. import geospatial data;
   4. testing;
+  5. reset development state;
+  6. destroy development state;
 - manual pipeline documentation now explicitly states that its date range comes from `STANDALONE_PIPELINE_START_DATE` and `STANDALONE_PIPELINE_END_DATE` in environment configuration;
 - geospatial source location is explicitly documented as `geospatial/sources/id/districts/`;
-- experimental monthly aggregation remains visible but clearly separated from the active daily ETL.
+- experimental monthly aggregation remains visible but clearly separated from the active daily ETL;
+- Reset and destroy are documented separately: reset is for a controlled rebuild after Airflow is already stopped, while destroy is for an intentional clean slate that can stop recognized Airflow processes and performs final clean-state verification.
 
 No application code, SQL, configuration, or domain README was changed during Phase 3.
