@@ -175,14 +175,14 @@ Root README should therefore answer “what single command should I normally run
 
 ### Phase 5 — Consistency review
 
-- [ ] Search all README files for duplicated paragraphs after refactor.
-- [ ] Verify command names against actual modules/scripts.
-- [ ] Verify DAG ID and task terminology against current code.
-- [ ] Verify table/view names and schema references against `database/config.py`.
-- [ ] Verify current bounding box, variables, UTC+7 semantics, and artifact paths.
-- [ ] Verify all relative documentation links.
-- [ ] Ensure no README contradicts `AGENTS.md` or domain-specific `AGENTS.md`.
-- [ ] Ensure root README remains readable without requiring users to open every domain README.
+- [x] Search all README files for duplicated paragraphs after refactor.
+- [x] Verify command names against actual modules/scripts.
+- [x] Verify DAG ID and task terminology against current code.
+- [x] Verify table/view names and schema references against `database/config.py`.
+- [x] Verify current bounding box, variables, UTC+7 semantics, and artifact paths.
+- [x] Verify all relative documentation links.
+- [x] Ensure no README contradicts `AGENTS.md` or domain-specific `AGENTS.md`.
+- [x] Ensure root README remains readable without requiring users to open every domain README.
 
 ### Phase 6 — Validation
 
@@ -517,7 +517,7 @@ Phase 2 defines documentation ownership before any README is edited.
 | Test isolation and fixture rules | `tests/README.md` + `tests/AGENTS.md` | Link only |
 | SQL audit catalog | `/query/README.md` | Root gives one-line purpose + link |
 | SQL PASS/FAIL/INFO interpretation | `/query/README.md` | Link only |
-| Destructive maintenance behavior | `/orchestration/README.md` for detail | Root keeps compact commands + explicit safety warning |
+| Destructive maintenance behavior | `/README.md` | Root keeps reset and destroy as separate compact commands with explicit safety/context; orchestration README does not duplicate them |
 | Historical pass counts/screenshots/operator evidence | not canonical README content | Remove unless still required to explain a current contract |
 | Experimental monthly aggregation | root for visibility + relevant domain notes | Must remain explicitly labelled experimental/unverified |
 
@@ -650,7 +650,6 @@ Keep:
 - progress/reconciliation;
 - trigger/status/recovery;
 - observability;
-- Airflow-specific maintenance and reset behavior;
 - important current operational decisions.
 
 Remove/condense:
@@ -782,7 +781,7 @@ Updated:
 - `/query/README.md`
 
 Key outcomes:
-- orchestration README now contains only durable Airflow setup, DAG/mode/timing/pacing, retry, progress, recovery, reset/destroy, and observability contracts;
+- orchestration README now contains only durable Airflow setup, DAG/mode/timing/pacing, retry, progress, recovery, and observability contracts;
 - historical scheduling acceptance/pass-count narrative was removed from orchestration README;
 - geospatial README now focuses on PostGIS, immutable source data, import, mapping, regional views, SQL references, and verification;
 - historical screenshots/pass counts/operator evidence were removed from geospatial README;
@@ -790,6 +789,32 @@ Key outcomes:
 - query README still documents exactly seven read-only checks and now describes query 01 as the five core daily/operational audit tables rather than the complete application schema;
 - all four domain READMEs link back to the root README where appropriate;
 - Python project commands use the canonical `python -m ...` style where applicable;
-- safety rules for `TEST_POSTGRES_*`, PostGIS schema placement, reset, destroy, and experimental monthly aggregation remain explicit.
+- safety rules for `TEST_POSTGRES_*`, PostGIS schema placement, and experimental monthly aggregation remain explicit; reset/destroy usage is canonical in the root README only.
 
 No application code, SQL, configuration, or pipeline behavior was changed during Phase 4.
+
+
+## Phase 5 consistency review result
+
+Phase 5 completed on 2026-10-19.
+
+Corrections applied during consistency review:
+- removed Reset and Destroy sections from `orchestration/README.md`; their canonical user documentation now exists only in root `README.md`;
+- removed root wording that delegated reset/destroy maintenance details back to orchestration;
+- corrected standalone pipeline environment names from stale `STANDALONE_PIPELINE_START_DATE` / `STANDALONE_PIPELINE_END_DATE` to the actual `PIPELINE_START_DATE` / `PIPELINE_END_DATE` used by `config.py`, `env-example`, and `pipeline/requests/factory.py`;
+- corrected the manual pipeline description: the configured inclusive period does **not** have to be a complete month; `pipeline.runtime.run_monthly_batch` splits valid ranges at calendar-month boundaries.
+
+Consistency checks:
+- active DAG ID matches code: `cds-era5-land`;
+- DAG source filename matches: `orchestration/dags/cds_era5_land_etl.py`;
+- task-flow terminology matches the current DAG, including `build_monthly_requests`, mapped `monthly_etl`, RAW checkpoint attempt/resolution, transformed checkpoint, and load;
+- database schema/prefix/view identifiers are consistent with `database/config.py`: `climate_data`, `t_`, `vw_`;
+- active variables match `config.py`: `tp, t2m, swvl1, ssrd, d2m`;
+- current Aceh bbox references do not contain the deprecated coordinates; artifact path remains `bbox_n6p1_w94p9_s1p9_e98p3`;
+- UTC+7 daily semantics remain consistent with the project configuration `Asia/Jakarta`;
+- all relative Markdown links in the five README files resolve to current files;
+- no exact long-form paragraphs are duplicated across README files after the refactor;
+- no README conflicts were found with root `AGENTS.md` or `tests/AGENTS.md`;
+- root README remains self-contained for setup, primary execution, geospatial import, testing, reset, and destroy while domain READMEs hold deeper operational detail.
+
+No application code, SQL, or configuration was changed during Phase 5.
