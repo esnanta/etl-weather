@@ -57,7 +57,7 @@ pip check
 Copy `env-example` to `.env` and configure the required values:
 
 ```env
-APP_ENV=dev
+APP_ENV=dev # or prod
 
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
