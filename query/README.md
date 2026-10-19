@@ -38,7 +38,7 @@ keys for efficient inspection. Never use an unrestricted `SELECT *` over
 **Do not limit the input rows of aggregate or integrity checks.** Partition
 counts, duplicate detection, missing-day checks, load reconciliation and
 campaign totals must examine all relevant records so a problem after the first
-1,000 rows is not concealed. These six operational queries return compact
+1,000 rows is not concealed. These seven operational queries return compact
 summaries, rather than individual observations; a blanket `LIMIT 1000`
 on them would hide later partitions when the campaign grows.
 
@@ -76,7 +76,7 @@ Context, Purpose, Tables, Grain, Scope/parameters, Expected result,
 Interpretation, Limitations, Read-only**. SQL has no Python docstring syntax;
 this comment serves the equivalent documentation purpose.
 
-All six files contain SELECT statements only and avoid hard-coded IDs and
+All seven files contain SELECT statements only and avoid hard-coded IDs and
 fixed observation counts. They do not create monthly tables, run EDA, or modify
 Airflow or climate observations.
 
@@ -88,8 +88,7 @@ The audit maps to root `database/climate.py` and `database/schema.py`,
 `orchestration/repositories/submission_pacing.py` on branch `dev`.
 
 The operator previously confirmed nine persisted monthly partitions for
-January–September 2016 and a healthy UTC+7 offset check. **The four newly
-consolidated files have not yet been executed against the database**; their
+January–September 2016 and a healthy UTC+7 offset check. **The consolidated query outputs have not been attached to this P6 acceptance record**; their
 results should be reviewed before closing the verification checklist.
 
 The P2 pilot query (06) is deliberately scoped to the recorded request key and returns three daily rows with NULL counts. An empty result means that the specified request key is missing; it does not mean PASS. It does not replace a fresh-database bootstrap check or independent Airflow-state verification.
