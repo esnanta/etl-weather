@@ -149,29 +149,29 @@ Root README should therefore answer “what single command should I normally run
 ### Phase 4 — Refactor domain READMEs
 
 #### `/orchestration/README.md`
-- [ ] Keep only Airflow/orchestration content.
-- [ ] Preserve important decisions: manual vs scheduled behavior, monthly mapping, pacing, deferral/retry, progress/reconciliation, concurrency, recovery, and runtime state.
-- [ ] Remove project-wide setup or pipeline scientific explanation unless required to explain an orchestration boundary.
-- [ ] Link back to root for common setup/CLI overview.
+- [x] Keep only Airflow/orchestration content.
+- [x] Preserve important decisions: manual vs scheduled behavior, monthly mapping, pacing, deferral/retry, progress/reconciliation, concurrency, recovery, and runtime state.
+- [x] Remove project-wide setup or pipeline scientific explanation unless required to explain an orchestration boundary.
+- [x] Link back to root for common setup/CLI overview.
 
 #### `/geospatial/README.md`
-- [ ] Keep only geospatial/PostGIS content.
-- [ ] Preserve immutable boundary-source rules, PostGIS schema contract, import, mapping, views, validation, and regional-query interpretation.
-- [ ] Remove generic project/environment material duplicated in root.
+- [x] Keep only geospatial/PostGIS content.
+- [x] Preserve immutable boundary-source rules, PostGIS schema contract, import, mapping, views, validation, and regional-query interpretation.
+- [x] Remove generic project/environment material duplicated in root.
 - [ ] Link back to root for common setup/CLI overview.
 
 #### `/tests/README.md`
-- [ ] Keep only testing organization, isolation, execution, and testing policy.
-- [ ] Update the test tree to match the current repository.
-- [ ] Avoid duplicating setup commands already documented in root except the minimal activation/test commands required for usability.
-- [ ] Link to orchestration/geospatial READMEs only where domain-specific test prerequisites require it.
+- [x] Keep only testing organization, isolation, execution, and testing policy.
+- [x] Update the test tree to match the current repository.
+- [x] Avoid duplicating setup commands already documented in root except the minimal activation/test commands required for usability.
+- [x] Link to orchestration/geospatial READMEs only where domain-specific test prerequisites require it.
 
 #### `/query/README.md`
-- [ ] Keep only operational SQL audit documentation.
-- [ ] Verify the query inventory against current files before preserving counts such as “seven checks”.
-- [ ] Keep read-only safety, ordering, result-limit rules, and PASS/FAIL/INFO interpretation.
-- [ ] Remove historical acceptance narrative if it no longer helps operate the query catalog.
-- [ ] Link back to root for database setup.
+- [x] Keep only operational SQL audit documentation.
+- [x] Verify the query inventory against current files before preserving counts such as “seven checks”.
+- [x] Keep read-only safety, ordering, result-limit rules, and PASS/FAIL/INFO interpretation.
+- [x] Remove historical acceptance narrative if it no longer helps operate the query catalog.
+- [x] Link back to root for database setup.
 
 ### Phase 5 — Consistency review
 
@@ -769,3 +769,27 @@ Key outcomes:
 - Reset and destroy are documented separately: reset is for a controlled rebuild after Airflow is already stopped, while destroy is for an intentional clean slate that can stop recognized Airflow processes and performs final clean-state verification.
 
 No application code, SQL, configuration, or domain README was changed during Phase 3.
+
+
+## Phase 4 domain README refactor result
+
+Phase 4 completed on 2026-10-19.
+
+Updated:
+- `/orchestration/README.md`
+- `/geospatial/README.md`
+- `/tests/README.md`
+- `/query/README.md`
+
+Key outcomes:
+- orchestration README now contains only durable Airflow setup, DAG/mode/timing/pacing, retry, progress, recovery, reset/destroy, and observability contracts;
+- historical scheduling acceptance/pass-count narrative was removed from orchestration README;
+- geospatial README now focuses on PostGIS, immutable source data, import, mapping, regional views, SQL references, and verification;
+- historical screenshots/pass counts/operator evidence were removed from geospatial README;
+- tests README now reflects the actual unit domains `database`, `geospatial`, `operations`, `orchestration`, `pipeline` and integration domains `geospatial`, `orchestration`, `pipeline`;
+- query README still documents exactly seven read-only checks and now describes query 01 as the five core daily/operational audit tables rather than the complete application schema;
+- all four domain READMEs link back to the root README where appropriate;
+- Python project commands use the canonical `python -m ...` style where applicable;
+- safety rules for `TEST_POSTGRES_*`, PostGIS schema placement, reset, destroy, and experimental monthly aggregation remain explicit.
+
+No application code, SQL, configuration, or pipeline behavior was changed during Phase 4.
