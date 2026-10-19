@@ -62,8 +62,8 @@ APP_ENV=dev
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
 
-STANDALONE_PIPELINE_START_DATE=2024-01-01
-STANDALONE_PIPELINE_END_DATE=2024-01-31
+PIPELINE_START_DATE=2024-01-01
+PIPELINE_END_DATE=2024-01-31
 
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
@@ -211,11 +211,11 @@ python -m scripts.run_pipeline
 The manual pipeline does not take start/end dates as CLI arguments. Its request period comes from the environment configuration:
 
 ```env
-STANDALONE_PIPELINE_START_DATE=2024-01-01
-STANDALONE_PIPELINE_END_DATE=2024-01-31
+PIPELINE_START_DATE=2024-01-01
+PIPELINE_END_DATE=2024-01-31
 ```
 
-The configured period must represent complete calendar-month request partitions. Existing valid RAW and transformed checkpoints are validated and reused when possible.
+The configured inclusive period may cover part of one month or span multiple months. The runtime splits it at calendar-month boundaries before processing. Existing valid RAW and transformed checkpoints are validated and reused when possible.
 
 ### 3. Import Geospatial Data
 
@@ -291,7 +291,6 @@ Destroy is also restricted to `APP_ENV=dev`, requires typing the exact confirmat
 
 Use destroy only when you intentionally want to discard the current local development runtime and generated data. Project source code, `.env`, `orchestration/airflow.cfg`, and the Airflow JWT key are preserved.
 
-For lower-level maintenance and recovery details, see [orchestration/README.md](./orchestration/README.md).
 
 ## Data Layout
 
@@ -325,7 +324,7 @@ Apache Airflow provides scheduled and manual orchestration around the existing E
 cds-era5-land
 ```
 
-Airflow-specific setup, scheduling, pacing, progress, retries, recovery, observability, and maintenance are documented in [orchestration/README.md](./orchestration/README.md).
+Airflow-specific setup, scheduling, pacing, progress, retries, recovery, and observability are documented in [orchestration/README.md](./orchestration/README.md).
 
 ## Geospatial
 
