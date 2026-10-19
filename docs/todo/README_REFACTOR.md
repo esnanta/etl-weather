@@ -9,6 +9,9 @@ Status: planning only — README content has not been refactored yet.
 Refactor project README files so documentation has a clear hierarchy:
 
 - `/README.md` is the project entry point.
+- Root README contains Prerequisites, installation, setup (example env-example), and CLI commands for all domains.
+- Root README summarizes each domain and links to its own README for deeper documentation.
+- Root README keeps ## Active Dataset, Variables and Daily Outputs, Local-Day Time Semantics, Project Structure and ## Architecture Overview sections.
 - Root README gives a concise overview of every major domain.
 - Root README keeps the important CLI commands users need for setup, execution, verification, testing, and operations.
 - Domain README files explain only their own domain, including important domain-specific decisions and operational details.
