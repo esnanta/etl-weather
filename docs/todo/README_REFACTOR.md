@@ -90,6 +90,22 @@ CLI groups to retain in root:
 
 Root CLI descriptions should be brief. Domain-specific explanation belongs in the linked README.
 
+### CLI compactness rule
+
+CLI documentation should optimize for the fewest practical commands.
+
+- Prefer one command that performs the complete common workflow over several granular commands.
+- When a combined command exists, document it as the primary/default path.
+- Example: prefer `python -m database.setup --execute` when the intended task is to prepare the configured development and test databases end-to-end, instead of presenting separate climate/geospatial/bootstrap commands as equal first-class steps.
+- Prefer `python -m database.bootstrap --execute` when the target database already exists and the goal is to initialize the complete application schema in one step.
+- Keep granular commands such as `database.climate` and `database.geospatial` as secondary references only for partial initialization, diagnostics, recovery, or domain-specific maintenance.
+- The same rule applies to reset/maintenance commands: prefer `reset_all` or `destroy_all` for the complete intended workflow; list individual reset commands only when they provide a meaningful partial-recovery use case.
+- Avoid documenting multiple equivalent invocation styles for the same task. Choose one canonical form.
+- A compact CLI section should group related commands by user goal, not by Python module.
+- Safety warnings for destructive commands must remain explicit even when the CLI section is compressed.
+
+Root README should therefore answer “what single command should I normally run?” first, and only then point to domain documentation for lower-level alternatives.
+
 ## Refactor steps
 
 ### Phase 1 — Audit
@@ -122,7 +138,7 @@ Root CLI descriptions should be brief. Domain-specific explanation belongs in th
 - [ ] Add a compact architecture/domain overview.
 - [ ] Summarize `pipeline/`, `database/`, `orchestration/`, `geospatial/`, `query/`, and `tests/`.
 - [ ] Add direct relative links to domain READMEs.
-- [ ] Consolidate all important CLI commands into one easy-to-scan command reference.
+- [ ] Consolidate important CLI commands into a compact, goal-oriented command reference that prefers combined one-step workflows over granular module-by-module commands.
 - [ ] Keep prerequisite/setup instructions concise.
 - [ ] Keep only the scientific rules needed to understand the pipeline at project level.
 - [ ] Remove detailed Airflow behavior now owned by `orchestration/README.md`.
@@ -464,4 +480,5 @@ Primary issues to carry into Phase 2:
 5. tests README structure is stale;
 6. query README/query 01 uses “five application tables” wording that no longer describes the complete bootstrapped schema;
 7. domain READMEs contain dated verification/history material that should be separated from durable operating documentation;
-8. Python script invocation style should be made consistent where practical.
+8. Python script invocation style should be made consistent where practical;
+9. CLI documentation should prefer combined one-step workflows (for example `database.setup`, `database.bootstrap`, `reset_all`, or `destroy_all`) and demote granular commands to secondary/troubleshooting references.
