@@ -21,7 +21,9 @@ _REQUIRED_TABLES = (
     PROVINCE_TABLE, DISTRICT_TABLE,
 )
 
-_DAILY_REGION_VIEW_QUERY = """CREATE OR REPLACE VIEW climate_data.vw_daily_climate_region AS
+def _build_region_view_query() -> str:
+    """Build a region view from canonical configured PostgreSQL identifiers."""
+    return f"""CREATE OR REPLACE VIEW {APPLICATION_SCHEMA}.{DAILY_CLIMATE_REGION_VIEW} AS
 SELECT
     d.id AS daily_climate_detail_id,
     d.daily_climate_id,
@@ -47,15 +49,15 @@ SELECT
     p.province_name,
     g.district_id,
     dist.district_name
-FROM climate_data.t_daily_climate_detail AS d
-JOIN climate_data.t_daily_climate AS c
+FROM {APPLICATION_SCHEMA}.{DAILY_CLIMATE_DETAIL_TABLE} AS d
+JOIN {APPLICATION_SCHEMA}.{DAILY_CLIMATE_TABLE} AS c
     ON c.id = d.daily_climate_id
-LEFT JOIN climate_data.t_grid_region AS g
+LEFT JOIN {APPLICATION_SCHEMA}.{GRID_REGION_TABLE} AS g
     ON g.latitude = d.latitude
    AND g.longitude = d.longitude
-LEFT JOIN climate_data.t_province AS p
+LEFT JOIN {APPLICATION_SCHEMA}.{PROVINCE_TABLE} AS p
     ON p.id = g.province_id
-LEFT JOIN climate_data.t_district AS dist
+LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} AS dist
     ON dist.id = g.district_id"""
 
 
@@ -76,7 +78,7 @@ def create_daily_region_view(engine: Engine) -> None:
                 + ". Run 'python -m database.climate --execute' first, "
                   "then rerun geospatial initialization."
             )
-        connection.execute(text(_DAILY_REGION_VIEW_QUERY))
+        connection.execute(text(_build_region_view_query()))
         connection.execute(text(
             f"COMMENT ON VIEW {APPLICATION_SCHEMA}.{DAILY_CLIMATE_REGION_VIEW} IS "
             "'Read-only point-to-region interpretation; unmatched observations remain; "
