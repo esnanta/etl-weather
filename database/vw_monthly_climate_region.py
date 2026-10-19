@@ -53,6 +53,11 @@ LEFT JOIN {APPLICATION_SCHEMA}.{DISTRICT_TABLE} AS dist
     ON dist.id = g.district_id"""
 
 
+# Default-name SQL snapshot retained for existing read-only contract tests.
+# Runtime creation rebuilds SQL from current configured identifiers.
+_MONTHLY_REGION_VIEW_QUERY = _build_region_view_query()
+
+
 def create_monthly_region_view(engine: Engine) -> None:
     """Create empty-until-populated monthly administrative view."""
     with engine.begin() as conn:
