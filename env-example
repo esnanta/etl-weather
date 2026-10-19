@@ -13,6 +13,12 @@
 # APP_ENV is required; invalid or empty values stop guarded startup/maintenance.
 APP_ENV=dev
 
+# Scheduled campaign switch.
+# false: manual DAG runs only; no automatic campaign tick.
+# true: enable the bounded historical campaign schedule.
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=true
+
+
 # CDS API connection.
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
@@ -48,8 +54,3 @@ PIPELINE_END_DATE=2022-01-03
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2016
-
-# Scheduled campaign switch.
-# false: manual DAG runs only; no automatic campaign tick.
-# true: enable the bounded historical campaign schedule.
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=true

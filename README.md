@@ -58,6 +58,7 @@ Copy `env-example` to `.env` and configure the required values:
 
 ```env
 APP_ENV=dev # or prod
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false # set to true to enable scheduled (airflow) runs
 
 CDSAPI_URL=https://cds.climate.copernicus.eu/api
 CDSAPI_KEY=YOUR_UID:YOUR_API_KEY
@@ -81,7 +82,6 @@ CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2025
 
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false # set to true to enable scheduled (airflow) runs
 ```
 Never commit your CDS API KEY or PostgreSQL credentials.
 
