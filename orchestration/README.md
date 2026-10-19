@@ -223,44 +223,6 @@ Campaign truth is distributed across:
 
 A paused DAG prevents new scheduled runs but does not stop already running or deferred tasks.
 
-## Reset
-
-Use reset when Airflow has already been fully stopped and the local development state should be rebuilt.
-
-Preview:
-
-```bash
-python -m scripts.reset_all
-```
-
-Execute:
-
-```bash
-python -m scripts.reset_all --execute
-```
-
-Reset is restricted to `APP_ENV=dev`. It recreates the configured development PostgreSQL database and clears generated data, Airflow logs, and Airflow runtime state. It refuses to proceed while Airflow remains active.
-
-## Destroy
-
-Use destroy for an intentional clean slate when recognized Airflow processes may still be running.
-
-Preview:
-
-```bash
-python -m scripts.destroy_all
-```
-
-Execute:
-
-```bash
-python -m scripts.destroy_all --execute
-```
-
-Destroy is restricted to `APP_ENV=dev`, requires typing exactly `DESTROY`, stops recognized Airflow processes, recreates the configured application database, clears generated data/log/runtime state, and verifies the final clean state.
-
-It preserves project source, `.env`, `orchestration/airflow.cfg`, `airflow-jwt-key.txt`, Git metadata, and the Python virtual environment.
-
 ## Testing
 
 For the canonical test commands and isolation rules, see [`tests/README.md`](../tests/README.md).
