@@ -63,7 +63,7 @@ def import_districts(
            source_feature_ref, boundary_geometry)
         VALUES (
           :country, :province, :dataset, :version, NULL,
-          climate_data.ST_SetSRID(climate_data.ST_GeomFromGeoJSON(:geometry), 4326)
+          {APPLICATION_SCHEMA}.ST_SetSRID({APPLICATION_SCHEMA}.ST_GeomFromGeoJSON(:geometry), 4326)
         )
         ON CONFLICT (country_code, province_name)
         DO UPDATE SET source_dataset = EXCLUDED.source_dataset,
@@ -74,7 +74,7 @@ def import_districts(
         UPDATE {APPLICATION_SCHEMA}.{PROVINCE_TABLE} p
         SET boundary_geometry = boundaries.boundary_geometry
         FROM (
-          SELECT climate_data.ST_Multi(climate_data.ST_UnaryUnion(climate_data.ST_Collect(d.boundary_geometry))) AS boundary_geometry
+          SELECT {APPLICATION_SCHEMA}.ST_Multi({APPLICATION_SCHEMA}.ST_UnaryUnion({APPLICATION_SCHEMA}.ST_Collect(d.boundary_geometry))) AS boundary_geometry
           FROM {APPLICATION_SCHEMA}.{DISTRICT_TABLE} d
           WHERE d.province_id = :province_id
         ) boundaries
@@ -87,7 +87,7 @@ def import_districts(
            source_feature_ref, boundary_geometry)
         VALUES (
           :province_id, :district, :dataset, :version, :ref,
-          climate_data.ST_SetSRID(climate_data.ST_GeomFromGeoJSON(:geometry), 4326)
+          {APPLICATION_SCHEMA}.ST_SetSRID({APPLICATION_SCHEMA}.ST_GeomFromGeoJSON(:geometry), 4326)
         )
         ON CONFLICT (source_dataset, source_version, source_feature_ref)
         DO UPDATE SET province_id = EXCLUDED.province_id,
