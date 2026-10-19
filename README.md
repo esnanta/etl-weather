@@ -155,6 +155,7 @@ etl-weather/
 ├── config.py
 ├── database/                 # PostgreSQL configuration, DDL, bootstrap, setup
 ├── pipeline/                 # extraction, validation, transformation, storage, loading
+│   └── README.md
 ├── orchestration/            # Apache Airflow orchestration
 │   └── README.md
 ├── geospatial/               # administrative boundaries and grid-to-region mapping
@@ -175,7 +176,7 @@ etl-weather/
 
 | Domain | Purpose | Documentation |
 | --- | --- | --- |
-| Pipeline | ERA5-Land extraction, validation, UTC+7 transformation, artifacts, loading | summarized in this README |
+| Pipeline | ERA5-Land extraction, validation, UTC+7 transformation, artifacts, loading | [pipeline/README.md](./pipeline/README.md) |
 | Database | PostgreSQL schema and initialization | summarized in this README |
 | Orchestration | Airflow scheduling, pacing, retries, progress, recovery | [orchestration/README.md](./orchestration/README.md) |
 | Geospatial | PostGIS, district import, grid-region mapping, regional views | [geospatial/README.md](./geospatial/README.md) |
