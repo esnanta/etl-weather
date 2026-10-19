@@ -81,7 +81,7 @@ CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
 CAMPAIGN_END_YEAR=2025
 
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false # set to true to enable scheduled runs
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false # set to true to enable scheduled (airflow) runs
 ```
 Never commit your CDS API KEY or PostgreSQL credentials.
 
