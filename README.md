@@ -26,7 +26,6 @@ Monthly climate aggregation exists as a separate experimental CLI and is not par
 - PostgreSQL 16
 - PostGIS 3 for geospatial tables and region mapping
 - CDS API credentials
-- A local or shared `data/` filesystem accessible to the pipeline and Airflow tasks
 
 On Ubuntu with PostgreSQL 16, install the matching PostGIS server package when needed:
 
