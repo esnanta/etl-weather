@@ -83,14 +83,13 @@ CAMPAIGN_END_YEAR=2025
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 ```
+Never commit your CDS API KEY or PostgreSQL credentials.
 
 Activate the project environment before running project commands:
 
 ```bash
 source activate-airflow.sh -q
 ```
-
-Never commit real CDS or PostgreSQL credentials.
 
 ## Variables and Daily Outputs
 
