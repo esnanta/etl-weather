@@ -1,56 +1,6 @@
 # ETL Weather
 
-ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations. It preserves reproducible NetCDF/Parquet artifacts and stores canonical daily observations in PostgreSQL. Monthly aggregation and loading are available only through a separate, currently unverified opt-in CLI; the daily pipeline does not populate monthly tables.
-
-The ETL pipeline can run directly from the command line or be coordinated by Apache Airflow. Airflow remains an orchestration layer; the scientific processing and persistence behavior stay in `pipeline/`.
-
-## Prerequisites
-
-- Python 3.12
-- PostgreSQL 16 for canonical climate observations; **PostGIS 3** extension is additionally required for administrative boundaries and spatial grid-to-region mapping (not required for the standalone climate ETL alone).
-- CDS API credentials
-- A single host, or a shared `data/` filesystem visible to every task worker
-
-## PostgreSQL and PostGIS
-
-PostGIS is an **extension installed into PostgreSQL**, not a separate database product. The existing climate ETL uses ordinary PostgreSQL tables and can run without the extension; the independent `geospatial/` component requires PostGIS for `geometry(MultiPolygonZ, 4326)`, spatial indexes, and point-in-polygon operations. The Airflow metadata database remains separate and is not involved in geospatial setup.
-
-On Ubuntu with a PostgreSQL 16 server, install the matching server-side package if needed:
-
-```bash
-sudo apt install postgresql-16-postgis-3 postgresql-16-postgis-3-scripts
-```
-
-Check package availability from a connection to the intended PostgreSQL server:
-
-```sql
-SELECT name, default_version, installed_version
-FROM pg_available_extensions
-WHERE name = 'postgis';
-```
-
-An available version with `installed_version IS NULL` means PostGIS is installed on the **server** but is not enabled in that **database**. Enable it only in the chosen database, with appropriate privileges and after confirming the target:
-
-```sql
-CREATE SCHEMA IF NOT EXISTS climate_data;
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data;
-```
-
-For this project, activate PostGIS on the existing application database `weather` after confirming the intended connection and taking an appropriate backup. Preserve existing climate observations and create new spatial tables under the `climate_data` schema. The extension must eventually be enabled in the application database used to store geographic geometries; merely installing the package does not enable it in every database. The explicit combined initializer creates missing climate and spatial objects (the default invocation is a dry-run):
-
-```bash
-source activate-airflow.sh -q
-python -m database.bootstrap --execute  # climate + geospatial (8 tables)
-```
-
-With `--execute`, this command connects through `POSTGRES_*`, initializes seven climate/operational and three spatial tables, enables PostGIS if missing, and does **not** create or reset the database, delete observations, import GeoJSON, or start Airflow. The independent alternatives are `python -m database.climate --execute` (climate only) and `python -m database.geospatial --execute` (spatial only). It requires sufficient database privileges on first activation. Future GeoJSON importers must call the same `ensure_postgis_extension` function **automatically before loading features**, so users need not run the CLI first. The district importer is implemented in `geospatial/importers/districts.py`.
-
-For read-only readiness checks and 3D geometry examples, see [`geospatial/sql/01_postgis_preflight.sql`](./geospatial/sql/01_postgis_preflight.sql). Source GeoJSON is immutable and `geospatial/` operates independently of Airflow. Administrative polygon columns are named `boundary_geometry` (PostGIS type `geometry(MultiPolygonZ,4326)`). The canonical schema/bootstrap uses `boundary_geometry` directly; no one-off rename script is maintained.
-
-
-### PostGIS deployment contract (single lifecycle)
-
-PostGIS is a PostgreSQL server extension, **not** a separate database. The server package must already be installed on the host (Ubuntu PostgreSQL 16: `postgresql-16-postgis-3`); a Python process cannot install an OS package using PostgreSQL credentials. At database setup or import time, `database.geospatial` (and the combined `database.bootstrap`) checks the configured database, enables PostGIS with `CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA climate_data` when absent, and confirms the extension actually resides in `climate_data`. If an existing PostGIS extension is installed elsewhere, bootstrap stops with an actionable error instead of moving it implicitly. Spatial tables belong to `climate_data`; SQL schema/reader/importer functions explicitly reference `climate_data.geometry` and `climate_data.ST_*` so their behavior does not depend on the session search path. The standalone verification query also configures its own search path. Do not configure the database server's global search path for this purpose. Run the dry run, unit tests and isolated integration tests before deploying schema/import operations.
+ETL Weather transforms Copernicus CDS ERA5-Land hourly data into UTC+7 daily climate observations. The project preserves reproducible NetCDF/Parquet artifacts, stores canonical observations in PostgreSQL, and supports Airflow orchestration, geospatial region mapping, operational SQL audits, and automated testing.
 
 ## Active Dataset
 
@@ -62,18 +12,38 @@ transformed output : UTC+7 daily Parquet
 database output    : PostgreSQL daily climate observations
 ```
 
-> **P6 status (2026-10-18):** The operational output is daily climate data. Monthly database objects have been bootstrapped. A separate monthly CLI now exists, but its SQL loading path has not passed integration acceptance. PostgreSQL physical names are derived from `database/config.py` (`APPLICATION_SCHEMA`, `TABLE_PREFIX`, `VIEW_PREFIX`). Changing prefixes on an existing database requires a coordinated migration.
+The active CDS variables are:
+
+```text
+tp, t2m, swvl1, ssrd, d2m
+```
+
+Monthly climate aggregation exists as a separate experimental CLI and is not part of the active daily ETL workflow.
+
+## Prerequisites
+
+- Python 3.12
+- PostgreSQL 16
+- PostGIS 3 for geospatial tables and region mapping
+- CDS API credentials
+- A local or shared `data/` filesystem accessible to the pipeline and Airflow tasks
+
+On Ubuntu with PostgreSQL 16, install the matching PostGIS server package when needed:
+
+```bash
+sudo apt install postgresql-16-postgis-3 postgresql-16-postgis-3-scripts
+```
 
 ## Environment Setup
 
-Create and activate the local Python environment:
+Create and activate the local virtual environment:
 
 ```bash
 python3 -m venv myvenv
 source myvenv/bin/activate
 ```
 
-The project uses one dependency manifest, `requirements.txt`. Install the pinned Airflow version first with its matching official constraints, then install the complete project manifest:
+Install Airflow with its matching constraints, then install the project requirements:
 
 ```bash
 AIRFLOW_VERSION=3.3.2
@@ -85,7 +55,7 @@ pip install -r requirements.txt
 pip check
 ```
 
-Copy `env-example` to `.env` and replace the placeholder values with the local configuration:
+Copy `env-example` to `.env` and configure the required values:
 
 ```env
 APP_ENV=dev
@@ -98,7 +68,7 @@ STANDALONE_PIPELINE_END_DATE=2024-01-31
 
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_DATABASE=your_database_name
+POSTGRES_DATABASE=weather
 POSTGRES_USER=your_username
 POSTGRES_PASSWORD=your_password
 
@@ -110,26 +80,18 @@ TEST_POSTGRES_PASSWORD=your_test_password
 
 CAMPAIGN_KEY=era5_land_2016_2025
 CAMPAIGN_START_YEAR=2016
-CAMPAIGN_END_YEAR=2016
+CAMPAIGN_END_YEAR=2025
 
 ERA5_CAMPAIGN_SCHEDULE_ENABLED=false
 ```
 
-`APP_ENV` selects the application environment. Orchestration timing intervals are source-controlled in root `config.py`; only the scheduled-mode enable switch remains environment-controlled. `STANDALONE_PIPELINE_START_DATE` and `STANDALONE_PIPELINE_END_DATE` provide the default inclusive period for standalone pipeline execution. `POSTGRES_*` configures the canonical application database, while `TEST_POSTGRES_*` identifies the isolated PostgreSQL database used by integration tests.
+Activate the project environment before running project commands:
 
-The root `config.py` is the single lightweight configuration module shared by pipeline, scripts, and orchestration. There is no separate `orchestration/config.py`. The campaign and scheduling variables configure the optional Airflow orchestration layer. Their scheduling, pacing, maintenance, reset, and clean-slate destroy semantics are documented in [`orchestration/README.md`](./orchestration/README.md). Airflow authentication setup is also documented there rather than in the root README.
+```bash
+source activate-airflow.sh -q
+```
 
 Never commit real CDS or PostgreSQL credentials.
-
-
-
-## How It Works
-
-The program starts with hourly ERA5-Land climate data from Copernicus CDS. It checks that the requested source data is complete and suitable for processing, then converts the hourly observations into daily values that follow the project's UTC+7 local day rather than a UTC calendar day.
-
-The original hourly data is retained as a reproducible RAW artifact, while the resulting daily observations are stored as Parquet. The validated daily observations are then persisted in PostgreSQL as the canonical dataset used by downstream analysis and modelling.
-
-If the same logical request is run again, the program reuses and validates the existing artifacts where possible and avoids creating duplicate canonical observations. This allows interrupted or repeated processing to continue safely without treating every rerun as new climate data.
 
 ## Variables and Daily Outputs
 
@@ -143,195 +105,207 @@ If the same logical request is run again, the program reuses and validates the e
 
 ## Local-Day Time Semantics
 
-ERA5-Land input timestamps use UTC, while this project produces daily observations for `Asia/Jakarta` (UTC+7). A local calendar day therefore crosses two UTC dates.
+ERA5-Land timestamps use UTC, while this project produces daily observations for UTC+7. A local calendar day therefore crosses two UTC dates.
 
-Let:
-
-- `D` be the local calendar date being produced; and
-- `A(t)` be the accumulated ERA5-Land value at UTC time `t`.
-
-For an accumulated variable, the implemented boundary calculation is:
+For an accumulated variable:
 
 ```text
 Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
 ```
 
-For example, local day **2024-05-01** runs from:
+Example for local day 2024-05-01:
 
 ```text
 2024-05-01 00:00 UTC+7 = 2024-04-30 17:00 UTC
 2024-05-02 00:00 UTC+7 = 2024-05-01 17:00 UTC
 ```
 
-For total precipitation, suppose the accumulated values after unit conversion are:
+Daily means for `t2m`, `d2m`, and `swvl1` use the complete hourly samples belonging to the same local day. Missing observations remain missing rather than being converted to zero.
 
-```text
-A(2024-04-30 17:00 UTC) = 8 mm
-A(2024-05-01 00:00 UTC) = 12 mm
-A(2024-05-01 17:00 UTC) = 7 mm
-```
-
-Then the precipitation assigned to local day 2024-05-01 is:
-
-```text
-7 + 12 - 8 = 11 mm/day
-```
-
-The values above are only an arithmetic example of the implemented boundary calculation.
-
-Daily means for `t2m`, `d2m`, and `swvl1` require the complete hourly samples belonging to the local day. Missing observations remain missing rather than being converted to zero. Each transformed row records the local day as a half-open period `[start, end)` using four explicit boundaries: `valid_time_start`, `valid_time_end`, `valid_time_local_start`, and `valid_time_local_end`. The UTC and UTC+7 boundary pairs denote the same instants.
-
-## Pipeline Architecture
-
-At a high level, the project follows this data flow:
+## Architecture Overview
 
 ```text
 Copernicus CDS
-      ↓
-Acquire hourly climate data
-      ↓
-Validate source data
-      ↓
-Build UTC+7 daily observations
-      ↓
-Preserve reproducible artifacts
-      ↓
-Store canonical observations
-      ↓
-Analysis / modelling
+      │
+      ▼
+   pipeline/
+ acquire hourly data
+ validate source
+ transform UTC → UTC+7 daily
+ preserve NetCDF / Parquet
+ load canonical observations
+      │
+      ├──────────────► PostgreSQL
+      │                    │
+      │                    ├── geospatial/
+      │                    │   boundaries + grid mapping
+      │                    │
+      │                    └── query/
+      │                        read-only operational audit
+      │
+      └──────────────► orchestration/
+                       Apache Airflow coordinates
+                       the existing pipeline
 ```
 
-The important boundary is conceptual: `pipeline/` owns climate-data acquisition, validation, transformation, artifact handling, and persistence. Airflow may coordinate those operations, but it does not redefine their scientific behavior.
-
-### Development and test database setup (DB-R3)
-
-For a **development environment only** (`APP_ENV=dev`), configure both `POSTGRES_*` and distinct `TEST_POSTGRES_*` values before preparing database structure. Preview the targets without connecting or changing either database:
-
-```bash
-python -m database.setup
-```
-
-For an already existing target, `python -m database.bootstrap` previews and `python -m database.bootstrap --execute` initializes the combined climate and spatial schema without creating the database. After reviewing the two displayed database identities, `python -m database.setup --execute` explicitly checks both database targets and PostGIS availability, creates missing databases when authorized, and initializes the same seven climate/operational plus three geospatial tables in each. It neither copies observations or GeoJSON rows into the test database nor changes Airflow SQLite. The command requires database creation and extension privileges where applicable, does not drop existing databases, and is **not cross-database atomic**. Existing PostGIS in the wrong schema fails preflight; the command does not relocate it. Run it only with a dedicated test database and after confirming the current development database may safely receive missing objects.
+Airflow coordinates pipeline execution but does not redefine the scientific transformation or persistence rules.
 
 ## Project Structure
 
 ```text
 etl-weather/
-├── config.py                 # shared lightweight application configuration
-├── docs/                     # design decisions and project documentation
-├── database/                 # canonical PostgreSQL config, schema DDL, bootstrap and guarded dev/test setup
-├── geospatial/               # independent administrative boundaries and spatial grid mapping
-│   ├── sources/id/districts/ # immutable Aceh GeoJSON source
-│   └── sql/                  # read-only spatial capability checks
-├── orchestration/            # Airflow orchestration layer
-│   └── README.md             # Airflow setup and operations
-├── pipeline/                 # ETL and canonical data-access implementation
-│   ├── extraction/
-│   ├── loaders/
-│   ├── repositories/
-│   ├── storage/
-│   ├── transformation/
-│   └── validation/
-├── scripts/                  # standalone and operational entry points
-├── tests/                    # unit/integration tests grouped by pipeline, orchestration, and operations
-├── env-example               # example environment configuration
-├── requirements.txt          # single project dependency manifest
+├── config.py
+├── database/                 # PostgreSQL configuration, DDL, bootstrap, setup
+├── pipeline/                 # extraction, validation, transformation, storage, loading
+├── orchestration/            # Apache Airflow orchestration
+│   └── README.md
+├── geospatial/               # administrative boundaries and grid-to-region mapping
+│   ├── README.md
+│   └── sources/id/districts/
+├── query/                    # read-only PostgreSQL operational audit SQL
+│   └── README.md
+├── scripts/                  # standalone and maintenance entry points
+├── tests/                    # unit and integration tests
+│   └── README.md
+├── docs/
+├── env-example
+├── requirements.txt
 └── README.md
 ```
 
-The root README documents the project as a whole. Airflow-specific runtime files, authentication setup, scheduling behavior, and operational recovery are documented in [`orchestration/README.md`](./orchestration/README.md).
+### Domain Documentation
 
-## Running the Pipeline
+| Domain | Purpose | Documentation |
+| --- | --- | --- |
+| Pipeline | ERA5-Land extraction, validation, UTC+7 transformation, artifacts, loading | summarized in this README |
+| Database | PostgreSQL schema and initialization | summarized in this README |
+| Orchestration | Airflow scheduling, pacing, retries, progress, recovery | [orchestration/README.md](./orchestration/README.md) |
+| Geospatial | PostGIS, district import, grid-region mapping, regional views | [geospatial/README.md](./geospatial/README.md) |
+| Query | read-only operational SQL audit | [query/README.md](./query/README.md) |
+| Tests | unit/integration structure, isolation, testing policy | [tests/README.md](./tests/README.md) |
 
-Run daily ETL in calendar-month request partitions:
+## CLI
+
+### 1. Setup Database
+
+Use the combined database commands rather than initializing individual table groups separately.
+
+Prepare the configured development and test databases:
 
 ```bash
-source activate-airflow.sh -q
-STANDALONE_PIPELINE_START_DATE=2024-01-01 \\
-STANDALONE_PIPELINE_END_DATE=2024-01-31 \\
+python -m database.setup --execute
+```
+
+If the PostgreSQL database already exists and only the complete application schema needs to be initialized:
+
+```bash
+python -m database.bootstrap --execute
+```
+
+The combined bootstrap provisions 7 climate/operational tables, 3 geospatial tables, and 2 regional views. PostGIS is required for the spatial objects.
+
+### 2. Run Pipeline Manually
+
+```bash
 python -m scripts.run_pipeline
 ```
 
-**Clean-slate development run (destructive):** If you need to discard all existing generated data and restart from zero, first inspect the targets:
+The manual pipeline does not take start/end dates as CLI arguments. Its request period comes from the environment configuration:
 
-```bash
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all
+```env
+STANDALONE_PIPELINE_START_DATE=2024-01-01
+STANDALONE_PIPELINE_END_DATE=2024-01-31
 ```
 
-After confirming the displayed PostgreSQL database, data directory, and Airflow runtime/log targets are correct, run:
+The configured period must represent complete calendar-month request partitions. Existing valid RAW and transformed checkpoints are validated and reused when possible.
 
-```bash
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m scripts.destroy_all --execute
+### 3. Import Geospatial Data
+
+Administrative boundary source data is stored under:
+
+```text
+geospatial/sources/id/districts/
 ```
 
-Type `DESTROY` when prompted. This command is restricted to `APP_ENV=dev`; it stops recognized Airflow processes, recreates the configured `POSTGRES_*` database, and clears generated `data/`, Airflow logs, and Airflow runtime state. **RESET ALL is also destructive** (database recreation, NetCDF/Parquet, logs and runtime cleanup), but requires Airflow to be inactive and does not terminate Airflow processes; DESTROY performs its own preflight and stops recognized processes. It preserves source files, `.env`, and tracked configuration. Review the targets carefully; deleted data cannot be recovered through the command.
-
-The standalone runner uses the configured CDS period, variables and bounding box. Choose a **complete calendar month** (for example January 1–31): incomplete months are rejected before downloading data. First run the command with a test PostgreSQL database and an intentionally limited period; existing RAW and daily Parquet checkpoints are validated and reused on later runs.
-
-### Checkpoint stages
-
-A **checkpoint** is a saved, validated artifact that can be reused after interruption or retry.
-
-- **RAW checkpoint:** hourly ERA5-Land NetCDF in `raw/YYYY/`.
-- **Daily transformed checkpoint:** UTC+7 daily Parquet in `transformed/YYYY/`.
-
-The active CLI is `python -m scripts.run_pipeline`. Its `run_monthly_batch` function in `pipeline/runtime.py` splits a request into calendar-month **request partitions** and runs daily extraction, transformation and loading. Despite its name, this function does not compute monthly climate statistics.
-
-### Monthly climate: separate experimental command
-
-Monthly aggregation from complete UTC+7 daily observations and monthly PostgreSQL loading are implemented in a **separate, unverified CLI**, not in the daily runtime. No monthly Parquet output is implemented. No `pipeline/monthly.py` is required. The monthly command is separate from `scripts/run_pipeline.py` and is not part of the daily ETL workflow. Monthly tables and a regional view alone do not prove operational monthly outputs. The new monthly write path requires isolated integration tests and explicit acceptance before production use.
-
-To inspect a complete persisted month without modifying the database:
+Import the district data, then map existing climate grid coordinates to administrative regions:
 
 ```bash
-source activate-airflow.sh -q
-python -m scripts.run_monthly_climate --month 2024-05
+python -m geospatial.importers.districts --execute
+python -m geospatial.mapping --execute
 ```
 
-The `--execute` option enables an atomic insert of the monthly parent/detail observations; **do not use it on `weather` until the monthly scientific contract and integration tests are accepted**. Repeated writes for an existing monthly request are refused rather than overwriting persisted observations.
+The importer does not download ERA5-Land data. Grid mapping uses coordinates already persisted by the climate pipeline. See [geospatial/README.md](./geospatial/README.md) for PostGIS, import, mapping, and regional-view details.
 
-Current daily values are calculated for each UTC+7 local day and grid point—not as averages over Aceh. Their calculations and units are described in [Variables and Daily Outputs](#variables-and-daily-outputs) and [Local-Day Time Semantics](#local-day-time-semantics).
+### 4. Testing
+
+Run all unit tests:
+
+```bash
+python -m pytest tests/unit -q
+```
+
+Run all integration tests:
+
+```bash
+python -m pytest tests/integration -q
+```
+
+Integration tests must use the isolated `TEST_POSTGRES_*` database configuration, never the development `weather` database. See [tests/README.md](./tests/README.md) for focused suites and testing policy.
 
 ## Data Layout
 
-Artifacts are stored by dataset, bounding box, layer, and year:
+Generated artifacts are stored by dataset, bounding box, layer, and year:
 
 ```text
 data/
 └── cds_reanalysis-era5-land/
     └── bbox_n6p1_w94p9_s1p9_e98p3/
         ├── raw/
-        │   └── 2022/
-        │       └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.nc
+        │   └── YYYY/
+        │       └── YYYY_MMDD_MMDD_<variables>.nc
         └── transformed/
-            └── 2022/
-                └── 2022_0101_0103_d2m_ssrd_swvl1_t2m_tp.parquet
+            └── YYYY/
+                └── YYYY_MMDD_MMDD_<variables>.parquet
 ```
 
-The dataset and bounding-box directories keep different requests separate. RAW hourly data is stored as NetCDF, transformed daily data is stored as Parquet, and deterministic filenames make the request period and variable set identifiable.
+RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as Parquet. Deterministic paths allow valid artifacts to be resumed safely.
 
-## Persistence and Modelling Access
+## Persistence and Idempotency
 
-PostgreSQL stores canonical daily observations through an idempotent loader. Monthly tables and a regional view are provisioned; the daily runtime does not populate them. A separate, unverified monthly CLI can populate monthly tables when explicitly executed. Physical names follow the configured schema and table/view prefixes.
+PostgreSQL stores the canonical daily observations. Re-running the same logical request validates and reuses existing artifacts and avoids duplicate canonical observations.
 
-For example, if January 2024 has already been processed and the identical January request is run again, the pipeline validates and reuses the same logical partition rather than appending duplicate daily grid observations.
+The project treats idempotency per request partition rather than as a global deduplication rule across unrelated requests.
 
-Downstream modelling reads selected canonical observations into memory without changing the stored climate data or creating a second physical copy simply for feature access.
+## Orchestration
 
-## Running Tests
+Apache Airflow provides scheduled and manual orchestration around the existing ETL pipeline. The active DAG ID is:
 
-Run the offline unit tests with:
+```text
+cds-era5-land
+```
+
+Airflow-specific setup, scheduling, pacing, progress, retries, recovery, observability, and maintenance are documented in [orchestration/README.md](./orchestration/README.md).
+
+## Geospatial
+
+The geospatial component imports administrative boundaries into PostGIS and maps persisted ERA5-Land grid coordinates to administrative regions. It operates independently from Airflow and does not alter the scientific climate observations.
+
+See [geospatial/README.md](./geospatial/README.md).
+
+## Operational SQL Audit
+
+The `query/` directory contains seven read-only PostgreSQL checks for connection identity, core daily/operational tables, partition integrity, data quality, campaign progress, and load verification.
+
+See [query/README.md](./query/README.md).
+
+## Experimental Monthly Climate Aggregation
+
+Monthly aggregation is separate from the daily ETL and remains experimental/unverified for production database writes.
+
+Preview one month:
 
 ```bash
-python -m pytest tests/unit -q
+python -m scripts.run_monthly_climate --month 2024-05
 ```
 
-Run the core isolated PostgreSQL idempotency integration test with:
-
-```bash
-python -m pytest tests/integration/pipeline/test_postgresql_idempotency.py -q
-```
-
-Integration tests use the `TEST_POSTGRES_*` settings from `env-example`. Detailed testing contracts and additional test commands are documented in [`tests/README.md`](./tests/README.md).
-
-**Database verification:** The latest recorded clean setup has PostGIS 3.4.2 in `weather.climate_data`; verify the target independently before executing database setup. Never automatically relocate or drop an extension installed in another schema.
+Do not use its `--execute` mode against the live application database until its scientific contract and isolated PostgreSQL integration coverage are accepted.
