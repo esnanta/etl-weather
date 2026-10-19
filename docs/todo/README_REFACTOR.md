@@ -2,7 +2,7 @@
 
 Branch: `dev`  
 Created: 2026-10-19  
-Status: planning only — README content has not been refactored yet.
+Status: complete — README refactor phases 1–6 validated on 2026-10-19.
 
 ## Goal
 
@@ -186,11 +186,11 @@ Root README should therefore answer “what single command should I normally run
 
 ### Phase 6 — Validation
 
-- [ ] Review the final Git diff for documentation-only changes.
-- [ ] Confirm no Python, SQL, DAG, configuration, or pipeline behavior changed.
-- [ ] Run a repository search for stale README references and obsolete names.
-- [ ] Run lightweight command discovery/collection checks where useful; do not run destructive commands.
-- [ ] Present the README changes and any unresolved documentation conflicts for operator review.
+- [x] Review the final Git diff for documentation-only changes.
+- [x] Confirm no Python, SQL, DAG, configuration, or pipeline behavior changed.
+- [x] Run a repository search for stale README references and obsolete names.
+- [x] Run lightweight command discovery/collection checks where useful; do not run destructive commands.
+- [x] Present the README changes and any unresolved documentation conflicts for operator review.
 
 ## Style rules for this refactor
 
@@ -762,7 +762,7 @@ Key outcomes:
   4. testing;
   5. reset development state;
   6. destroy development state;
-- manual pipeline documentation now explicitly states that its date range comes from `STANDALONE_PIPELINE_START_DATE` and `STANDALONE_PIPELINE_END_DATE` in environment configuration;
+- manual pipeline documentation states that its date range comes from `PIPELINE_START_DATE` and `PIPELINE_END_DATE` in environment configuration;
 - geospatial source location is explicitly documented as `geospatial/sources/id/districts/`;
 - experimental monthly aggregation remains visible but clearly separated from the active daily ETL;
 - Reset and destroy are documented separately: reset is for a controlled rebuild after Airflow is already stopped, while destroy is for an intentional clean slate that can stop recognized Airflow processes and performs final clean-state verification.
@@ -818,3 +818,65 @@ Consistency checks:
 - root README remains self-contained for setup, primary execution, geospatial import, testing, reset, and destroy while domain READMEs hold deeper operational detail.
 
 No application code, SQL, or configuration was changed during Phase 5.
+
+
+## Phase 6 validation result
+
+Phase 6 completed on 2026-10-19.
+
+### Final diff scope
+
+Compared from the completed Phase 2 baseline commit `4c3d5dc5a6ca995be155383db77133da44e7fa01` to branch `dev`, the refactor changed only:
+
+- `README.md`
+- `orchestration/README.md`
+- `geospatial/README.md`
+- `tests/README.md`
+- `query/README.md`
+- `docs/todo/README_REFACTOR.md`
+
+No Python, SQL, DAG, application configuration, workflow, or pipeline implementation file changed as part of Phases 3–6.
+
+### README validation
+
+Validated on current `dev`:
+- all five README relative Markdown links resolve;
+- no deprecated bbox coordinates appear in the README set;
+- no deprecated historical DAG ID appears;
+- no stale `STANDALONE_PIPELINE_START_DATE` / `STANDALONE_PIPELINE_END_DATE` remains in the README set;
+- active standalone environment names are `PIPELINE_START_DATE` and `PIPELINE_END_DATE`;
+- reset and destroy documentation exists only in root `README.md`;
+- domain README ownership follows the Phase 2 boundary;
+- no exact long-form paragraph duplication was found across the README set.
+
+### Automated verification
+
+GitHub Actions workflow `Run Pytest` completed successfully on the Phase 5 HEAD commit `106db76f445cf79aa566632515366d4684b2809f`.
+
+Result:
+
+```text
+397 collected
+380 passed
+17 skipped
+8.34s
+```
+
+The 17 skipped tests are PostgreSQL integration tests that require an external test database and are not exercised by the current GitHub Actions job. Unit coverage and test collection completed successfully.
+
+No destructive reset/destroy/database command was executed for validation.
+
+### Out-of-scope follow-up found
+
+`.github/workflows/pytest.yml` still defines `CDS_START_DATE` and `CDS_END_DATE`. Current application configuration uses `PIPELINE_START_DATE` and `PIPELINE_END_DATE`, while tests currently receive deterministic pipeline dates from `tests/conftest.py`.
+
+This workflow cleanup is outside the documentation-only README refactor and should be handled separately rather than changing CI behavior during Phase 6.
+
+### README refactor closure
+
+README refactor Phases 1–6 are complete.
+
+Recommended next documentation work:
+- create `/pipeline/README.md` as a separate scoped task;
+- keep root README as the project overview and primary CLI discovery page;
+- link the future pipeline README from root without duplicating root setup/CLI content.
