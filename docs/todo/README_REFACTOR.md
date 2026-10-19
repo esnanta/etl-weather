@@ -134,17 +134,17 @@ Root README should therefore answer “what single command should I normally run
 
 ### Phase 3 — Refactor `/README.md`
 
-- [ ] Rewrite the opening as a concise project summary.
-- [ ] Add a compact architecture/domain overview.
-- [ ] Summarize `pipeline/`, `database/`, `orchestration/`, `geospatial/`, `query/`, and `tests/`.
-- [ ] Add direct relative links to domain READMEs.
-- [ ] Consolidate important CLI commands into a compact, goal-oriented command reference that prefers combined one-step workflows over granular module-by-module commands.
-- [ ] Keep prerequisite/setup instructions concise.
-- [ ] Keep only the scientific rules needed to understand the pipeline at project level.
-- [ ] Remove detailed Airflow behavior now owned by `orchestration/README.md`.
-- [ ] Remove detailed PostGIS/geospatial procedures now owned by `geospatial/README.md`.
-- [ ] Remove detailed testing policy now owned by `tests/README.md`.
-- [ ] Remove detailed SQL audit interpretation now owned by `query/README.md`.
+- [x] Rewrite the opening as a concise project summary.
+- [x] Add a compact architecture/domain overview.
+- [x] Summarize `pipeline/`, `database/`, `orchestration/`, `geospatial/`, `query/`, and `tests/`.
+- [x] Add direct relative links to domain READMEs.
+- [x] Consolidate important CLI commands into a compact, goal-oriented command reference that prefers combined one-step workflows over granular module-by-module commands.
+- [x] Keep prerequisite/setup instructions concise.
+- [x] Keep only the scientific rules needed to understand the pipeline at project level.
+- [x] Remove detailed Airflow behavior now owned by `orchestration/README.md`.
+- [x] Remove detailed PostGIS/geospatial procedures now owned by `geospatial/README.md`.
+- [x] Remove detailed testing policy now owned by `tests/README.md`.
+- [x] Remove detailed SQL audit interpretation now owned by `query/README.md`.
 
 ### Phase 4 — Refactor domain READMEs
 
@@ -743,3 +743,26 @@ Phase 3 must follow these rules:
 4. detailed domain behavior has one canonical README owner;
 5. historical status/evidence is removed from durable README content unless still operationally necessary;
 6. safety constraints and experimental labels are never removed for brevity.
+
+
+## Phase 3 root README refactor result
+
+Phase 3 completed on 2026-10-19.
+
+The root README was rewritten to follow the Phase 2 ownership rules.
+
+Key outcomes:
+- retained project purpose, Active Dataset, Variables and Daily Outputs, Local-Day Time Semantics, Architecture Overview, Project Structure, environment setup, data layout, and persistence/idempotency;
+- added direct links to orchestration, geospatial, query, and tests READMEs;
+- removed detailed Airflow, PostGIS, test-policy, and SQL-audit narrative from root;
+- corrected database bootstrap wording to 7 climate/operational + 3 geospatial tables + 2 regional views;
+- replaced the broad CLI catalog with four compact user-goal groups:
+  1. setup database;
+  2. run pipeline manually;
+  3. import geospatial data;
+  4. testing;
+- manual pipeline documentation now explicitly states that its date range comes from `STANDALONE_PIPELINE_START_DATE` and `STANDALONE_PIPELINE_END_DATE` in environment configuration;
+- geospatial source location is explicitly documented as `geospatial/sources/id/districts/`;
+- experimental monthly aggregation remains visible but clearly separated from the active daily ETL.
+
+No application code, SQL, configuration, or domain README was changed during Phase 3.
