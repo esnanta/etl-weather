@@ -298,6 +298,21 @@ def _recreate_database(config: DatabaseConfig) -> None:
     logger.info("DATABASE | Bootstrap 8 tables + PostGIS | complete")
 
 
+def validate_static_guards(config: DatabaseConfig) -> None:
+    """Public wrapper for static safety guards."""
+    _validate_static_guards(config)
+
+
+def validate_bootstrap_prerequisites(config: DatabaseConfig) -> None:
+    """Public wrapper for read-only privilege and PostGIS preflight checks."""
+    _validate_bootstrap_prerequisites(config)
+
+
+def recreate_database(config: DatabaseConfig) -> None:
+    """Public wrapper for guarded DROP/CREATE and canonical bootstrap."""
+    _recreate_database(config)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
