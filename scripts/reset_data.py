@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import argparse
 import logging
-import shutil
 import sys
 from pathlib import Path
-from typing import Callable
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
+from scripts.helpers.reset_helpers import (
+    clear_directory_contents,
+    confirmation_for_target,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,28 +29,11 @@ DATA_DIRECTORY = project_root / "data"
 
 def clear_data_contents(data_directory: Path = DATA_DIRECTORY) -> int:
     """Delete every child of the data directory while preserving the directory."""
-    if not data_directory.exists():
-        return 0
-    removed = 0
-    for child in data_directory.iterdir():
-        if child.is_symlink() or child.is_file():
-            child.unlink()
-        else:
-            shutil.rmtree(child)
-        removed += 1
-    return removed
+    return clear_directory_contents(data_directory)
 
 
-def _confirmation(input_fn: Callable[[str], str] = input) -> bool:
-    while True:
-        answer = input_fn(
-            f"Delete all contents inside {DATA_DIRECTORY}? [y/n]: "
-        ).strip().lower()
-        if answer in {"y", "yes"}:
-            return True
-        if answer in {"n", "no"}:
-            return False
-        print("Please answer yes/y or no/n.")
+def _confirmation() -> bool:
+    return confirmation_for_target(DATA_DIRECTORY)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
