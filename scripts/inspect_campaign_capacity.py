@@ -30,6 +30,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# noinspection SqlNoDataSourceInspection,SqlResolve
+SQLITE_DEFERRED_TASK_COUNT_QUERY = (
+    "SELECT COUNT(*) FROM task_instance WHERE state = 'deferred'"
+)
+
 
 def _disk(path: Path) -> dict[str, object]:
     if not path.exists():
@@ -85,7 +90,7 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
     try:
         with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)) as connection:
             count = connection.execute(
-                "SELECT COUNT(*) FROM task_instance WHERE state = 'deferred'"
+                SQLITE_DEFERRED_TASK_COUNT_QUERY
             ).fetchone()[0]
         return {"deferred_task_instances": count}
     except sqlite3.Error as error:
