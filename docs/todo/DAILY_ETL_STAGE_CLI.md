@@ -8,16 +8,16 @@ Status: proposed / approved for implementation; **not yet implemented**
 
 Expose independent CLI entry points for the **existing** daily CDS ERA5-Land extract, transform, and load boundaries. Keep `scripts.run_pipeline` as the complete ETL wrapper. This is a CLI/runtime-composition refactor, **not** a change to scientific processing, artifact identity, storage format, or database persistence.
 
-Approved commands (the three stage commands are **planned**, not currently available):
+Approved commands (the three stage commands are **planned**, not currently available). **The documented default must be the complete pipeline first; independent stage commands are optional maintenance/recovery operations:**
 
 ```bash
-# Individual stages
+# Default: complete daily ETL
+python -m scripts.run_pipeline
+
+# Optional: run only the needed stage
 python -m scripts.run_extract
 python -m scripts.run_transform
 python -m scripts.run_load
-
-# Complete ETL
-python -m scripts.run_pipeline
 ```
 
 All commands derive the request from the existing configured environment (`PIPELINE_START_DATE`, `PIPELINE_END_DATE`, provider/dataset, variables, and bbox), retain inclusive date semantics, and split requests into the **same deterministic calendar-month partitions**.
@@ -90,17 +90,19 @@ Missing prerequisites must produce clear, nonzero failures; **do not silently au
 - [ ] Verify retry after a failure in a later partition preserves and reuses earlier successful checkpoints.
 - [ ] Preserve existing scientific/provenance unit tests and Airflow runtime-boundary tests.
 - [ ] Add or retain isolated PostgreSQL integration evidence for first load, unchanged rerun/skip, mismatched artifact metadata triggering UPSERT, no duplicates, and rollback on failure.
+- [ ] Require all newly added stage-CLI tests and relevant regression tests to pass before marking implementation complete; failures must be fixed and rerun, not merely reported.
 - [ ] Run relevant suites with quiet output, for example:
   ```bash
   source activate-airflow.sh -q
   ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q
   python -m pytest tests/integration/pipeline -q
   ```
-- [ ] Record exact test commands and results after implementation; do not claim passing tests before execution.
+- [ ] Record exact test commands, pass/fail counts, and any unexecuted integration coverage after implementation; do not claim passing tests before execution.
+- [ ] Verify the published README commands agree with implemented `python -m` entry points and test coverage.
 
 ## Documentation and completion
 
-- [ ] Update root `README.md`, replacing “2. Run Pipeline Manually” with “2. Run Daily ETL” and documenting the three independent stages and complete wrapper.
+- [ ] Update root `README.md`, replacing “2. Run Pipeline Manually” with “2. Run Daily ETL”. **Show `python -m scripts.run_pipeline` first as the normal/default full workflow; only afterward describe `run_extract`, `run_transform`, and `run_load` as optional commands used when a specific stage is needed.** Include prerequisite/output semantics and clarify that no upstream stage is triggered implicitly.
 - [ ] Update `pipeline/README.md` entry points and stage prerequisites, referencing project-level commands without duplicating the full CLI guide.
 - [ ] Update the `AGENTS.md` CLI convention to recognize independent daily-stage entry points and complete wrapper, without duplicating architectural policy.
 - [ ] Update this checklist as work is completed; record any agreed deviations and test evidence.
