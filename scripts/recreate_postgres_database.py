@@ -359,6 +359,11 @@ def recreate_database(config: DatabaseConfig) -> None:
     _recreate_database(config)
 
 
+def validate_runtime_guards(config: DatabaseConfig) -> None:
+    """Public wrapper for runtime-idle safety checks before recreation."""
+    _validate_runtime_guards(config)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
