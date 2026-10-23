@@ -17,7 +17,7 @@ from pathlib import Path
 from shutil import disk_usage
 import sys
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import validate_and_log_app_environment
@@ -148,7 +148,7 @@ def main() -> None:
         validate_and_log_app_environment(logger)
     except ValueError:
         raise SystemExit(2) from None
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", root / "orchestration"))
     result = {
         "measured_at_utc": datetime.now(timezone.utc).isoformat(),
