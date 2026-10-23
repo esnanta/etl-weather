@@ -91,13 +91,13 @@ Missing prerequisites must produce clear, nonzero failures; **do not silently au
 - [ ] Preserve existing scientific/provenance unit tests and Airflow runtime-boundary tests.
 - [ ] Add or retain isolated PostgreSQL integration evidence for first load, unchanged rerun/skip, mismatched artifact metadata triggering UPSERT, no duplicates, and rollback on failure.
 - [ ] Require all newly added stage-CLI tests and relevant regression tests to pass before marking implementation complete; failures must be fixed and rerun, not merely reported.
-- [ ] Run relevant suites with quiet output, for example:
+- [x] Run relevant suites with quiet output, for example:
   ```bash
   source activate-airflow.sh -q
   ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q
   python -m pytest tests/integration/pipeline -q
   ```
-- [ ] Record exact test commands, pass/fail counts, and any unexecuted integration coverage after implementation; do not claim passing tests before execution.
+- [x] Record exact test commands, pass/fail counts, and any unexecuted integration coverage after implementation; do not claim passing tests before execution.
 - [ ] Verify the published README commands agree with implemented `python -m` entry points and test coverage.
 
 ## Documentation and completion
@@ -115,4 +115,18 @@ No scientific formula/unit/timezone changes, database schema changes, alternativ
 
 ## Implementation note (2026-10-23)
 
-Stage CLI modules, monthly batch dispatch, and focused offline tests were added on `dev`. The full `run_monthly_batch()` logic remains unchanged. No CDS or PostgreSQL operation was initiated. **Pytest has not been executed in the project virtual environment here**; existing and new regression tests remain pending local verification before acceptance. Integration/idempotency checks are not marked passed.
+Stage CLI modules, monthly batch dispatch, and focused offline tests were added on `dev`. The full `run_monthly_batch()` logic remains unchanged. No CDS or PostgreSQL operation was initiated. The operator subsequently executed the unit suite and focused pipeline integration suite successfully (see evidence below). Live CLI exercise and end-to-end CDS/DB idempotency remain unverified.
+
+## Operator test evidence (2026-10-23)
+
+User-reported commands after `source activate-airflow.sh -q`:
+
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q
+# 392 passed in 6.98s
+
+python -m pytest tests/integration/pipeline -q
+# 5 passed in 1.13s
+```
+
+Total: **397 passing tests** across these two commands; no failures reported. These confirm unit/integration regression coverage as run locally, **not** direct production CLI, live CDS access, or end-to-end idempotency. The activation output showed `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` even though the pytest command overrides it to `false`; this is consistent with the shell override and is not evidence of a scheduled run.
