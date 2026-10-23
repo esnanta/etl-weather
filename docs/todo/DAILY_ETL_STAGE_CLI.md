@@ -130,3 +130,18 @@ python -m pytest tests/integration/pipeline -q
 ```
 
 Total: **397 passing tests** across these two commands; no failures reported. These confirm unit/integration regression coverage as run locally, **not** direct production CLI, live CDS access, or end-to-end idempotency. The activation output showed `ERA5_CAMPAIGN_SCHEDULE_ENABLED=true` even though the pytest command overrides it to `false`; this is consistent with the shell override and is not evidence of a scheduled run.
+
+## Deferred controlled operational validation — agreed 2026-10-23
+
+**Sequence:** complete the separately planned `docs/todo/SCRIPTS_REFACTOR.md` first, with its own regression testing. Only then run this operational validation. Do not run live CDS requests or modify the application database as part of planning.
+
+- [ ] Confirm a specific existing request partition whose RAW NetCDF and transformed Parquet are already present and validated, with configured dates/variables/bbox matching its deterministic identity.
+- [ ] Record pre-run RAW/Parquet paths, SHA-256 checksums, modification times, database partition identity (`request_key`), transformed SHA-256/path, observation count, and whether the database already contains the partition.
+- [ ] Run `python -m scripts.run_extract` using the existing partition; verify RAW status `resumed`, no CDS submission, and unchanged RAW checksum and modification time.
+- [ ] Run `python -m scripts.run_transform`; verify RAW validated, Parquet status `resumed`, no CDS submission, unchanged Parquet checksum/mtime, and retained RAW provenance.
+- [ ] Run `python -m scripts.run_load`; verify repeated load does not create duplicate canonical observations and the unchanged-partition skip conditions match (request key, transformed path, transformed SHA-256, observation count). Confirm no unexpected database mutation.
+- [ ] Run `python -m scripts.run_pipeline` with the **same configured period**; confirm existing extract → transform → load behavior, validation and reuse of both checkpoints, unchanged canonical observation count, and no unexpected CDS submission.
+- [ ] Capture before/after evidence and command logs without disclosing secrets. Stop if request configuration does not match the existing artifacts, if any checkpoint is invalid, or if an unexpected CDS submission/write is attempted.
+- [ ] Document exact evidence and outcomes. Do not mark operational idempotency accepted based only on the previously passing 392 unit and 5 pipeline integration tests.
+
+**Safety:** Use a small, known historical partition. Prefer a disposable or otherwise explicitly authorized database for any potentially mutating verification; do not reset `weather`, delete artifacts, or issue fresh CDS requests solely for this check.
