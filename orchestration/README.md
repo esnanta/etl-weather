@@ -158,13 +158,13 @@ A quarter is complete only when all expected monthly partitions have valid persi
 Inspect campaign progress with:
 
 ```bash
-python -m scripts.report_campaign_progress
+python -m scripts.monitoring.report_campaign_progress
 ```
 
 Inspect host/campaign capacity with:
 
 ```bash
-python -m scripts.inspect_campaign_capacity
+python -m scripts.monitoring.inspect_campaign_capacity
 ```
 
 ## Trigger and Status

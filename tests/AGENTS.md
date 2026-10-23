@@ -222,7 +222,7 @@ Tests under `tests/unit/operations/` protect guarded maintenance commands.
 
 They must verify that destructive actions are denied in inappropriate environments, inspect/dry modes do not mutate state, confirmation/preflight rules are respected, and composed reset operations stop safely after earlier failures.
 
-Operations tests may execute repository scripts in subprocesses when direct-script behavior is part of the contract. Use `tests._paths.REPOSITORY_ROOT` for repository-level paths.
+Operations tests must target the relocated `scripts.maintenance.*` modules and `scripts.helpers.airflow_processes` without bypassing safety guards. Operations tests may execute repository scripts in subprocesses when direct-script behavior is part of the contract. Use `tests._paths.REPOSITORY_ROOT` for repository-level paths.
 
 ## Dependency and Warning Policy
 

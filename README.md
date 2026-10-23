@@ -280,13 +280,13 @@ Use **reset** when you want to rebuild the local development state but Airflow i
 Preview the reset targets first:
 
 ```bash
-python -m scripts.reset_all
+python -m scripts.maintenance.reset_all
 ```
 
 Execute after reviewing the targets:
 
 ```bash
-python -m scripts.reset_all --execute
+python -m scripts.maintenance.reset_all --execute
 ```
 
 Reset recreates the configured development PostgreSQL database and clears generated NetCDF/Parquet data, Airflow logs, and Airflow runtime state. It is restricted to `APP_ENV=dev` and refuses to continue if the Airflow runtime is still active.
@@ -300,13 +300,13 @@ Use **destroy** when you intentionally want a clean-slate development environmen
 Preview all targets and detected Airflow processes:
 
 ```bash
-python -m scripts.destroy_all
+python -m scripts.maintenance.destroy_all
 ```
 
 Execute the clean-slate operation:
 
 ```bash
-python -m scripts.destroy_all --execute
+python -m scripts.maintenance.destroy_all --execute
 ```
 
 Destroy is also restricted to `APP_ENV=dev`, requires typing the exact confirmation `DESTROY`, stops recognized Airflow processes, recreates the configured PostgreSQL database, clears generated data/log/runtime state, and verifies the resulting clean state.

@@ -2,7 +2,7 @@
 
 Branch: `dev`  
 Created: 2026-10-23  
-Status: design proposal — **awaiting agreement; no files moved**
+Status: approved; relocated on `dev`, pending local pytest verification
 
 ## Purpose
 
@@ -54,26 +54,26 @@ Retain `run_monthly_climate.py` rather than shorten to `run_monthly.py`: the exp
 
 ## Verified dependency hotspots
 
-- `destroy_all.py` and `reset_all.py` currently import `scripts.recreate_postgres_database`, `scripts.reset_airflow_logs`, `scripts.reset_airflow_runtime`, `scripts.reset_data`.
-- `destroy_all.py` and `recreate_postgres_database.py` import `scripts.airflow_processes`.
+- `destroy_all.py` and `reset_all.py` currently import `scripts.maintenance.recreate_postgres_database`, `scripts.maintenance.reset_airflow_logs`, `scripts.maintenance.reset_airflow_runtime`, `scripts.maintenance.reset_data`.
+- `destroy_all.py` and `recreate_postgres_database.py` import `scripts.helpers.airflow_processes`.
 - `reset_data.py` imports `scripts.helpers.reset_helpers`.
 - Existing unit tests in `tests/unit/operations/` target the old module names.
-- Root `README.md` documents `scripts.reset_all`, `scripts.destroy_all`; `orchestration/README.md` documents both monitoring commands.
+- Root `README.md` documents `scripts.maintenance.reset_all`, `scripts.maintenance.destroy_all`; `orchestration/README.md` documents both monitoring commands.
 - Inspect additional import/call sites before finalizing moves; do not assume this inventory is exhaustive.
 
 ## Implementation checklist (not started)
 
-- [ ] Agree on target directories and whether old CLI paths need transition aliases.
-- [ ] Record clean `dev` baseline and verify no unrelated changes will be overwritten.
-- [ ] Review all imports, module-level paths, `__file__`-derived repository roots, script invocations, README examples, tests, and operational references.
-- [ ] Move modules only; avoid opportunistic behavioral rewrites.
-- [ ] Update internal imports and module-relative file resolution after moves.
-- [ ] Keep the daily ETL command paths and current stage idempotency unchanged.
-- [ ] Preserve APP_ENV guards, inspect/dry-run mode, explicit confirmations, preflight checks, stop-on-failure behavior, and authorized database targeting for destructive CLIs.
-- [ ] Decide and document whether to preserve temporary entrypoint aliases for operational command backward compatibility.
-- [ ] Update `tests/unit/operations/` imports/mocks/CLI invocations, including subprocess invocation tests and failure cases.
+- [x] Agree on target directories and whether old CLI paths need transition aliases.
+- [x] Record clean `dev` baseline and verify no unrelated changes will be overwritten.
+- [x] Review all imports, module-level paths, `__file__`-derived repository roots, script invocations, README examples, tests, and operational references.
+- [x] Move modules only; avoid opportunistic behavioral rewrites.
+- [x] Update internal imports and module-relative file resolution after moves.
+- [x] Keep the daily ETL command paths and current stage idempotency unchanged.
+- [x] Preserve APP_ENV guards, inspect/dry-run mode, explicit confirmations, preflight checks, stop-on-failure behavior, and authorized database targeting for destructive CLIs.
+- [x] Decide and document whether to preserve temporary entrypoint aliases for operational command backward compatibility.
+- [x] Update `tests/unit/operations/` imports/mocks/CLI invocations, including subprocess invocation tests and failure cases.
 - [ ] Add/import-smoke-test the relocated monitoring and inspection CLIs without contacting CDS or the application database.
-- [ ] Update root `README.md`, `orchestration/README.md`, and other verified call sites with new module paths. Avoid duplicating full commands in AGENTS.
+- [x] Update root `README.md`, `orchestration/README.md`, and other verified call sites with new module paths. Avoid duplicating full commands in AGENTS.
 - [ ] Run offline regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`.
 - [ ] Run relevant isolated PostgreSQL integration suite as needed; never reset live `weather` for testing.
 - [ ] Record test evidence and commit changes only on `dev`.
@@ -85,3 +85,8 @@ Retain `run_monthly_climate.py` rather than shorten to `run_monthly.py`: the exp
 - Existing reset/destroy operations refuse inappropriate environments and do not mutate state during preview.
 - Airflow task/DAG imports and CLI operational guidance remain valid.
 - Unit/integration regression passes; any skipped live check remains clearly pending.
+
+
+## Implementation evidence (2026-10-23)
+
+Moved utility entrypoints into maintenance/monitoring/inspection and shared `airflow_processes` into helpers. Updated operation-test import/monkeypatch/direct-path references and main README command examples. **Local pytest and integration tests have not been executed in this environment; acceptance is pending user-run verification.** No reset/destroy/CDS commands were run. Existing `run_pipeline`, `run_extract`, `run_transform`, `run_load`, `run_monthly_climate` and setup shell script remain in the root.
