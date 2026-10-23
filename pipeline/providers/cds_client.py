@@ -7,6 +7,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypedDict
 
 import requests
 import xarray as xr
@@ -26,6 +27,13 @@ CDSAPI_KEY_ENV_KEY = "CDSAPI_KEY"
 DEFAULT_CDSAPI_URL = "https://cds.climate.copernicus.eu/api"
 
 
+class _CdsClientOptions(TypedDict, total=False):
+    url: str
+    key: str
+    quiet: bool
+    session: requests.Session
+
+
 class _PacedSubmissionSession(requests.Session):
     """Reserve a submission slot before each provider POST, including retries."""
 
@@ -38,10 +46,50 @@ class _PacedSubmissionSession(requests.Session):
         self._chunk_request = request
         self._before_submission = before_submission
 
-    def request(self, method: str, url: str, *args, **kwargs):
-        if method.upper() == "POST":
+    def request(
+        self,
+        method: str | bytes,
+        url: str | bytes,
+        params: Any = None,
+        data: Any = None,
+        headers: Any = None,
+        cookies: Any = None,
+        files: Any = None,
+        auth: Any = None,
+        timeout: Any = None,
+        allow_redirects: bool = True,
+        proxies: Any = None,
+        hooks: Any = None,
+        stream: Any = None,
+        verify: Any = None,
+        cert: Any = None,
+        json: Any = None,
+    ) -> requests.Response:
+        method_name: str = (
+            method.decode("utf-8", errors="ignore")
+            if isinstance(method, bytes)
+            else str(method)
+        )
+        if method_name.upper() == "POST":
             self._before_submission(self._chunk_request)
-        return super().request(method, url, *args, **kwargs)
+        return super().request(
+            method,
+            url,
+            params=params,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            files=files,
+            auth=auth,
+            timeout=timeout,
+            allow_redirects=allow_redirects,
+            proxies=proxies,
+            hooks=hooks,
+            stream=stream,
+            verify=verify,
+            cert=cert,
+            json=json,
+        )
 
 
 def _resolve_cds_credentials() -> tuple[str, str]:
@@ -74,7 +122,11 @@ def retrieve_cds_dataset(
         ) from error
 
     cdsapi_url, cdsapi_key = _resolve_cds_credentials()
-    client_options = {"url": cdsapi_url, "key": cdsapi_key, "quiet": True}
+    client_options: _CdsClientOptions = {
+        "url": cdsapi_url,
+        "key": cdsapi_key,
+        "quiet": True,
+    }
     if before_submission is not None:
         client_options["session"] = _PacedSubmissionSession(request, before_submission)
     client = cdsapi.Client(**client_options)
