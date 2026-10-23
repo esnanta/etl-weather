@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import text
@@ -248,7 +249,11 @@ def upsert_daily_climate_observations(
         """
     )
 
-    records = dataframe.to_dict(orient="records")
+    raw_records = dataframe.to_dict(orient="records")
+    records: list[dict[str, Any]] = [
+        {str(key): value for key, value in row.items()}
+        for row in raw_records
+    ]
     chunk_size = 1000
     for start in range(0, len(records), chunk_size):
         connection.execute(statement, records[start : start + chunk_size])
