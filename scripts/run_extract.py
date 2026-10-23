@@ -1,0 +1,29 @@
+"""Run one daily ERA5-Land ETL stage using the configured request."""
+
+import logging
+
+from config import validate_and_log_app_environment
+from pipeline.requests.factory import build_cds_request
+from pipeline.runtime import extract_monthly_batch
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+
+def main() -> None:
+    """Run only the extract stage for each configured monthly partition."""
+    try:
+        validate_and_log_app_environment(logger)
+    except ValueError:
+        raise SystemExit(2) from None
+    request = build_cds_request(require_api_key=True)
+    logger.info("Running extract stage for source '%s'.", request.source.value)
+    extract_monthly_batch(request)
+
+
+if __name__ == "__main__":
+    main()

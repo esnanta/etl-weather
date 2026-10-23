@@ -375,11 +375,18 @@ It intentionally does not:
 
 ### Local daily ETL
 
-Use the project CLI:
+For normal execution, use the full pipeline:
 
 ```bash
 python -m scripts.run_pipeline
 ```
+
+For a specific stage only, use `python -m scripts.run_extract`,
+`python -m scripts.run_transform`, or `python -m scripts.run_load`.
+Transform requires existing validated RAW data; load requires existing validated
+Parquet and matching RAW provenance. Neither stage downloads missing inputs.
+Stage reruns validate and reuse artifacts and retain the PostgreSQL
+per-request-partition idempotency contract. See the root README for command usage.
 
 The configured inclusive period comes from the project environment. The runtime splits multi-month periods into calendar-month request partitions and processes each partition through the same checkpoint boundaries.
 

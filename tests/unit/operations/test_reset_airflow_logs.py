@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scripts import reset_airflow_logs
+from scripts.maintenance import reset_airflow_logs
 
 
 def test_clear_airflow_logs_preserves_root_and_removes_children(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_clear_airflow_logs_preserves_root_and_removes_children(tmp_path: Path) 
 
 def test_airflow_log_reset_prod_is_hard_denied(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_logs.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_logs.resolve_app_environment",
         lambda: "prod",
     )
     monkeypatch.setattr(
@@ -35,7 +35,7 @@ def test_airflow_log_reset_prod_is_hard_denied(monkeypatch) -> None:
 
 def test_airflow_log_reset_inspect_never_deletes(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_logs.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_logs.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(

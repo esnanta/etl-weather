@@ -21,7 +21,7 @@ from pipeline.contracts.era5_land import (
 )
 from pipeline.interfaces.etl import DataTransformer
 from pipeline.observability.logging import (
-    _log_dataframe_preview,
+    log_dataframe_preview,
     log_dataframe_changes,
     log_dataframe_info,
     log_metric,
@@ -38,11 +38,10 @@ def _validate_era5_land_local_day_context(request: WeatherRequest) -> None:
         required_context_start = ERA5_LAND_FIRST_LOCAL_DAY - pd.Timedelta(
             hours=LOCAL_UTC_OFFSET_HOURS
         )
-        context_start = cast(pd.Timestamp, required_context_start)
         raise ValueError(
             "ERA5-Land local day 1950-01-01 cannot be transformed for UTC+7: "
             "it requires UTC context starting at "
-            f"{context_start.strftime('%Y-%m-%d %H:%M')}, before ERA5-Land begins."
+            f"{required_context_start.strftime('%Y-%m-%d %H:%M')}, before ERA5-Land begins."
         )
 
 
@@ -88,10 +87,7 @@ def _aggregate_accumulated_variable(
     variable: str,
 ) -> pd.DataFrame:
     """Aggregate an ERA5-Land accumulated variable to a UTC+7 local-day total."""
-    working = cast(
-        pd.DataFrame,
-        dataframe[["valid_time", "latitude", "longitude", variable]].copy(),
-    )
+    working = dataframe[["valid_time", "latitude", "longitude", variable]].copy()
 
     utc_midnight = cast(
         pd.DataFrame,
@@ -310,7 +306,7 @@ def transform_data(raw_dataset: LoadedWeatherDataset) -> TransformedWeatherDatas
         step="Transformation",
     )
     log_dataframe_info(transformed, title="Transformation output")
-    _log_dataframe_preview(transformed)
+    log_dataframe_preview(transformed)
     return TransformedWeatherDataset(
         request=raw_dataset.request,
         transformed_at=datetime.now(UTC),

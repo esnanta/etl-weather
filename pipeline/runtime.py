@@ -300,3 +300,49 @@ def run_monthly_batch(request: WeatherRequest) -> None:
         pipeline.run(monthly_request)
 
     logger.info("Monthly pipeline batch completed.")
+
+
+def _run_stage_monthly_batch(
+    request: WeatherRequest,
+    *,
+    stage_name: str,
+    stage: Callable[[WeatherRequest], dict[str, object]],
+) -> None:
+    """Execute one checkpoint-backed ETL boundary per monthly partition."""
+    validate_request(request)
+    normalized_request = build_request(request)
+
+    for monthly_request in split_request_by_month(normalized_request):
+        result = stage(monthly_request)
+        logger.info(
+            "%s completed | request_key=%s | artifact=%s | status=%s",
+            stage_name,
+            result["request_key"],
+            result["artifact_path"],
+            result.get("artifact_status", result.get("load_status")),
+        )
+
+    logger.info("%s monthly batch completed.", stage_name)
+
+
+def extract_monthly_batch(request: WeatherRequest) -> None:
+    """Only retrieve or validate RAW NetCDF checkpoints for each month."""
+    _run_stage_monthly_batch(
+        request, stage_name="EXTRACT", stage=ensure_raw_checkpoint_partition
+    )
+
+
+def transform_monthly_batch(request: WeatherRequest) -> None:
+    """Only transform existing valid RAW checkpoints to daily Parquet."""
+    _run_stage_monthly_batch(
+        request,
+        stage_name="TRANSFORM",
+        stage=ensure_transformed_checkpoint_partition,
+    )
+
+
+def load_monthly_batch(request: WeatherRequest) -> None:
+    """Only load existing valid transformed checkpoints into PostgreSQL."""
+    _run_stage_monthly_batch(
+        request, stage_name="LOAD", stage=load_request_partition
+    )

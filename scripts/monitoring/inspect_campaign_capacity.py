@@ -17,7 +17,7 @@ from pathlib import Path
 from shutil import disk_usage
 import sys
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import validate_and_log_app_environment
@@ -29,6 +29,11 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# noinspection SqlNoDataSourceInspection,SqlResolve
+SQLITE_DEFERRED_TASK_COUNT_QUERY = (
+    "SELECT COUNT(*) FROM task_instance WHERE state = 'deferred'"
+)
 
 
 def _disk(path: Path) -> dict[str, object]:
@@ -85,7 +90,7 @@ def _deferred_tasks(airflow_home: Path) -> dict[str, object]:
     try:
         with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)) as connection:
             count = connection.execute(
-                "SELECT COUNT(*) FROM task_instance WHERE state = 'deferred'"
+                SQLITE_DEFERRED_TASK_COUNT_QUERY
             ).fetchone()[0]
         return {"deferred_task_instances": count}
     except sqlite3.Error as error:
@@ -143,7 +148,7 @@ def main() -> None:
         validate_and_log_app_environment(logger)
     except ValueError:
         raise SystemExit(2) from None
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", root / "orchestration"))
     result = {
         "measured_at_utc": datetime.now(timezone.utc).isoformat(),

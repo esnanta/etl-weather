@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from database.config import DatabaseConfig
-from scripts import recreate_postgres_database as maintenance
+from scripts.maintenance import recreate_postgres_database as maintenance
 from ..._paths import REPOSITORY_ROOT
 
 
@@ -47,7 +47,7 @@ def _database_config(database: str = "weather_dev") -> DatabaseConfig:
 
 def test_prod_denies_before_database_config_access(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: "prod",
     )
 
@@ -65,7 +65,7 @@ def test_prod_denies_before_database_config_access(monkeypatch) -> None:
 
 def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: (_ for _ in ()).throw(
             ValueError(
                 "APP_ENV is required. Set APP_ENV=dev or APP_ENV=prod "
@@ -89,7 +89,7 @@ def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
 def test_dev_inspect_mode_runs_preflight_but_never_recreates(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
@@ -151,7 +151,7 @@ def test_confirmation_reprompts_invalid_answer() -> None:
 
 def test_execute_no_confirmation_never_recreates(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
@@ -173,7 +173,7 @@ def test_execute_no_confirmation_never_recreates(monkeypatch) -> None:
 def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
@@ -201,7 +201,7 @@ def test_execute_yes_recreates_only_after_preflight(monkeypatch) -> None:
 
 def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.resolve_app_environment",
+        "scripts.maintenance.recreate_postgres_database.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
@@ -233,7 +233,7 @@ def test_failed_preflight_blocks_prompt_and_recreate(monkeypatch) -> None:
 
 def test_runtime_guard_rejects_enabled_campaign_schedule(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.campaign_schedule",
+        "scripts.maintenance.recreate_postgres_database.campaign_schedule",
         lambda: "0 */2 * * *",
     )
 
@@ -248,7 +248,7 @@ def test_direct_script_execution_resolves_root_config_without_shadowing() -> Non
     env["APP_ENV"] = "prod"
 
     result = subprocess.run(
-        [sys.executable, str(project_root / "scripts" / "recreate_postgres_database.py")],
+        [sys.executable, str(project_root / "scripts" / "maintenance" / "recreate_postgres_database.py")],
         cwd=project_root,
         env=env,
         capture_output=True,
@@ -264,7 +264,7 @@ def test_direct_script_execution_resolves_root_config_without_shadowing() -> Non
 
 def _patch_idle_runtime(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.recreate_postgres_database.campaign_schedule",
+        "scripts.maintenance.recreate_postgres_database.campaign_schedule",
         lambda: None,
     )
     monkeypatch.setattr(

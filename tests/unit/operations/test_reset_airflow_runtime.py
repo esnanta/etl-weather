@@ -8,7 +8,7 @@ is isolated with temporary /proc fixtures and injected signal functions.
 from pathlib import Path
 import signal
 
-from scripts import reset_airflow_runtime
+from scripts.maintenance import reset_airflow_runtime
 
 
 def _write_process(proc_root: Path, pid: int, command: str) -> None:
@@ -134,11 +134,11 @@ def test_local_executor_cleanup_stops_after_sigterm_when_worker_exits(
 
 def test_airflow_runtime_reset_prod_is_hard_denied(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_runtime.resolve_app_environment",
         lambda: "prod",
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.reset_airflow_runtime_state",
+        "scripts.maintenance.reset_airflow_runtime.reset_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("must not reset")),
     )
 
@@ -147,19 +147,19 @@ def test_airflow_runtime_reset_prod_is_hard_denied(monkeypatch) -> None:
 
 def test_airflow_runtime_reset_inspect_never_mutates(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_runtime.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.blocking_airflow_services",
+        "scripts.maintenance.reset_airflow_runtime.blocking_airflow_services",
         lambda: [],
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.local_executor_workers",
+        "scripts.maintenance.reset_airflow_runtime.local_executor_workers",
         lambda: [(10, "airflow worker -- LocalExecutor: <idle>")],
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.reset_airflow_runtime_state",
+        "scripts.maintenance.reset_airflow_runtime.reset_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("inspect must not reset")),
     )
 
@@ -168,20 +168,20 @@ def test_airflow_runtime_reset_inspect_never_mutates(monkeypatch) -> None:
 
 def test_airflow_runtime_reset_no_confirmation_never_mutates(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_runtime.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.blocking_airflow_services",
+        "scripts.maintenance.reset_airflow_runtime.blocking_airflow_services",
         lambda: [],
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.local_executor_workers",
+        "scripts.maintenance.reset_airflow_runtime.local_executor_workers",
         lambda: [],
     )
-    monkeypatch.setattr("scripts.reset_airflow_runtime._confirmation", lambda: False)
+    monkeypatch.setattr("scripts.maintenance.reset_airflow_runtime._confirmation", lambda: False)
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.reset_airflow_runtime_state",
+        "scripts.maintenance.reset_airflow_runtime.reset_airflow_runtime_state",
         lambda: (_ for _ in ()).throw(AssertionError("no must not reset")),
     )
 
@@ -190,15 +190,15 @@ def test_airflow_runtime_reset_no_confirmation_never_mutates(monkeypatch) -> Non
 
 def test_airflow_runtime_reset_blocks_when_main_service_is_running(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.resolve_app_environment",
+        "scripts.maintenance.reset_airflow_runtime.resolve_app_environment",
         lambda: "dev",
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.blocking_airflow_services",
+        "scripts.maintenance.reset_airflow_runtime.blocking_airflow_services",
         lambda: [(77, "airflow scheduler")],
     )
     monkeypatch.setattr(
-        "scripts.reset_airflow_runtime.local_executor_workers",
+        "scripts.maintenance.reset_airflow_runtime.local_executor_workers",
         lambda: [(88, "airflow worker -- LocalExecutor: <idle>")],
     )
 

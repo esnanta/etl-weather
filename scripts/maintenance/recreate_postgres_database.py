@@ -16,7 +16,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Callable
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from psycopg import connect, sql
@@ -25,7 +25,7 @@ from config import APP_ENV_DEV, resolve_app_environment
 from database.bootstrap import bootstrap
 from orchestration.scheduling.schedule import campaign_schedule
 from database.config import DatabaseConfig
-from scripts.airflow_processes import list_airflow_processes
+from scripts.helpers.airflow_processes import list_airflow_processes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +52,19 @@ BLOCKING_TASK_STATES = (
 # Airflow DagRun states that may still produce or resume task work.
 BLOCKING_DAGRUN_STATES = ("queued", "running")
 
+# noinspection SqlNoDataSourceInspection,SqlResolve
+SQLITE_TABLE_EXISTS_QUERY = (
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1"
+)
+# noinspection SqlNoDataSourceInspection,SqlResolve
+SQLITE_TASK_INSTANCE_COUNT_QUERY = (
+    "SELECT COUNT(*) FROM task_instance WHERE state = ?"
+)
+# noinspection SqlNoDataSourceInspection,SqlResolve
+SQLITE_DAG_RUN_COUNT_QUERY = (
+    "SELECT COUNT(*) FROM dag_run WHERE dag_id = ? AND state = ?"
+)
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -68,8 +81,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _airflow_metadata_path() -> Path:
-    project_root = Path(__file__).resolve().parents[1]
-    airflow_home = Path(os.getenv("AIRFLOW_HOME", project_root / "orchestration"))
+    repository_root = Path(__file__).resolve().parents[2]
+    airflow_home = Path(os.getenv("AIRFLOW_HOME", repository_root / "orchestration"))
     sqlalchemy_url = os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "")
     if sqlalchemy_url.startswith("sqlite:///"):
         return Path(sqlalchemy_url.removeprefix("sqlite:///"))
@@ -81,13 +94,29 @@ def _airflow_task_state_counts(path: Path) -> dict[str, int]:
         return {state: 0 for state in BLOCKING_TASK_STATES}
     try:
         with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)) as conn:
-            result = {}
+            table_exists = conn.execute(
+                SQLITE_TABLE_EXISTS_QUERY,
+                ("task_instance",),
+            ).fetchone()
+            if table_exists is None:
+                logger.info(
+                    "Airflow metadata preflight | task_instance table not found at %s; "
+                    "treating blocking task counts as zero.",
+                    path,
+                )
+                return {state: 0 for state in BLOCKING_TASK_STATES}
+            result: dict[str, int] = {}
             for state in BLOCKING_TASK_STATES:
+                count_row: tuple[int] | None = conn.execute(
+                    SQLITE_TASK_INSTANCE_COUNT_QUERY,
+                    (state,),
+                ).fetchone()
+                if count_row is None:
+                    raise RuntimeError(
+                        f"Unexpected empty COUNT result for task_instance state={state!r}."
+                    )
                 result[state] = int(
-                    conn.execute(
-                        "SELECT COUNT(*) FROM task_instance WHERE state = ?",
-                        (state,),
-                    ).fetchone()[0]
+                    count_row[0]
                 )
             return result
     except sqlite3.Error as error:
@@ -102,14 +131,29 @@ def _airflow_dag_run_state_counts(path: Path) -> dict[str, int]:
         return {state: 0 for state in BLOCKING_DAGRUN_STATES}
     try:
         with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)) as conn:
-            result = {}
+            table_exists = conn.execute(
+                SQLITE_TABLE_EXISTS_QUERY,
+                ("dag_run",),
+            ).fetchone()
+            if table_exists is None:
+                logger.info(
+                    "Airflow metadata preflight | dag_run table not found at %s; "
+                    "treating blocking DagRun counts as zero.",
+                    path,
+                )
+                return {state: 0 for state in BLOCKING_DAGRUN_STATES}
+            result: dict[str, int] = {}
             for state in BLOCKING_DAGRUN_STATES:
+                count_row: tuple[int] | None = conn.execute(
+                    SQLITE_DAG_RUN_COUNT_QUERY,
+                    ("cds_era5_land_etl", state),
+                ).fetchone()
+                if count_row is None:
+                    raise RuntimeError(
+                        f"Unexpected empty COUNT result for dag_run state={state!r}."
+                    )
                 result[state] = int(
-                    conn.execute(
-                        "SELECT COUNT(*) FROM dag_run "
-                        "WHERE dag_id = ? AND state = ?",
-                        ("cds_era5_land_etl", state),
-                    ).fetchone()[0]
+                    count_row[0]
                 )
             return result
     except sqlite3.Error as error:
@@ -135,8 +179,10 @@ def _database_session_count(config: DatabaseConfig) -> int:
                 "WHERE datname = %s AND pid <> pg_backend_pid()",
                 (config.database,),
             )
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
+            row: tuple[int] | None = cursor.fetchone()
+            if row is None:
+                return 0
+            return int(row[0])
 
 
 def _display_target(config: DatabaseConfig) -> None:
@@ -175,7 +221,7 @@ def _validate_bootstrap_prerequisites(config: DatabaseConfig) -> None:
                 "WHERE d.datname = %s AND r.rolname = current_user",
                 (config.database,),
             )
-            row = cursor.fetchone()
+            row: tuple[bool, bool, bool] | None = cursor.fetchone()
             if row is None:
                 raise RuntimeError(
                     f"Database {config.database!r} does not exist; use database.setup."
@@ -280,15 +326,15 @@ def _recreate_database(config: DatabaseConfig) -> None:
         with connection.cursor() as cursor:
             logger.info("DATABASE | DROP %s | starting", config.database)
             cursor.execute(
-                sql.SQL("DROP DATABASE {}").format(sql.Identifier(config.database))
+                sql.SQL("DROP DATABASE ") + sql.Identifier(config.database)
             )
             logger.info("DATABASE | DROP %s | complete", config.database)
             logger.info("DATABASE | CREATE %s | starting", config.database)
             cursor.execute(
-                sql.SQL("CREATE DATABASE {} OWNER {}").format(
-                    sql.Identifier(config.database),
-                    sql.Identifier(config.user),
-                )
+                sql.SQL("CREATE DATABASE ")
+                + sql.Identifier(config.database)
+                + sql.SQL(" OWNER ")
+                + sql.Identifier(config.user)
             )
 
     logger.info("DATABASE | CREATE %s | complete", config.database)
@@ -296,6 +342,26 @@ def _recreate_database(config: DatabaseConfig) -> None:
     # Canonical root bootstrap initializes all eight application tables.
     bootstrap(config)
     logger.info("DATABASE | Bootstrap 8 tables + PostGIS | complete")
+
+
+def validate_static_guards(config: DatabaseConfig) -> None:
+    """Public wrapper for static safety guards."""
+    _validate_static_guards(config)
+
+
+def validate_bootstrap_prerequisites(config: DatabaseConfig) -> None:
+    """Public wrapper for read-only privilege and PostGIS preflight checks."""
+    _validate_bootstrap_prerequisites(config)
+
+
+def recreate_database(config: DatabaseConfig) -> None:
+    """Public wrapper for guarded DROP/CREATE and canonical bootstrap."""
+    _recreate_database(config)
+
+
+def validate_runtime_guards(config: DatabaseConfig) -> None:
+    """Public wrapper for runtime-idle safety checks before recreation."""
+    _validate_runtime_guards(config)
 
 
 def main(argv: list[str] | None = None) -> int:

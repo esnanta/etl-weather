@@ -93,6 +93,14 @@ def _log_dataframe_preview(
     logger.debug("[PREVIEW]\n%s", preview.to_string(index=False))
 
 
+def log_dataframe_preview(
+    dataframe: pd.DataFrame,
+    rows: int = 10,
+) -> None:
+    """Public wrapper for DataFrame preview logging."""
+    _log_dataframe_preview(dataframe, rows=rows)
+
+
 def log_pipeline_summary(
     *,
     request,

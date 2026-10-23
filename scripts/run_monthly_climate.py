@@ -10,7 +10,7 @@ import calendar
 import hashlib
 import json
 from datetime import date
-from pathlib import Path
+from typing import Any, SupportsFloat, cast
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -45,15 +45,20 @@ def aggregate_month(data: pd.DataFrame, start: date) -> pd.DataFrame:
     for (lat, lon), group in frame.groupby(["latitude", "longitude"], sort=True):
         if set(group["local_day"]) != expected:
             raise ValueError(f"Incomplete local-day coverage for grid ({lat}, {lon}).")
-        result = {"latitude": float(lat), "longitude": float(lon)}
+        lat_value = cast(SupportsFloat, lat)
+        lon_value = cast(SupportsFloat, lon)
+        result: dict[str, float | None] = {
+            "latitude": float(lat_value),
+            "longitude": float(lon_value),
+        }
         for source, target in _FIELDS.items():
-            values = pd.to_numeric(group[source], errors="raise")
-            if values.isna().any():
+            numeric_values = pd.to_numeric(group[source], errors="raise")
+            if pd.isna(numeric_values).any():
                 result[target] = None
             elif source in {"tp_daily_total_mm", "ssrd_daily_total_j_m2"}:
-                result[target] = float(values.sum())
+                result[target] = float(numeric_values.sum())
             else:
-                result[target] = float(values.mean())
+                result[target] = float(numeric_values.mean())
         rows.append(result)
     if not rows:
         raise ValueError("No grid points available for monthly aggregation.")
@@ -125,8 +130,13 @@ def main() -> None:
                         :ssrd_monthly_total_j_m2)
             """)
             records = monthly.where(pd.notnull(monthly), None).to_dict("records")
-            conn.execute(statement, [dict(row, monthly_climate_id=inserted_id,
-                                          month_start=start) for row in records])
+            payload: list[dict[str, Any]] = []
+            for row in records:
+                typed_row = {str(key): value for key, value in row.items()}
+                typed_row["monthly_climate_id"] = inserted_id
+                typed_row["month_start"] = start
+                payload.append(typed_row)
+            conn.execute(statement, payload)
         print(f"Committed {len(monthly)} monthly grid observations.")
     finally:
         engine.dispose()

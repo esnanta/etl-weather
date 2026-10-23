@@ -19,17 +19,17 @@ from pathlib import Path
 
 from psycopg import connect
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
 from database.config import DatabaseConfig, APPLICATION_SCHEMA
 from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
-from scripts import recreate_postgres_database
-from scripts import reset_airflow_logs
-from scripts import reset_airflow_runtime
-from scripts import reset_data
-from scripts.airflow_processes import list_airflow_processes, terminate_processes
+from scripts.maintenance import recreate_postgres_database
+from scripts.maintenance import reset_airflow_logs
+from scripts.maintenance import reset_airflow_runtime
+from scripts.maintenance import reset_data
+from scripts.helpers.airflow_processes import list_airflow_processes, terminate_processes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -116,6 +116,9 @@ def _database_sessions(config: DatabaseConfig) -> list[dict[str, object]]:
                 "ORDER BY pid",
                 (config.database,),
             )
+            rows: list[tuple[int, str, str | None, str | None, str | None]] = (
+                cursor.fetchall()
+            )
             return [
                 {
                     "pid": row[0],
@@ -124,7 +127,7 @@ def _database_sessions(config: DatabaseConfig) -> list[dict[str, object]]:
                     "client_addr": row[3],
                     "state": row[4],
                 }
-                for row in cursor.fetchall()
+                for row in rows
             ]
 
 
@@ -214,17 +217,20 @@ def _database_tables_ready(config: DatabaseConfig) -> bool:
                 "WHERE table_schema = %s",
                 (config.schema,),
             )
-            found = {row[0] for row in cursor.fetchall()}
+            rows: list[tuple[str]] = cursor.fetchall()
+            found: set[str] = {row[0] for row in rows}
             cursor.execute(
                 "SELECT n.nspname FROM pg_extension e "
                 "JOIN pg_namespace n ON n.oid=e.extnamespace "
                 "WHERE e.extname='postgis'"
             )
-            extension_row = cursor.fetchone()
+            extension_row: tuple[str] | None = cursor.fetchone()
+    if extension_row is None:
+        return False
+    extension_schema = extension_row[0]
     return (
         set(EXPECTED_APPLICATION_TABLES).issubset(found)
-        and extension_row is not None
-        and extension_row[0] == APPLICATION_SCHEMA
+        and extension_schema == APPLICATION_SCHEMA
     )
 
 
@@ -261,7 +267,7 @@ def _verify_clean_state(config: DatabaseConfig) -> dict[str, int]:
 def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     """Execute clean-slate destruction in failure-safe order."""
     _section("PREFLIGHT | Check PostgreSQL privileges, PostGIS and sessions")
-    recreate_postgres_database._validate_bootstrap_prerequisites(config)
+    recreate_postgres_database.validate_bootstrap_prerequisites(config)
     _require_no_database_sessions(config)
 
     _section("STEP 1/6 | Stop Airflow processes")
@@ -270,7 +276,7 @@ def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     _require_no_database_sessions(config)
 
     _section("STEP 3/6 | DROP, CREATE and bootstrap database (8 tables + PostGIS)")
-    recreate_postgres_database._recreate_database(config)
+    recreate_postgres_database.recreate_database(config)
     _section("STEP 4/6 | Remove generated NetCDF/Parquet data")
     data_removed = reset_data.clear_data_contents()
     _section("STEP 5/6 | Remove Airflow logs")
@@ -310,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     config = DatabaseConfig.from_env()
 
     try:
-        recreate_postgres_database._validate_static_guards(config)
+        recreate_postgres_database.validate_static_guards(config)
         processes = list_airflow_processes()
     except RuntimeError as error:
         _section("DESTROY ALL | PREFLIGHT FAILED")

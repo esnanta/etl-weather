@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pandas as pd
 import pyarrow as pa
@@ -12,7 +13,7 @@ import pyarrow.parquet as pq
 import xarray as xr
 
 from pipeline.interfaces.etl import DataStorage
-from pipeline.observability.logging import _log_dataframe_preview
+from pipeline.observability.logging import log_dataframe_preview
 from pipeline.models.weather import (
     DatasetArtifact,
     RawWeatherDataset,
@@ -119,7 +120,7 @@ def convert_netcdf_to_dataframe(artifact: DatasetArtifact) -> pd.DataFrame:
     )
     with xr.open_dataset(artifact.path) as local_ds:
         dataframe = local_ds.to_dataframe().reset_index()
-    _log_dataframe_preview(dataframe, rows=10)
+    log_dataframe_preview(dataframe, rows=10)
     return dataframe
 
 
@@ -193,7 +194,8 @@ def save_transformed_parquet(
         downloaded_at=downloaded_at,
         transformed_at=transformed_at,
     )
-    table = pa.Table.from_pandas(df=df, preserve_index=False)
+    table_factory = cast(Any, pa.Table)
+    table = table_factory.from_pandas(df=df, preserve_index=False)
     schema_metadata = dict(table.schema.metadata or {})
     schema_metadata.update(
         {
