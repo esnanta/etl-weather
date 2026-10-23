@@ -1,4 +1,4 @@
-"""Guarded maintenance command for clearing generated Airflow logs."""
+"""Guarded maintenance command for clearing generated pipeline data artifacts."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
@@ -24,21 +24,21 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-AIRFLOW_LOG_DIRECTORY = project_root / "orchestration" / "logs"
+DATA_DIRECTORY = project_root / "data"
 
 
-def clear_airflow_logs(log_directory: Path = AIRFLOW_LOG_DIRECTORY) -> int:
-    """Delete every child of the Airflow log directory while preserving it."""
-    return clear_directory_contents(log_directory)
+def clear_data_contents(data_directory: Path = DATA_DIRECTORY) -> int:
+    """Delete every child of the data directory while preserving the directory."""
+    return clear_directory_contents(data_directory)
 
 
 def _confirmation() -> bool:
-    return confirmation_for_target(AIRFLOW_LOG_DIRECTORY)
+    return confirmation_for_target(DATA_DIRECTORY)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Inspect or clear generated Airflow log contents."
+        description="Inspect or clear generated contents inside the project data directory."
     )
     parser.add_argument(
         "--execute",
@@ -53,24 +53,24 @@ def main(argv: list[str] | None = None) -> int:
     try:
         app_env = resolve_app_environment()
     except ValueError as error:
-        logger.warning("Airflow log reset aborted | %s", error)
+        logger.warning("Data reset aborted | %s", error)
         return 2
 
     logger.info("Application environment | APP_ENV=%s", app_env)
     if app_env != APP_ENV_DEV:
-        logger.warning("Airflow log reset unavailable | APP_ENV=%s.", app_env)
+        logger.warning("Data reset unavailable | APP_ENV=%s.", app_env)
         return 3
 
-    logger.info("Airflow log reset target | path=%s", AIRFLOW_LOG_DIRECTORY)
+    logger.info("Data reset target | path=%s", DATA_DIRECTORY)
     if not args.execute:
-        logger.info("Inspect-only mode | no Airflow logs were deleted.")
+        logger.info("Inspect-only mode | no data files were deleted.")
         return 0
     if not _confirmation():
-        logger.info("Airflow log reset cancelled by operator.")
+        logger.info("Data reset cancelled by operator.")
         return 0
 
-    removed = clear_airflow_logs()
-    logger.info("Airflow log reset complete | removed_entries=%d", removed)
+    removed = clear_data_contents()
+    logger.info("Data reset complete | removed_entries=%d", removed)
     return 0
 
 

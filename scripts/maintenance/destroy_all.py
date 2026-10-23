@@ -19,17 +19,17 @@ from pathlib import Path
 
 from psycopg import connect
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
 from database.config import DatabaseConfig, APPLICATION_SCHEMA
 from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
-from scripts import recreate_postgres_database
-from scripts import reset_airflow_logs
-from scripts import reset_airflow_runtime
-from scripts import reset_data
-from scripts.airflow_processes import list_airflow_processes, terminate_processes
+from scripts.maintenance import recreate_postgres_database
+from scripts.maintenance import reset_airflow_logs
+from scripts.maintenance import reset_airflow_runtime
+from scripts.maintenance import reset_data
+from scripts.helpers.airflow_processes import list_airflow_processes, terminate_processes
 
 logging.basicConfig(
     level=logging.INFO,

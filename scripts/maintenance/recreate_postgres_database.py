@@ -16,7 +16,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Callable
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from psycopg import connect, sql
@@ -25,7 +25,7 @@ from config import APP_ENV_DEV, resolve_app_environment
 from database.bootstrap import bootstrap
 from orchestration.scheduling.schedule import campaign_schedule
 from database.config import DatabaseConfig
-from scripts.airflow_processes import list_airflow_processes
+from scripts.helpers.airflow_processes import list_airflow_processes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,7 +81,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _airflow_metadata_path() -> Path:
-    repository_root = Path(__file__).resolve().parents[1]
+    repository_root = Path(__file__).resolve().parents[2]
     airflow_home = Path(os.getenv("AIRFLOW_HOME", repository_root / "orchestration"))
     sqlalchemy_url = os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "")
     if sqlalchemy_url.startswith("sqlite:///"):

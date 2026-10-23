@@ -13,11 +13,11 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from config import APP_ENV_DEV, resolve_app_environment
-from scripts.airflow_processes import (
+from scripts.helpers.airflow_processes import (
     list_airflow_services,
     list_localexecutor_workers,
     terminate_processes,
