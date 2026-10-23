@@ -2,7 +2,7 @@
 
 Branch: `dev`  
 Created: 2026-10-23  
-Status: approved; relocated on `dev`, pending local pytest verification
+Status: refactor implemented; focused regression verification passed (operator-reported 2026-10-23)
 
 ## Purpose
 
@@ -74,9 +74,9 @@ Retain `run_monthly_climate.py` rather than shorten to `run_monthly.py`: the exp
 - [x] Update `tests/unit/operations/` imports/mocks/CLI invocations, including subprocess invocation tests and failure cases.
 - [ ] Add/import-smoke-test the relocated monitoring and inspection CLIs without contacting CDS or the application database.
 - [x] Update root `README.md`, `orchestration/README.md`, and other verified call sites with new module paths. Avoid duplicating full commands in AGENTS.
-- [ ] Run offline regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`.
-- [ ] Run relevant isolated PostgreSQL integration suite as needed; never reset live `weather` for testing.
-- [ ] Record test evidence and commit changes only on `dev`.
+- [x] Run offline regression: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q`.
+- [x] Run relevant isolated PostgreSQL integration suite as needed; never reset live `weather` for testing.
+- [x] Record test evidence and commit changes only on `dev`.
 
 ## Acceptance
 
@@ -90,3 +90,20 @@ Retain `run_monthly_climate.py` rather than shorten to `run_monthly.py`: the exp
 ## Implementation evidence (2026-10-23)
 
 Moved utility entrypoints into maintenance/monitoring/inspection and shared `airflow_processes` into helpers. Updated operation-test import/monkeypatch/direct-path references and main README command examples. **Local pytest and integration tests have not been executed in this environment; acceptance is pending user-run verification.** No reset/destroy/CDS commands were run. Existing `run_pipeline`, `run_extract`, `run_transform`, `run_load`, `run_monthly_climate` and setup shell script remain in the root.
+
+
+## Regression acceptance evidence — 2026-10-23
+
+Operator executed from the project environment:
+
+```bash
+source activate-airflow.sh -q
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q
+# 392 passed in 6.64s
+python -m pytest tests/integration/pipeline -q
+# 5 passed in 1.11s
+python -m pytest tests/unit/operations -q
+# 93 passed in 1.35s
+```
+
+The 93 operations tests are included in the 392 unit tests; **397 distinct passing tests** across unit and focused pipeline integration. No failures reported. This validates the tested refactor paths, but does not constitute live CLI operational/idempotency acceptance, which remains tracked in `docs/todo/DAILY_ETL_STAGE_CLI.md`. The activation log showed campaign scheduling enabled; the unit-test process explicitly overrode it to false.
