@@ -203,11 +203,32 @@ python -m database.bootstrap --execute
 
 The combined bootstrap provisions 7 climate/operational tables, 3 geospatial tables, and 2 regional views. PostGIS is required for the spatial objects.
 
-### 2. Run Pipeline Manually
+### 2. Run Daily ETL
+
+**Complete ETL (normal execution):**
 
 ```bash
 python -m scripts.run_pipeline
 ```
+
+This runs **extract → transform → load**, in that order for each calendar-month partition. It is the recommended command for regular operation.
+
+**Individual stages (optional):**
+
+Use these only when a specific stage needs to be executed independently, for example during verification or recovery:
+
+```bash
+# Extract: CDS → RAW NetCDF
+python -m scripts.run_extract
+
+# Transform: existing valid RAW NetCDF → daily Parquet
+python -m scripts.run_transform
+
+# Load: existing valid Parquet → PostgreSQL
+python -m scripts.run_load
+```
+
+The transform stage requires an existing valid RAW checkpoint; load requires an existing valid transformed checkpoint with matching RAW provenance. Neither automatically runs preceding stages. A missing or invalid prerequisite causes an error. All stages validate and reuse valid checkpoints without silently overwriting artifacts. Database load remains idempotent per `request_key`: unchanged partitions skip writes only when the transformed path/checksum and observation count match, otherwise the transactional UPSERT path is used.
 
 The manual pipeline does not take start/end dates as CLI arguments. Its request period comes from the environment configuration:
 
