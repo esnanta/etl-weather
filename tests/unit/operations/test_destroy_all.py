@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from database.config import DatabaseConfig
-from scripts import destroy_all
+from scripts.maintenance import destroy_all
 from ..._paths import REPOSITORY_ROOT
 
 
@@ -40,44 +40,44 @@ def _config(database: str = "weather") -> DatabaseConfig:
 
 
 def test_prod_denies_before_database_config_access(monkeypatch) -> None:
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "prod")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "prod")
 
     def unexpected_config():
         raise AssertionError("Database config must not be read in prod mode.")
 
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", unexpected_config)
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", unexpected_config)
 
     assert destroy_all.main([]) == 3
 
 
 def test_missing_app_env_aborts_before_database_config(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.destroy_all.resolve_app_environment",
+        "scripts.maintenance.destroy_all.resolve_app_environment",
         lambda: (_ for _ in ()).throw(ValueError("APP_ENV is required")),
     )
 
     def unexpected_config():
         raise AssertionError("Database config must not be read without APP_ENV.")
 
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", unexpected_config)
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", unexpected_config)
 
     assert destroy_all.main([]) == 2
 
 
 def test_inspect_only_displays_targets_without_mutation(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._validate_static_guards",
         lambda config: calls.append("static"),
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.list_airflow_processes",
+        "scripts.maintenance.destroy_all.list_airflow_processes",
         lambda: [(101, "airflow scheduler")],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.execute_destroy",
+        "scripts.maintenance.destroy_all.execute_destroy",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Inspect-only mode must not destroy anything.")
         ),
@@ -98,13 +98,13 @@ def test_confirmation_rejects_every_non_exact_value(answer: str) -> None:
 
 
 def test_system_database_is_rejected_before_confirmation(monkeypatch) -> None:
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
     monkeypatch.setattr(
-        "scripts.destroy_all.DatabaseConfig.from_env",
+        "scripts.maintenance.destroy_all.DatabaseConfig.from_env",
         lambda: _config("postgres"),
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._confirmation",
+        "scripts.maintenance.destroy_all._confirmation",
         lambda: (_ for _ in ()).throw(
             AssertionError("System database must fail before confirmation.")
         ),
@@ -122,7 +122,7 @@ def test_stop_all_airflow_processes_uses_shared_termination(monkeypatch) -> None
     selected: list[tuple[int, str]] = []
 
     monkeypatch.setattr(
-        "scripts.destroy_all.list_airflow_processes",
+        "scripts.maintenance.destroy_all.list_airflow_processes",
         lambda: list(current),
     )
 
@@ -132,7 +132,7 @@ def test_stop_all_airflow_processes_uses_shared_termination(monkeypatch) -> None
         assert remaining_processes_fn() == []
         return [101, 102, 103]
 
-    monkeypatch.setattr("scripts.destroy_all.terminate_processes", terminate)
+    monkeypatch.setattr("scripts.maintenance.destroy_all.terminate_processes", terminate)
 
     assert destroy_all._stop_all_airflow_processes() == 3
     assert selected == [
@@ -144,12 +144,12 @@ def test_stop_all_airflow_processes_uses_shared_termination(monkeypatch) -> None
 
 def test_airflow_stop_failure_prevents_database_recreation(monkeypatch) -> None:
     monkeypatch.setattr(
-        "scripts.destroy_all._stop_all_airflow_processes",
+        "scripts.maintenance.destroy_all._stop_all_airflow_processes",
         lambda: (_ for _ in ()).throw(RuntimeError("cannot stop airflow")),
     )
     monkeypatch.setattr(destroy_all, "_require_no_database_sessions", lambda config: None)
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Database must remain untouched.")
         ),
@@ -160,9 +160,9 @@ def test_airflow_stop_failure_prevents_database_recreation(monkeypatch) -> None:
 
 
 def test_external_database_session_prevents_recreation(monkeypatch) -> None:
-    monkeypatch.setattr("scripts.destroy_all._stop_all_airflow_processes", lambda: 2)
+    monkeypatch.setattr("scripts.maintenance.destroy_all._stop_all_airflow_processes", lambda: 2)
     monkeypatch.setattr(
-        "scripts.destroy_all._database_sessions",
+        "scripts.maintenance.destroy_all._database_sessions",
         lambda config: [
             {
                 "pid": 701,
@@ -174,7 +174,7 @@ def test_external_database_session_prevents_recreation(monkeypatch) -> None:
         ],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Database must not be recreated with external sessions.")
         ),
@@ -188,31 +188,31 @@ def test_execute_destroy_uses_failure_safe_order(monkeypatch) -> None:
     calls: list[str] = []
 
     monkeypatch.setattr(
-        "scripts.destroy_all._stop_all_airflow_processes",
+        "scripts.maintenance.destroy_all._stop_all_airflow_processes",
         lambda: calls.append("airflow") or 4,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._require_no_database_sessions",
+        "scripts.maintenance.destroy_all._require_no_database_sessions",
         lambda config: calls.append("sessions"),
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: calls.append("database"),
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_data.clear_data_contents",
+        "scripts.maintenance.destroy_all.reset_data.clear_data_contents",
         lambda: calls.append("data") or 2,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_airflow_logs.clear_airflow_logs",
+        "scripts.maintenance.destroy_all.reset_airflow_logs.clear_airflow_logs",
         lambda: calls.append("logs") or 3,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
+        "scripts.maintenance.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
         lambda: calls.append("runtime") or [Path("airflow.db")],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._verify_clean_state",
+        "scripts.maintenance.destroy_all._verify_clean_state",
         lambda config: calls.append("verify") or {
             "airflow_processes_remaining": 0,
             "airflow_runtime_files_remaining": 0,
@@ -245,19 +245,19 @@ def test_final_verification_rejects_remaining_runtime_state(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "scripts.destroy_all.list_airflow_processes",
+        "scripts.maintenance.destroy_all.list_airflow_processes",
         lambda: [(801, "airflow scheduler")],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._runtime_files_remaining",
+        "scripts.maintenance.destroy_all._runtime_files_remaining",
         lambda: [],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._directory_entry_count",
+        "scripts.maintenance.destroy_all._directory_entry_count",
         lambda path: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._database_tables_ready",
+        "scripts.maintenance.destroy_all._database_tables_ready",
         lambda config: True,
     )
 
@@ -266,14 +266,14 @@ def test_final_verification_rejects_remaining_runtime_state(
 
 
 def test_final_verification_accepts_clean_state(monkeypatch) -> None:
-    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
-    monkeypatch.setattr("scripts.destroy_all._runtime_files_remaining", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all._runtime_files_remaining", lambda: [])
     monkeypatch.setattr(
-        "scripts.destroy_all._directory_entry_count",
+        "scripts.maintenance.destroy_all._directory_entry_count",
         lambda path: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._database_tables_ready",
+        "scripts.maintenance.destroy_all._database_tables_ready",
         lambda config: True,
     )
 
@@ -288,19 +288,19 @@ def test_final_verification_accepts_clean_state(monkeypatch) -> None:
 
 def test_execute_main_requires_confirmation_before_destroy(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._validate_static_guards",
         lambda config: None,
     )
-    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all.list_airflow_processes", lambda: [])
     monkeypatch.setattr(
-        "scripts.destroy_all._confirmation",
+        "scripts.maintenance.destroy_all._confirmation",
         lambda: calls.append("confirm") or False,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.execute_destroy",
+        "scripts.maintenance.destroy_all.execute_destroy",
         lambda config: (_ for _ in ()).throw(
             AssertionError("Destroy must not run without exact confirmation.")
         ),
@@ -311,16 +311,16 @@ def test_execute_main_requires_confirmation_before_destroy(monkeypatch) -> None:
 
 
 def test_execute_main_returns_failure_when_destroy_fails(monkeypatch) -> None:
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._validate_static_guards",
         lambda config: None,
     )
-    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
-    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr("scripts.maintenance.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all._confirmation", lambda: True)
     monkeypatch.setattr(
-        "scripts.destroy_all.execute_destroy",
+        "scripts.maintenance.destroy_all.execute_destroy",
         lambda config: (_ for _ in ()).throw(RuntimeError("verification failed")),
     )
 
@@ -332,7 +332,7 @@ def test_direct_script_execution_hard_denies_prod() -> None:
     env["APP_ENV"] = "prod"
 
     result = subprocess.run(
-        [sys.executable, str(REPOSITORY_ROOT / "scripts" / "destroy_all.py")],
+        [sys.executable, str(REPOSITORY_ROOT / "scripts" / "maintenance" / "destroy_all.py")],
         cwd=REPOSITORY_ROOT,
         env=env,
         capture_output=True,
@@ -346,21 +346,21 @@ def test_direct_script_execution_hard_denies_prod() -> None:
 
 
 def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, capsys) -> None:
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._validate_static_guards",
         lambda config: None,
     )
-    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
-    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
-    monkeypatch.setattr("scripts.destroy_all._stop_all_airflow_processes", lambda: 0)
-    monkeypatch.setattr("scripts.destroy_all._database_sessions", lambda config: [
+    monkeypatch.setattr("scripts.maintenance.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr("scripts.maintenance.destroy_all._stop_all_airflow_processes", lambda: 0)
+    monkeypatch.setattr("scripts.maintenance.destroy_all._database_sessions", lambda config: [
         {"pid": 15381, "user": "postgres", "application_name": "PyCharm",
          "client_addr": "127.0.0.1", "state": "idle"}
     ])
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: pytest.fail("Database recreation must not start."),
     )
 
@@ -377,36 +377,36 @@ def test_open_database_sessions_log_actionable_failure(monkeypatch, caplog, caps
 
 
 def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> None:
-    monkeypatch.setattr("scripts.destroy_all.resolve_app_environment", lambda: "dev")
-    monkeypatch.setattr("scripts.destroy_all.DatabaseConfig.from_env", lambda: _config())
+    monkeypatch.setattr("scripts.maintenance.destroy_all.resolve_app_environment", lambda: "dev")
+    monkeypatch.setattr("scripts.maintenance.destroy_all.DatabaseConfig.from_env", lambda: _config())
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._validate_static_guards",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._validate_static_guards",
         lambda config: None,
     )
-    monkeypatch.setattr("scripts.destroy_all.list_airflow_processes", lambda: [])
-    monkeypatch.setattr("scripts.destroy_all._confirmation", lambda: True)
+    monkeypatch.setattr("scripts.maintenance.destroy_all.list_airflow_processes", lambda: [])
+    monkeypatch.setattr("scripts.maintenance.destroy_all._confirmation", lambda: True)
     monkeypatch.setattr(
-        "scripts.destroy_all._stop_all_airflow_processes", lambda: 0,
+        "scripts.maintenance.destroy_all._stop_all_airflow_processes", lambda: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._require_no_database_sessions", lambda config: None,
+        "scripts.maintenance.destroy_all._require_no_database_sessions", lambda config: None,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.recreate_postgres_database._recreate_database",
+        "scripts.maintenance.destroy_all.recreate_postgres_database._recreate_database",
         lambda config: None,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_data.clear_data_contents", lambda: 0,
+        "scripts.maintenance.destroy_all.reset_data.clear_data_contents", lambda: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_airflow_logs.clear_airflow_logs", lambda: 0,
+        "scripts.maintenance.destroy_all.reset_airflow_logs.clear_airflow_logs", lambda: 0,
     )
     monkeypatch.setattr(
-        "scripts.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
+        "scripts.maintenance.destroy_all.reset_airflow_runtime.clear_airflow_runtime_state",
         lambda: [],
     )
     monkeypatch.setattr(
-        "scripts.destroy_all._verify_clean_state", lambda config: {
+        "scripts.maintenance.destroy_all._verify_clean_state", lambda config: {
             "airflow_processes_remaining": 0,
             "airflow_runtime_files_remaining": 0,
             "data_entries_remaining": 0,

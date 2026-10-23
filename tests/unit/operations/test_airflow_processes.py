@@ -7,7 +7,7 @@ import signal
 
 import pytest
 
-from scripts import airflow_processes
+from scripts.helpers import airflow_processes
 
 
 def _write_process(proc_root: Path, pid: int, command: str) -> None:
