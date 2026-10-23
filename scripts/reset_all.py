@@ -71,8 +71,8 @@ def _display_targets(config: DatabaseConfig) -> None:
 
 def _run_preflight(config: DatabaseConfig) -> None:
     """Require a fully inactive runtime before conservative reset."""
-    recreate_postgres_database._validate_static_guards(config)
-    recreate_postgres_database._validate_runtime_guards(config)
+    recreate_postgres_database.validate_static_guards(config)
+    recreate_postgres_database.validate_runtime_guards(config)
 
 
 def _confirmation(
@@ -95,7 +95,7 @@ def _confirmation(
 def execute_reset(config: DatabaseConfig) -> dict[str, int]:
     """Reset only after preflight proved that no Airflow work can resume."""
     logger.info("RESET | 1/4 | Reinitialize PostgreSQL database %s", config.database)
-    recreate_postgres_database._recreate_database(config)
+    recreate_postgres_database.recreate_database(config)
     logger.info("RESET | 2/4 | Clear generated NetCDF/Parquet data")
     data_removed = reset_data.clear_data_contents()
     logger.info("RESET | 3/4 | Clear Airflow logs")
