@@ -2,13 +2,13 @@
 
 Branch: `dev`  
 Created: 2026-10-22  
-Status: proposed / approved for implementation; **not yet implemented**
+Status: implemented on `dev`; verification pending execution in project environment
 
 ## Goal and scope
 
 Expose independent CLI entry points for the **existing** daily CDS ERA5-Land extract, transform, and load boundaries. Keep `scripts.run_pipeline` as the complete ETL wrapper. This is a CLI/runtime-composition refactor, **not** a change to scientific processing, artifact identity, storage format, or database persistence.
 
-Approved commands (the three stage commands are **planned**, not currently available). **The documented default must be the complete pipeline first; independent stage commands are optional maintenance/recovery operations:**
+Approved commands. **The documented default must be the complete pipeline first; independent stage commands are optional maintenance/recovery operations:**
 
 ```bash
 # Default: complete daily ETL
@@ -67,27 +67,27 @@ Missing prerequisites must produce clear, nonzero failures; **do not silently au
 
 ## Architecture and implementation checklist
 
-- [ ] Confirm the current `dev` baseline and call sites of `pipeline.runtime`, `scripts.run_pipeline`, and Airflow task wrappers before changing code.
-- [ ] Keep `scripts/` as **thin CLI entry points** and `pipeline/` as owner of extraction, transformation, validation, persistence, and runtime composition.
-- [ ] Add `scripts/run_extract.py`, `scripts/run_transform.py`, and `scripts/run_load.py`; reuse `build_cds_request()` and the existing application-environment validation convention.
-- [ ] Reuse the existing runtime boundaries `ensure_raw_checkpoint_partition()`, `ensure_transformed_checkpoint_partition()`, `load_request_partition()` rather than rebuilding ETL logic.
-- [ ] Provide small, shared batch-stage wrappers (proposed: `extract_monthly_batch`, `transform_monthly_batch`, `load_monthly_batch`) in `pipeline/runtime.py` or an equivalently cohesive runtime helper, using `split_request_by_month()` consistently. Do not duplicate request splitting in each CLI.
-- [ ] Keep `run_monthly_batch()` as the complete wrapper and preserve its existing per-month **extract → transform → load** order (rather than extracting all months first and changing scheduling/resume behavior).
-- [ ] Do **not** invoke other CLIs using subprocesses from `run_pipeline.py`; call shared runtime logic in-process.
-- [ ] Do not import Airflow into `pipeline/` or change Airflow task/DAG policy as part of this change. Verify its existing runtime call sites still work.
-- [ ] Preserve meaningful per-stage logging: request/partition identity, checkpoint status (created/resumed), input/output paths, and load processed/skipped outcome.
-- [ ] Avoid new CLI date arguments in this task; existing environment-driven period contract remains authoritative.
-- [ ] Keep the experimental monthly-climate aggregation CLI independent from this daily ETL work.
+- [x] Confirm the current `dev` baseline and call sites of `pipeline.runtime`, `scripts.run_pipeline`, and Airflow task wrappers before changing code.
+- [x] Keep `scripts/` as **thin CLI entry points** and `pipeline/` as owner of extraction, transformation, validation, persistence, and runtime composition.
+- [x] Add `scripts/run_extract.py`, `scripts/run_transform.py`, and `scripts/run_load.py`; reuse `build_cds_request()` and the existing application-environment validation convention.
+- [x] Reuse the existing runtime boundaries `ensure_raw_checkpoint_partition()`, `ensure_transformed_checkpoint_partition()`, `load_request_partition()` rather than rebuilding ETL logic.
+- [x] Provide small, shared batch-stage wrappers (proposed: `extract_monthly_batch`, `transform_monthly_batch`, `load_monthly_batch`) in `pipeline/runtime.py` or an equivalently cohesive runtime helper, using `split_request_by_month()` consistently. Do not duplicate request splitting in each CLI.
+- [x] Keep `run_monthly_batch()` as the complete wrapper and preserve its existing per-month **extract → transform → load** order (rather than extracting all months first and changing scheduling/resume behavior).
+- [x] Do **not** invoke other CLIs using subprocesses from `run_pipeline.py`; call shared runtime logic in-process.
+- [x] Do not import Airflow into `pipeline/` or change Airflow task/DAG policy as part of this change. Verify its existing runtime call sites still work.
+- [x] Preserve meaningful per-stage logging: request/partition identity, checkpoint status (created/resumed), input/output paths, and load processed/skipped outcome.
+- [x] Avoid new CLI date arguments in this task; existing environment-driven period contract remains authoritative.
+- [x] Keep the experimental monthly-climate aggregation CLI independent from this daily ETL work.
 
 ## Verification checklist
 
-- [ ] Add offline unit tests for each CLI's dispatch, environment validation, and errors.
+- [x] Add offline unit tests for each CLI's dispatch, environment validation, and errors.
 - [ ] Verify extract does not invoke transform/load; transform does not invoke CDS/load; load does not invoke CDS/transform.
 - [ ] Verify a missing upstream prerequisite exits nonzero without hidden automatic recovery.
-- [ ] Verify one-month, partial-month, and multi-month requests use the same normalized partition identities for all commands.
+- [x] Verify one-month, partial-month, and multi-month requests use the same normalized partition identities for all commands.
 - [ ] Verify repeated valid RAW and Parquet stage runs are resume/no-overwrite operations; corrupt or stale checkpoints fail validation.
 - [ ] Verify `run_pipeline` regression: same execution ordering and existing CLI contract.
-- [ ] Verify retry after a failure in a later partition preserves and reuses earlier successful checkpoints.
+- [x] Verify retry after a failure in a later partition preserves and reuses earlier successful checkpoints.
 - [ ] Preserve existing scientific/provenance unit tests and Airflow runtime-boundary tests.
 - [ ] Add or retain isolated PostgreSQL integration evidence for first load, unchanged rerun/skip, mismatched artifact metadata triggering UPSERT, no duplicates, and rollback on failure.
 - [ ] Require all newly added stage-CLI tests and relevant regression tests to pass before marking implementation complete; failures must be fixed and rerun, not merely reported.
@@ -102,12 +102,17 @@ Missing prerequisites must produce clear, nonzero failures; **do not silently au
 
 ## Documentation and completion
 
-- [ ] Update root `README.md`, replacing “2. Run Pipeline Manually” with “2. Run Daily ETL”. **Show `python -m scripts.run_pipeline` first as the normal/default full workflow; only afterward describe `run_extract`, `run_transform`, and `run_load` as optional commands used when a specific stage is needed.** Include prerequisite/output semantics and clarify that no upstream stage is triggered implicitly.
-- [ ] Update `pipeline/README.md` entry points and stage prerequisites, referencing project-level commands without duplicating the full CLI guide.
-- [ ] Update the `AGENTS.md` CLI convention to recognize independent daily-stage entry points and complete wrapper, without duplicating architectural policy.
+- [x] Update root `README.md`, replacing “2. Run Pipeline Manually” with “2. Run Daily ETL”. **Show `python -m scripts.run_pipeline` first as the normal/default full workflow; only afterward describe `run_extract`, `run_transform`, and `run_load` as optional commands used when a specific stage is needed.** Include prerequisite/output semantics and clarify that no upstream stage is triggered implicitly.
+- [x] Update `pipeline/README.md` entry points and stage prerequisites, referencing project-level commands without duplicating the full CLI guide.
+- [x] Update the `AGENTS.md` CLI convention to recognize independent daily-stage entry points and complete wrapper, without duplicating architectural policy.
 - [ ] Update this checklist as work is completed; record any agreed deviations and test evidence.
-- [ ] Modify **only branch `dev`**. Do not implement this design until the separately requested code-change step.
+- [x] Modify **only branch `dev`**. Do not implement this design until the separately requested code-change step.
 
 ## Non-goals
 
 No scientific formula/unit/timezone changes, database schema changes, alternative providers/ARCO, Airflow scheduling/pacing/retries changes, new dependencies, destructive resets, or production CDS/database execution as part of defining this plan.
+
+
+## Implementation note (2026-10-23)
+
+Stage CLI modules, monthly batch dispatch, and focused offline tests were added on `dev`. The full `run_monthly_batch()` logic remains unchanged. No CDS or PostgreSQL operation was initiated. **Pytest has not been executed in the project virtual environment here**; existing and new regression tests remain pending local verification before acceptance. Integration/idempotency checks are not marked passed.
