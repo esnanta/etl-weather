@@ -1,364 +1,118 @@
-# AGENTS.md
+# AGENTS.md → INSTRUCTIONS
 
-This repository contains a weather ETL pipeline that runs independently and can also be orchestrated by Apache Airflow.
+**Document role: INSTRUCTIONS.** This file tells AI coding agents **how to work in this repository**: which documents to consult, how to plan changes, which boundaries to respect, what to test, and how to report completion. It does not redefine product requirements, operational Airflow policies, or code implementation guidelines.
 
-Project and coding references:
+## 1. Project context
 
-- `README.md`
-- `docs/AIRFLOW_BEST_PRACTICE.md`
-- `docs/AIRFLOW_CODING_GUIDELINES.md`
-- `tests/AGENTS.md` for test-specific work
+This repository implements **ETL Weather**, a Copernicus CDS ERA5-Land data pipeline that converts hourly source data into validated UTC+7 daily climate observations, persists canonical results in PostgreSQL, and supports Airflow orchestration, geospatial region mapping, operational inspection, and downstream climate analysis.
 
-Scientific data contracts documented in code and tests must not be changed implicitly.
+The active provider path is Copernicus CDS ERA5-Land. Do not add or restore another provider, ARCO path, or incompatible scientific contract without an explicit product/architecture decision in the owning documentation.
 
----
+## 2. Documentation navigation
 
-## Current Project Scope
+Before changing code, read the documents that own the affected topic.
 
-- The only active provider path is Copernicus CDS ERA5-Land hourly data.
-- RAW hourly data is the scientific source of truth.
-- Daily transformed data uses UTC+7 local-day semantics.
-- PostgreSQL stores canonical daily climate observations.
-- Controlled PostgreSQL-to-DataFrame access is implemented and verified.
+| Document | Role | Owns |
+| --- | --- | --- |
+| [docs/app_description.md](docs/app_description.md) | **WHAT** | Product scope, scientific and data requirements, architecture decisions, selected technologies, and acceptance criteria |
+| [README.md](README.md) | **CURRENT BEHAVIOR / SETUP** | Repository overview, environment setup, operator-facing commands, current architecture, and data layout |
+| [pipeline/README.md](pipeline/README.md) | **PIPELINE DOMAIN** | Current pipeline structure, responsibilities, and pipeline-facing usage |
+| [orchestration/README.md](orchestration/README.md) | **AIRFLOW OPERATIONS** | Scheduling, pacing, retries, progress, recovery, and operator-facing Airflow behavior |
+| [geospatial/README.md](geospatial/README.md) | **GEOSPATIAL DOMAIN** | PostGIS boundaries, imports, mapping, and regional views |
+| [query/README.md](query/README.md) | **OPERATIONAL INSPECTION** | Read-only SQL audit queries |
+| [docs/python_se_principle.md](docs/python_se_principle.md) | **PYTHON DESIGN** | SOLID principles guided by DRY, KISS, and YAGNI for Python code design and refactoring |
+| [tests/AGENTS.md](tests/AGENTS.md) | **TEST INSTRUCTIONS** | Test-specific boundaries and verification rules |
+| **AGENTS.md** (this file) | **INSTRUCTIONS** | Agent workflow, repository navigation, change discipline, and completion reporting |
 
-Do not add another provider path without an explicit design decision, isolated artifacts, dedicated dependencies, and source-specific tests.
+The ERA5-Land source references stored under `docs/ERA5-Land hourly data from 1950 to present/` are upstream scientific evidence. Use them when a change depends on ERA5-Land semantics.
 
----
+Do not duplicate entire rules across documents. When requirements or architecture change, update the owning WHAT document and then repair references elsewhere. When runtime behavior changes without changing requirements, update the relevant domain README.
 
-## Repository Conventions
+## 3. Agent workflow
 
-- Use English for code, comments, and identifiers.
-- Treat RAW data as immutable.
-- Put Airflow orchestration in `orchestration/`.
-- Put thin DAG declarations in `orchestration/dags/` and Airflow task wrappers in `orchestration/tasks/`.
-- Put ETL logic in `pipeline/`.
-- Keep all PostgreSQL configuration, connection lifecycle, DDL and PostGIS bootstrap in the root `database/` package. The independent `database.schema.initialize_climate_schema` and `initialize_geospatial_schema` paths must remain separate; the explicit `python -m database.bootstrap --execute` CLI coordinates both.
-- Keep climate reads in `pipeline/repositories/`, climate writes in `pipeline/loaders/`, progress and pacing CRUD in `orchestration/repositories/`, and spatial imports in `geospatial/importers/`. None of these domain modules owns canonical CREATE TABLE SQL.
-- Put geospatial source datasets, validation, importers, persistence, and grid-to-region mapping in `geospatial/`, separate from `pipeline/` and `orchestration/`.
-- The `geospatial/` module must run independently of Airflow; do not import Airflow into geospatial code or add geospatial work to the current ETL DAG.
-- Treat GeoJSON files under `geospatial/sources/` as immutable source inputs. Importers must read and validate them without modifying, replacing, or deleting the source files.
-- Store Indonesian sources under `geospatial/sources/id/` (ISO 3166-1 alpha-2, lowercase); for Aceh district boundaries use `geospatial/sources/id/districts/Aceh.geojson`.
+1. **Inspect first.** Read the affected code, tests, and owning documentation before editing. Distinguish implemented behavior from desired behavior.
+2. **Identify ownership.** Decide whether the change belongs to product/scientific requirements, pipeline logic, database persistence, orchestration, geospatial code, operational tooling, or tests.
+3. **Scope narrowly.** Prefer the smallest coherent change that satisfies the requested behavior. Do not perform unrelated refactors.
+4. **Preserve contracts.** Treat scientific, temporal, artifact, provenance, persistence, and idempotency behavior as explicit contracts. Do not alter them implicitly.
+5. **Implement at the owning layer.** Keep Airflow-specific coordination out of reusable ETL code and keep scientific/data processing out of DAG definitions and task wrappers.
+6. **Validate.** Run the smallest meaningful test suite first, then broader tests when appropriate. Never claim checks passed if they were not run.
+7. **Document.** Update the document that owns any changed requirement, architecture decision, operator command, or domain contract.
+8. **Report completion.** Summarize changed files, behavior, tests run, limitations, and any remaining risks.
 
-- Use `scripts/` for thin CLI entrypoints; group destructive utilities under `scripts/maintenance/`, campaign status commands under `scripts/monitoring/`, read-only inspection under `scripts/inspection/`, and reusable helpers under `scripts/helpers/`. Daily ETL normally uses `scripts/run_pipeline.py`; `scripts/run_extract.py`, `scripts/run_transform.py`, and `scripts/run_load.py` expose independent checkpoint-backed stages without implicitly executing preceding stages. The separate experimental monthly aggregation CLI is `scripts/run_monthly_climate.py`; neither its monthly processing nor its database writes belong in the daily Airflow DAG.
-- Keep the active provider and dataset identity explicit in requests, artifacts, logs, and database metadata.
-- Do not restore ARCO entrypoints, dependencies, artifacts, or runtime branches without an approved design and dedicated tests.
+For exploratory or review tasks, recommendations may be given without modifying code.
 
----
+## 4. Repository responsibility boundaries
 
-## Airflow Boundary
+Follow the existing repository layout before creating or moving modules.
 
-Core rule:
+- `pipeline/` owns Airflow-independent extraction, validation, transformation, artifact storage, loading, domain requests/models, and climate-data access.
+- `orchestration/` owns Airflow scheduling, task dependency graphs, mapping, retries/deferral, pacing, progress, recovery, runtime coordination, and Airflow-specific configuration.
+- `database/` owns PostgreSQL connection/bootstrap and canonical database schema creation.
+- `geospatial/` owns administrative-boundary source data, validation/import, PostGIS persistence, and grid-to-region mapping. It must remain independently runnable from Airflow.
+- `query/` contains read-only SQL inspection and audit queries. Do not turn it into an alternate mutation path.
+- `scripts/` contains thin human/CI-facing entrypoints. Reusable business or scientific logic belongs in domain modules.
+- `tests/` owns automated verification and fixtures; follow `tests/AGENTS.md` for local rules.
+- `docs/` owns application requirements, scientific references, and design documentation.
 
-> Airflow orchestrates the pipeline; pipeline modules own ETL and modelling-data access logic.
+Do not import Airflow into reusable pipeline or geospatial modules.
 
-Keep in `pipeline/`:
+## 5. Change discipline
 
-- `extraction/` for provider extraction;
-- `validation/` for RAW/transformed validation;
-- `transformation/` for scientific transformation and unit conversion;
-- `contracts/` for shared scientific constants/contracts;
-- `storage/` for deterministic artifacts and local I/O;
-- `loaders/` for database persistence/idempotency;
-- `repositories/` for controlled read-only data access;
-- `requests/weather.py` for request validation, normalization, splitting, and identity;
-- `requests/factory.py` for configured typed request construction;
-- `models/weather.py` for weather-domain models and artifact metadata;
-- `interfaces/etl.py` for ETL boundary interfaces;
-- `observability/logging.py` for pipeline logging helpers;
-- `runtime.py` for ETL orchestration/composition only.
+- Use English for code, identifiers, comments, documentation, and commit messages unless a task explicitly requires another language.
+- Treat downloaded RAW scientific data and committed geospatial source files as immutable inputs.
+- Keep provider, dataset, spatial extent, time semantics, units, and artifact identity explicit.
+- Preserve deterministic artifact and request identity.
+- Preserve safe rerun/resume behavior and idempotent persistence.
+- Keep missing scientific observations as missing values; never silently coerce them to zero.
+- Do not bypass validation merely because an artifact or database record already exists.
+- Do not introduce compatibility layers for discarded development schemas unless explicitly requested.
+- Do not reintroduce ARCO or another data-source runtime branch without an approved design.
+- Do not place scientific transformation logic in Airflow DAGs or task-wrapper files.
+- Do not send full scientific datasets through Airflow XCom.
+- Do not commit credentials, API keys, database passwords, JWT secrets, or other sensitive values.
 
-Keep in `orchestration/`:
+If an implementation request conflicts with `docs/app_description.md`, stop treating the old requirement as authoritative only after the WHAT document is explicitly changed.
 
-- schedules;
-- data intervals;
-- task dependencies;
-- retry policy;
-- pools/concurrency;
-- sensors;
-- XCom wiring;
-- Connections/secrets;
-- alerting.
+## 6. Python and documentation quality
 
-Do not import Airflow into core pipeline modules.
+Before writing or refactoring Python code, read [Python Software Engineering Principles](docs/python_se_principle.md). Apply SOLID pragmatically, with DRY, KISS, and YAGNI as guardrails. Do not introduce abstractions or design patterns without a demonstrated need.
 
----
+New or materially modified Python modules should begin with a concise module-level docstring that states purpose and important side effects or safety behavior. Keep CLI modules thin and clear about whether they are read-only or state-changing.
 
-## ERA5-Land Scientific Contract
+Prefer explicit, small interfaces and simple implementations. Apply DRY, KISS, and YAGNI pragmatically; avoid speculative abstractions.
 
-Provider codes are the primary variable names:
+Markdown documentation should start with a concise statement of its role and should link to the owning document rather than restating large contracts.
 
-```text
-tp
-t2m
-d2m
-swvl1
-ssrd
+## 7. Testing requirements
+
+Routine test commands use quiet pytest output:
+
+```bash
+python -m pytest tests/unit -q
+python -m pytest tests/integration -q
 ```
 
-Daily timezone:
+Run focused tests first when only one domain changes. Integration tests must use the isolated `TEST_POSTGRES_*` database configuration and must never target the development database.
 
-```text
-Asia/Jakarta = UTC+7
-```
+For changes affecting retry, resume, scientific transformation, persistence, geospatial mapping, destructive maintenance, or Airflow orchestration, verify the relevant failure and repeat-execution paths as well as the happy path.
 
-Retain both:
+Follow `tests/AGENTS.md` for detailed test ownership and isolation rules.
 
-```text
-valid_time
-valid_time_local
-```
+## 8. Operational and destructive changes
 
-Do not replace either with a generic `date` field.
+Inspect maintenance commands before changing them. Preserve environment guards, explicit execution flags, confirmation barriers, and protection of source code/configuration.
 
-Accumulated variables:
+Never delete generated data, recreate databases, terminate Airflow processes, or perform other destructive actions unless the task explicitly requires it and the existing safety contract is preserved.
 
-```text
-tp
-ssrd
-```
+## 9. Definition of done
 
-Daily-mean variables:
+A task is complete when:
 
-```text
-t2m
-d2m
-swvl1
-```
+- the requested behavior is implemented in the correct architectural layer;
+- the owning documentation remains consistent with the implementation;
+- relevant tests and checks pass, or unrun/failed checks are explicitly reported;
+- scientific correctness, provenance, data integrity, rerun safety, and security are not weakened;
+- no unrelated behavior was changed;
+- the completion report identifies changed files, verification performed, and remaining follow-ups.
 
-Accumulation formula for local day `D`:
-
-```text
-Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
-```
-
-Output units:
-
-```text
-tp     = mm/day
-t2m    = degC
-d2m    = degC
-swvl1  = m3/m3
-ssrd   = J/m2/day
-```
-
-Missing values are not zero.
-
----
-
-## Transformed Schema
-
-Canonical transformed Parquet columns:
-
-```text
-valid_time
-valid_time_local
-latitude
-longitude
-tp
-t2m
-swvl1
-ssrd
-d2m
-```
-
-Source metadata fields such as `number` and `expver` must not become weather observation columns unless a new explicit contract justifies them.
-
----
-
-## Artifact Contract
-
-```text
-RAW         = NetCDF
-TRANSFORMED = Parquet
-```
-
-Artifacts live under `data/` and are deterministic by logical request partition.
-
-RAW is immutable.
-Existing RAW/transformed checkpoints must be resumed and validated, not silently overwritten.
-
-Runtime boundaries:
-
-```text
-ensure_raw_checkpoint()
-ensure_transformed_checkpoint()
-load()
-```
-
----
-
-## PostgreSQL Daily Climate Contract
-
-Canonical tables:
-
-```text
-climate_data.t_daily_climate
-climate_data.t_daily_climate_detail
-```
-
-Canonical detail foreign key:
-
-```text
-daily_climate_id
-```
-
-Logical partition identity is the deterministic `request_key`, derived from the provider, dataset, date range, variable set, and bounding box.
-
-Observation identity for database UPSERT:
-
-```text
-daily_climate_id + valid_time + latitude + longitude
-```
-
-An unchanged database load may be skipped only when the existing `request_key`,
-transformed artifact path/checksum, and observation count all match the current
-Parquet partition. Any mismatch must fall back to the normal transactional
-metadata and observation UPSERT path.
-
-Database daily-statistic columns:
-
-```text
-tp     -> tp_daily_total_mm
-t2m    -> t2m_daily_mean_c
-d2m    -> d2m_daily_mean_c
-swvl1  -> swvl1_daily_mean_m3_m3
-ssrd   -> ssrd_daily_total_j_m2
-```
-
-The development database supports only the current schema. Prefer recreating development state over adding compatibility behavior for discarded schemas.
-
----
-
-## Daily Climate Repository Contract
-
-Implementation:
-
-```text
-pipeline/repositories/daily_climate_reader.py
-```
-
-Tests:
-
-```text
-tests/unit/pipeline/test_daily_climate_repository.py
-```
-
-The repository provides controlled and validated read-only access from canonical PostgreSQL daily climate observations to an in-memory Pandas DataFrame.
-
-Selection explicitly defines:
-
-```text
-source
-dataset_name
-start_date
-end_date
-bbox
-```
-
-Returned columns:
-
-```text
-daily_climate_id
-valid_time
-valid_time_local
-latitude
-longitude
-tp_daily_total_mm
-t2m_daily_mean_c
-d2m_daily_mean_c
-swvl1_daily_mean_m3_m3
-ssrd_daily_total_j_m2
-```
-
-The repository must remain read-only, preserve missing values, preserve both timestamps, enforce local-midnight and period bounds, reject empty selections and duplicate local-day/grid observations, and return deterministic ordering.
-
-The repository must not add wet-day labels, scaling, anomaly/rolling features, final clustering features, or create duplicate physical modelling datasets.
-
----
-
-## Retry and Backfill Test Coverage
-
-Tests protect the pipeline boundaries needed before historical backfill.
-
-Coverage should include:
-
-- fresh/resumed RAW checkpoints and validation after resume;
-- fresh/resumed transformed checkpoints and validation after resume;
-- deterministic artifact paths and overwrite refusal;
-- missing-artifact failures;
-- ERA5-Land transformation edge cases;
-- canonical database schema and indexes;
-- metadata and observation UPSERT contracts;
-- missing-value preservation into database NULL;
-- daily-climate repository negative cases and handoff validation;
-- runtime loader delegation without Airflow.
-
-Keep this coverage verified whenever retry, resume, persistence, or backfill boundaries change.
-
----
-
-## Minimal Provenance Contract
-
-Provenance metadata tracks artifact identity without introducing transform-version or Git-commit versioning.
-
-Rules:
-
-- RAW NetCDF stores `downloaded_at` as file metadata.
-- Parquet metadata stores `raw_artifact_path`, `raw_sha256`, `downloaded_at`, and `transformed_at`.
-- PostgreSQL `t_daily_climate` stores `downloaded_at`, `transformed_artifact_path`, `transformed_sha256`, and `transformed_at`.
-- RAW path/checksum do not belong in PostgreSQL.
-- Provenance values are partition metadata, not repeated observation columns.
-- A resumed transformed checkpoint must reject a changed RAW checksum.
-- Development artifacts/schema created before this provenance contract should be recreated rather than migrated.
-
----
-
-## Validation Rules
-
-Do not bypass validation because an artifact or database row already exists.
-Scientific validation takes precedence over generic row-count checks.
-
----
-
-## Testing
-
-Follow `tests/AGENTS.md`.
-
-Tests must be pytest-based, deterministic, offline by default, small, readable, and independent from Airflow for core pipeline behavior.
-
----
-
-## Forbidden Actions
-
-- Do not overwrite RAW checkpoints.
-- Do not restore or combine inactive provider artifacts with the CDS ERA5-Land pipeline.
-- Do not change provider variable names silently.
-- Do not change unit/time semantics silently.
-- Do not bypass validation on resumed artifacts.
-- Do not return database loading to blind append behavior.
-- Do not use any foreign key other than `daily_climate_id` for canonical daily-climate details.
-- Do not create a duplicate daily-climate modelling dataset without a demonstrated need.
-- Do not drop `valid_time` or rename `valid_time_local` to generic `date`.
-- Do not treat missing values as zero.
-- Do not encode wet-day or clustering semantics into canonical daily climate data.
-- Do not make the daily-climate read path create database objects.
-- Do not place scientific transformations in DAG or Airflow task-wrapper files.
-- Do not pass full datasets through future XCom.
-
----
-
-## Practical Decision Order
-
-When in doubt, prefer:
-
-1. scientific correctness;
-2. immutable RAW source truth;
-3. deterministic partition identity;
-4. explicit provider, dataset, and spatial identity;
-5. explicit units and timestamps;
-6. validation before downstream use;
-7. safe retry/resume;
-8. idempotent persistence;
-9. canonical daily climate data as modelling source;
-10. thin Airflow orchestration;
-11. simple implementation over unnecessary abstraction.
+**Boundary reminder:** `AGENTS.md = INSTRUCTIONS`; `docs/app_description.md = WHAT`; domain READMEs describe current operation and implementation boundaries.
