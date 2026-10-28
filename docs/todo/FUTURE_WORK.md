@@ -51,6 +51,13 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - PostGIS schema alias uses `APPLICATION_SCHEMA` while retaining the existing exported name.
 - No live PostgreSQL, Airflow, CDS, or destructive maintenance command was executed by the assistant. Post-refactor pytest results are pending.
 
+### Post-refactor regression evidence (operator-reported, 2026-10-28)
+- Focused suite: **78 passed, 1 failed** (1.33s). Failure: `test_geospatial_readiness_remains_independent`.
+- All unit tests: **396 passed, 1 failed** (7.38s), same failure.
+- Integration tests: **17 passed** (2.23s).
+- Root cause: the new test fake matched `pg_namespace` before `pg_extension`, although the extension query joins both catalog tables. The test fake was corrected in commit `f9757efa`; production code was not changed for this correction.
+- [ ] Re-run focused and complete unit suites after this test-only fix. Integration passed prior to the fix and remains operator-reported evidence, not a new run after it.
+
 ### Regression and acceptance
 - [x] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
 - [x] Add/update focused tests for delegated engine creation/disposal (including failures); existing PostGIS unit guards remain unchanged and must be rerun.
