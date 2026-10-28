@@ -39,14 +39,21 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - [x] **Consolidate monthly DDL:** move `create_monthly_climate_tables()` unchanged from `database/monthly_climate.py` into `database/climate.py`; update imports in `database/schema.py` and tests/callers, then delete the obsolete module only after confirming no references remain. Preserve exact CREATE TABLE statements, execution order, constraints, transaction boundary, function name, and independent monthly workflow.
 - [x] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
 - [x] **Maintenance dependency audit (static):** `scripts/maintenance/destroy_all.py` imports `CLIMATE_TABLES`, unions it with `GEOSPATIAL_TABLES` into `EXPECTED_APPLICATION_TABLES`, and uses that in post-recreation readiness verification. The additional two monthly tables will intentionally become required. No destructive action was executed.
-- [ ] Validate this changed readiness expectation with focused non-destructive maintenance tests.
+- [x] Update non-destructive maintenance table-inventory tests to expect ten application tables; local regression execution still pending.
 - [x] **Engine lifecycle:** make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine()` without changing target selection, yielded engine lifetime, or disposal behavior.
 - [x] **PostGIS schema constant:** replace the duplicate literal `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the canonical `APPLICATION_SCHEMA` reference while preserving the public constant and resulting SQL/error messages.
 - [x] **Requirement documentation:** update the owning database-readiness requirement in `docs/app_description.md` to distinguish required monthly database structures from the not-yet-accepted monthly aggregation workflow. Reconcile any related descriptive references without expanding the implementation scope.
 
+### Implementation evidence
+- The monthly DDL function was moved without modifying its SQL statements; `database/monthly_climate.py` was deleted and callers/tests updated.
+- `CLIMATE_TABLES` now lists seven required tables. `destroy_all.py` final inventory consequently expects ten tables (seven climate/operational plus three geospatial); its explicit safety gates were not modified.
+- Runtime engine lifecycle now delegates to `managed_database_engine` and keeps the context-manager interface.
+- PostGIS schema alias uses `APPLICATION_SCHEMA` while retaining the existing exported name.
+- No live PostgreSQL, Airflow, CDS, or destructive maintenance command was executed by the assistant. Post-refactor pytest results are pending.
+
 ### Regression and acceptance
-- [ ] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
-- [ ] Add/update focused tests for delegated engine creation/disposal (including failures) and unchanged PostGIS schema/version guards.
+- [x] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
+- [x] Add/update focused tests for delegated engine creation/disposal (including failures); existing PostGIS unit guards remain unchanged and must be rerun.
 - [ ] Run `python -m pytest tests/unit/database tests/unit/geospatial -q`, then the wider unit/orchestration suite applicable to the current repository layout (quiet mode).
 - [ ] Run relevant PostgreSQL integration tests against isolated `TEST_POSTGRES_*` credentials; verify normal and repeat-execution/failure paths where relevant. Do not assume historical test counts are current.
 - [ ] Inspect the final diff for unrelated behavior changes; report files changed, commands/results, unrun checks, and remaining risks before considering the refactor complete.
