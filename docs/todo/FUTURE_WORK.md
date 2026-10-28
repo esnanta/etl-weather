@@ -7,7 +7,7 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **dependency/source audit and operator-reported local unit-test baseline complete; implementation not started**. Scope is intentionally narrow.
+Status: **dependency/source audit and operator-reported local unit/integration baselines complete; implementation not started**. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
@@ -32,7 +32,8 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration tests/unit/operations -q` → **215 passed in 5.60s**.
 - `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **392 passed in 6.80s**.
 - These are **pre-refactor** outcomes; the 46 and 215 tests are subsets of the 392 total and must not be added together.
-- PostgreSQL integration baseline has not been run/reported for this workstream.
+- `python -m pytest tests/integration -q` → **17 passed in 2.35s** (operator-reported pre-refactor integration baseline).
+- All four commands were run locally by the operator; the assistant did not run them. Re-run relevant tests after implementation.
 
 ### Implementation
 - [ ] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
