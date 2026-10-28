@@ -7,13 +7,13 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **dependency/source audit complete; executable test baseline pending; implementation not started**. Scope is intentionally narrow.
+Status: **dependency/source audit and operator-reported local unit-test baseline complete; implementation not started**. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
 - [x] Read `AGENTS.md`, `tests/AGENTS.md`, `docs/app_description.md`, and `docs/python_se_principle.md` for audit. Reconfirm before implementation if the branch changes.
 - [x] Inspect current callers, maintenance dependencies, and existing database/orchestration/operations tests on `dev` (static/source audit).
-- [ ] Run focused unit tests and record an **executed** baseline before implementation. A repository checkout and PostgreSQL test instance are not available in the current execution environment.
+- [x] Record locally executed baseline tests reported by the operator on 2026-10-28 (results below). These runs were not executed in the assistant environment.
 - [ ] Preserve the existing seven-table creation order, table/view identifiers, SQL definitions, constraints, indexes, PostGIS checks, transactional writes, idempotency, and independent climate/geospatial initialization.
 - [ ] Do not recreate/drop databases, alter persisted records, or run schema initialization on a live database solely for this refactor. All PostgreSQL integration checks must use isolated `TEST_POSTGRES_*` targets.
 
@@ -24,8 +24,15 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - `orchestration/repositories/database.py::runtime_database_engine()` duplicates engine creation/disposal already owned by `database/connection.py::managed_database_engine()`. The existing `tests/unit/orchestration/test_database.py` patches `create_engine` at the orchestration module boundary; this test must be updated to patch the delegated context manager and exercise failure cleanup.
 - `database/bootstrap.py` duplicates the `climate_data` literal in `POSTGIS_SCHEMA`; keep that exported name stable when referencing `APPLICATION_SCHEMA`. Retain exact SQL and extension-location guards.
 - Existing related tests examined: `tests/unit/database/test_setup.py`, `tests/unit/orchestration/test_database.py`, `tests/unit/geospatial/test_spatial_schema.py`, `tests/unit/geospatial/test_region_views.py`, `tests/unit/geospatial/test_monthly_region_view.py`, `tests/unit/operations/test_destroy_all.py`. Focused readiness negative/positive tests remain to be added.
-- Historical results below are operator-reported P6 evidence, **not** a baseline run for this workstream. No pytest or PostgreSQL integration commands were executed during this audit.
+- Historical P6 results at the end of this document remain distinct from the 2026-10-28 baseline. No pytest or PostgreSQL integration commands were executed in the assistant environment.
 - Repository tests are organized under `tests/unit/orchestration/`; do not assume legacy `tests/airflow_orchestration/` exists.
+
+### Local baseline results (operator-reported, 2026-10-28)
+- `python -m pytest tests/unit/database tests/unit/geospatial -q` → **46 passed in 0.88s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit/orchestration tests/unit/operations -q` → **215 passed in 5.60s**.
+- `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **392 passed in 6.80s**.
+- These are **pre-refactor** outcomes; the 46 and 215 tests are subsets of the 392 total and must not be added together.
+- PostgreSQL integration baseline has not been run/reported for this workstream.
 
 ### Implementation
 - [ ] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
