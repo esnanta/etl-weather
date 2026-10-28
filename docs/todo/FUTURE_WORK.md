@@ -7,15 +7,15 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **implementation committed; unit regression passed (397 tests); integration passed before test-fixture correction (17 tests); final review pending**. Scope is intentionally narrow.
+Status: **closed after final code review (2026-10-28)**. Operator-reported tests: 397 unit passed after fixture correction; 17 integration passed after production changes and before fixture-only correction. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
 - [x] Read `AGENTS.md`, `tests/AGENTS.md`, `docs/app_description.md`, and `docs/python_se_principle.md` for audit. Reconfirm before implementation if the branch changes.
 - [x] Inspect current callers, maintenance dependencies, and existing database/orchestration/operations tests on `dev` (static/source audit).
 - [x] Record locally executed baseline tests reported by the operator on 2026-10-28 (results below). These runs were not executed in the assistant environment.
-- [ ] Preserve the existing seven-table creation order, table/view identifiers, SQL definitions, constraints, indexes, PostGIS checks, transactional writes, idempotency, and independent climate/geospatial initialization.
-- [ ] Do not recreate/drop databases, alter persisted records, or run schema initialization on a live database solely for this refactor. All PostgreSQL integration checks must use isolated `TEST_POSTGRES_*` targets.
+- [x] Final source review confirms existing seven-table creation order, table/view identifiers, monthly SQL text, constraints, indexes, PostGIS checks, transactional DDL boundary, and independent climate/geospatial initialization were preserved.
+- [x] No database recreation/drop, persisted-data changes, or live schema initialization was performed by the assistant; operator-reported integration tests are the verification evidence (local target not independently inspected).
 
 ### Audit notes (2026-10-28, static review only)
 - `database/schema.py::initialize_climate_schema()` creates daily parent/detail, monthly parent/detail, progress parent/detail, and submission pacing (seven tables), in that order; spatial tables/views use a separate initializer.
@@ -57,15 +57,22 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - Integration tests: **17 passed** (2.23s).
 - Root cause: the new test fake matched `pg_namespace` before `pg_extension`, although the extension query joins both catalog tables. The test fake was corrected in commit `f9757efa`; production code was not changed for this correction.
 - [x] Re-run complete unit suite after the test-only correction: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **397 passed in 8.01s** (operator-reported, 2026-10-28).
-- [ ] Optional focused-suite re-run after the test-only correction; earlier focused suite had 78 passed and 1 failed.
+- [x] Complete unit suite passed after the fixture-only correction (397 tests); a separate focused re-run is unnecessary for closure.
 - Integration passed before the test-fixture fix (17 passed in 2.23s); no production code changed in that fix.
 
 ### Regression and acceptance
 - [x] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
 - [x] Add/update focused tests for delegated engine creation/disposal (including failures); existing PostGIS unit guards remain unchanged and must be rerun.
-- [ ] Run `python -m pytest tests/unit/database tests/unit/geospatial -q`, then the wider unit/orchestration suite applicable to the current repository layout (quiet mode).
-- [ ] Run relevant PostgreSQL integration tests against isolated `TEST_POSTGRES_*` credentials; verify normal and repeat-execution/failure paths where relevant. Do not assume historical test counts are current.
-- [ ] Inspect the final diff for unrelated behavior changes; report files changed, commands/results, unrun checks, and remaining risks before considering the refactor complete.
+- [x] Run the wider unit suite (397 passed after correction). Focused suite was run before fixture correction (78 passed, 1 failed), with the sole failing fixture covered in the passing complete unit run.
+- [x] Operator-reported complete integration suite after production changes: 17 passed (2.23s), before a subsequent test-only fixture fix. Its target environment was not independently inspected.
+- [x] Final diff review against pre-implementation commit `2205ff7`: 15 affected files, including tests/docs; no unapproved SQL or persistence-logic edits found. Full source-level review complete; no independent CI run performed.
+
+### Final review notes (2026-10-28)
+- Compared `2205ff7..dev` (19 commits; 15 changed files). Monthly function body was verified text-identical to its old definition, and module removal is reflected in the current repository tree.
+- The only intentional behavior change is database readiness requiring both monthly tables, propagating to the ten-table final inventory in `destroy_all.py`.
+- `runtime_database_engine()` preserves context-manager lifetime and disposal; engine creation now uses the canonical SQLAlchemy URL object instead of its rendered string. The resolved PostgreSQL target remains the same; connection-formatting equivalence is supported by the passing tests but was not separately measured against a live runtime.
+- The temporary unit-test failure was a fake catalog-query ordering bug; the corrected 397-test unit suite passed. The 17 integration tests were run before that test-only correction.
+- No unrelated implementation changes or blocking review findings identified. This review does not substitute for a production deployment/pilot.
 
 ### Deferred (out of scope)
 - Changing custom schema support, moving PostGIS bootstrap into a new module, reorganizing `schema.py`, altering monthly scientific aggregation, or enabling monthly processing in the daily Airflow DAG.
