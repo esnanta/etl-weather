@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from database.schema import create_submission_pacing_table, create_pipeline_progress_tables
@@ -20,16 +19,14 @@ from database.climate import (
     create_schema,
 )
 from database.config import DatabaseConfig
+from database.connection import managed_database_engine
 
 
 @contextmanager
 def runtime_database_engine() -> Iterator[Engine]:
     """Yield one runtime engine without creating a missing database."""
-    engine = create_engine(DatabaseConfig.from_env().url, future=True)
-    try:
+    with managed_database_engine(DatabaseConfig.from_env()) as engine:
         yield engine
-    finally:
-        engine.dispose()
 
 
 def initialize_progress_storage(

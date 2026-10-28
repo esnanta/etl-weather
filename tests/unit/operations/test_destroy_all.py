@@ -420,7 +420,7 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
     for step in range(1, 7):
         assert f"STEP {step}/6" in stderr
     assert "DESTROY ALL | SUCCESS" in stderr
-    assert "DROP, CREATE and bootstrap database (8 tables + PostGIS)" in stderr
+    assert "DROP, CREATE and bootstrap database (10 tables + PostGIS)" in stderr
     assert "Remove generated NetCDF/Parquet data" in stderr
     assert "Remove Airflow logs" in stderr
     assert "Verify database and clean runtime state" in stderr
@@ -429,13 +429,13 @@ def test_success_logs_phases_and_final_state(monkeypatch, caplog, capsys) -> Non
     assert "database_ready=1" in caplog.text
 
 
-def test_destroy_contract_requires_all_eight_canonical_tables() -> None:
+def test_destroy_contract_requires_all_ten_canonical_tables() -> None:
     from database.verification import CLIMATE_TABLES, GEOSPATIAL_TABLES
 
     assert set(destroy_all.EXPECTED_APPLICATION_TABLES) == (
         CLIMATE_TABLES | GEOSPATIAL_TABLES
     )
-    assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 8
+    assert len(destroy_all.EXPECTED_APPLICATION_TABLES) == 10
 
 
 def test_session_preflight_blocks_airflow_termination(monkeypatch) -> None:

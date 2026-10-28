@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from database.config import DatabaseConfig
-from database.monthly_climate import create_monthly_climate_tables
+from database.climate import create_monthly_climate_tables
 from database.vw_monthly_climate_region import (
     _MONTHLY_REGION_VIEW_QUERY, _REQUIRED_MONTHLY_TABLES,
     create_monthly_region_view,

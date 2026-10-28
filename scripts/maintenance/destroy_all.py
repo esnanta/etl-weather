@@ -275,7 +275,7 @@ def execute_destroy(config: DatabaseConfig) -> dict[str, int]:
     _section("STEP 2/6 | Check open PostgreSQL sessions")
     _require_no_database_sessions(config)
 
-    _section("STEP 3/6 | DROP, CREATE and bootstrap database (8 tables + PostGIS)")
+    _section("STEP 3/6 | DROP, CREATE and bootstrap database (10 tables + PostGIS)")
     recreate_postgres_database.recreate_database(config)
     _section("STEP 4/6 | Remove generated NetCDF/Parquet data")
     data_removed = reset_data.clear_data_contents()
