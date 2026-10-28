@@ -22,22 +22,48 @@ def dummy_engine() -> Generator[Engine, None, None]:
 
 
 def test_runtime_engine_disposes_without_database_creation(monkeypatch) -> None:
+    from contextlib import contextmanager
+
     disposed = []
     engine = SimpleNamespace(dispose=lambda: disposed.append(True))
-    monkeypatch.setattr(
-        database.DatabaseConfig,
-        "from_env",
-        lambda: SimpleNamespace(url="postgresql+psycopg://runtime"),
-    )
-    monkeypatch.setattr(
-        "orchestration.repositories.database.create_engine",
-        lambda url, future: engine,
-    )
+    config = object()
+    monkeypatch.setattr(database.DatabaseConfig, "from_env", lambda: config)
 
+    @contextmanager
+    def fake_managed_engine(received_config):
+        assert received_config is config
+        try:
+            yield engine
+        finally:
+            engine.dispose()
+
+    monkeypatch.setattr(database, "managed_database_engine", fake_managed_engine)
     with database.runtime_database_engine() as received:
         assert received is engine
 
     assert disposed == [True]
+
+
+def test_runtime_engine_disposes_after_caller_failure(monkeypatch) -> None:
+    from contextlib import contextmanager
+
+    events = []
+    engine = object()
+    monkeypatch.setattr(database.DatabaseConfig, "from_env", lambda: object())
+
+    @contextmanager
+    def fake_managed_engine(config):
+        try:
+            yield engine
+        finally:
+            events.append("disposed")
+
+    monkeypatch.setattr(database, "managed_database_engine", fake_managed_engine)
+    with pytest.raises(RuntimeError, match="injected"):
+        with database.runtime_database_engine():
+            raise RuntimeError("injected")
+
+    assert events == ["disposed"]
 
 
 def test_progress_bootstrap_preserves_dependency_order(
