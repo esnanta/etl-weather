@@ -242,12 +242,14 @@ Repeating the same request must:
 
 PostgreSQL is the canonical store for daily climate observations.
 
-Canonical climate tables are:
+Canonical daily climate tables are:
 
 ```text
 climate_data.t_daily_climate
 climate_data.t_daily_climate_detail
 ```
+
+Database readiness also requires the monthly persistence tables `climate_data.t_monthly_climate` and `climate_data.t_monthly_climate_detail`, alongside the daily and operational progress/pacing tables. This is a schema availability requirement, not acceptance of monthly aggregation for production.
 
 The canonical detail foreign key is:
 
@@ -384,7 +386,7 @@ The campaign contains 40 calendar quarters. Quarterly grouping is a campaign/pro
 
 ## 18. Experimental monthly aggregation
 
-Monthly climate aggregation is separate from the canonical daily ETL and remains experimental until its scientific contract and isolated persistence tests are explicitly accepted.
+Monthly persistence tables are required application schema infrastructure. Monthly climate aggregation is separate from the canonical daily ETL and is not accepted for production until its scientific contract and isolated persistence tests are explicitly approved.
 
 It must not silently become part of the daily Airflow workflow or canonical daily-climate persistence contract.
 
