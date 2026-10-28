@@ -9,11 +9,11 @@ import logging
 from sqlalchemy import text
 from database.connection import create_database_engine
 from sqlalchemy.engine import Engine
-from database.config import DatabaseConfig, resolve_database_config
+from database.config import APPLICATION_SCHEMA, DatabaseConfig, resolve_database_config
 
 logger = logging.getLogger(__name__)
 
-POSTGIS_SCHEMA = "climate_data"
+POSTGIS_SCHEMA = APPLICATION_SCHEMA
 
 
 def ensure_postgis_extension(engine: Engine, *, expected_database: str) -> str:
