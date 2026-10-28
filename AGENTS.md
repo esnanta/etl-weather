@@ -20,6 +20,7 @@ Before changing code, read the documents that own the affected topic.
 | [orchestration/README.md](orchestration/README.md) | **AIRFLOW OPERATIONS** | Scheduling, pacing, retries, progress, recovery, and operator-facing Airflow behavior |
 | [geospatial/README.md](geospatial/README.md) | **GEOSPATIAL DOMAIN** | PostGIS boundaries, imports, mapping, and regional views |
 | [query/README.md](query/README.md) | **OPERATIONAL INSPECTION** | Read-only SQL audit queries |
+| [docs/python_se_principle.md](docs/python_se_principle.md) | **PYTHON DESIGN** | SOLID principles guided by DRY, KISS, and YAGNI for Python code design and refactoring |
 | [tests/AGENTS.md](tests/AGENTS.md) | **TEST INSTRUCTIONS** | Test-specific boundaries and verification rules |
 | **AGENTS.md** (this file) | **INSTRUCTIONS** | Agent workflow, repository navigation, change discipline, and completion reporting |
 
@@ -73,6 +74,8 @@ Do not import Airflow into reusable pipeline or geospatial modules.
 If an implementation request conflicts with `docs/app_description.md`, stop treating the old requirement as authoritative only after the WHAT document is explicitly changed.
 
 ## 6. Python and documentation quality
+
+Before writing or refactoring Python code, read [Python Software Engineering Principles](docs/python_se_principle.md). Apply SOLID pragmatically, with DRY, KISS, and YAGNI as guardrails. Do not introduce abstractions or design patterns without a demonstrated need.
 
 New or materially modified Python modules should begin with a concise module-level docstring that states purpose and important side effects or safety behavior. Keep CLI modules thin and clear about whether they are read-only or state-changing.
 
