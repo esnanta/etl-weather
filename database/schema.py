@@ -15,6 +15,7 @@ from database.config import (
 )
 from database.climate import (
     create_schema, create_daily_climate_table, create_daily_climate_detail_table,
+    create_monthly_climate_tables,
 )
 
 
@@ -163,8 +164,6 @@ def initialize_climate_schema(engine: Engine, config: DatabaseConfig | None = No
     create_schema(engine, config)
     create_daily_climate_table(engine, config)
     create_daily_climate_detail_table(engine, config)
-    from database.monthly_climate import create_monthly_climate_tables
-
     create_monthly_climate_tables(engine, config)
     create_pipeline_progress_tables(engine)
     create_submission_pacing_table(engine)
