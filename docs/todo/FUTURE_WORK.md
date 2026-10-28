@@ -7,7 +7,7 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **implementation committed; post-refactor regression tests pending operator execution**. Scope is intentionally narrow.
+Status: **implementation committed; unit regression passed (397 tests); integration passed before test-fixture correction (17 tests); final review pending**. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
@@ -19,11 +19,11 @@ Decision: monthly parent/detail tables are required database schema objects for 
 
 ### Audit notes (2026-10-28, static review only)
 - `database/schema.py::initialize_climate_schema()` creates daily parent/detail, monthly parent/detail, progress parent/detail, and submission pacing (seven tables), in that order; spatial tables/views use a separate initializer.
-- `database/verification.py::CLIMATE_TABLES` currently contains only five objects; this is the exact readiness change approved for implementation.
+- Pre-refactor, `database/verification.py::CLIMATE_TABLES` contained five objects; after implementation, readiness requires seven.
 - `scripts/maintenance/destroy_all.py` computes its expected inventory from `CLIMATE_TABLES | GEOSPATIAL_TABLES`; adding monthly tables changes **verification**, not its explicit confirmation/preflight or recreation commands.
-- `orchestration/repositories/database.py::runtime_database_engine()` duplicates engine creation/disposal already owned by `database/connection.py::managed_database_engine()`. The existing `tests/unit/orchestration/test_database.py` patches `create_engine` at the orchestration module boundary; this test must be updated to patch the delegated context manager and exercise failure cleanup.
-- `database/bootstrap.py` duplicates the `climate_data` literal in `POSTGIS_SCHEMA`; keep that exported name stable when referencing `APPLICATION_SCHEMA`. Retain exact SQL and extension-location guards.
-- Existing related tests examined: `tests/unit/database/test_setup.py`, `tests/unit/orchestration/test_database.py`, `tests/unit/geospatial/test_spatial_schema.py`, `tests/unit/geospatial/test_region_views.py`, `tests/unit/geospatial/test_monthly_region_view.py`, `tests/unit/operations/test_destroy_all.py`. Focused readiness negative/positive tests remain to be added.
+- Pre-refactor, `runtime_database_engine()` duplicated engine creation/disposal; it now delegates to `managed_database_engine()`, with updated tests for success and failure cleanup.
+- Pre-refactor, `database/bootstrap.py` duplicated the `climate_data` literal; the `POSTGIS_SCHEMA` alias now references `APPLICATION_SCHEMA`.
+- Existing related tests examined: `tests/unit/database/test_setup.py`, `tests/unit/orchestration/test_database.py`, `tests/unit/geospatial/test_spatial_schema.py`, `tests/unit/geospatial/test_region_views.py`, `tests/unit/geospatial/test_monthly_region_view.py`, `tests/unit/operations/test_destroy_all.py`. Focused readiness negative/positive tests have since been added.
 - Historical P6 results at the end of this document remain distinct from the 2026-10-28 baseline. No pytest or PostgreSQL integration commands were executed in the assistant environment.
 - Repository tests are organized under `tests/unit/orchestration/`; do not assume legacy `tests/airflow_orchestration/` exists.
 
@@ -39,7 +39,7 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - [x] **Consolidate monthly DDL:** move `create_monthly_climate_tables()` unchanged from `database/monthly_climate.py` into `database/climate.py`; update imports in `database/schema.py` and tests/callers, then delete the obsolete module only after confirming no references remain. Preserve exact CREATE TABLE statements, execution order, constraints, transaction boundary, function name, and independent monthly workflow.
 - [x] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
 - [x] **Maintenance dependency audit (static):** `scripts/maintenance/destroy_all.py` imports `CLIMATE_TABLES`, unions it with `GEOSPATIAL_TABLES` into `EXPECTED_APPLICATION_TABLES`, and uses that in post-recreation readiness verification. The additional two monthly tables will intentionally become required. No destructive action was executed.
-- [x] Update non-destructive maintenance table-inventory tests to expect ten application tables; local regression execution still pending.
+- [x] Update non-destructive maintenance table-inventory tests to expect ten application tables; unit regression passed (397 tests).
 - [x] **Engine lifecycle:** make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine()` without changing target selection, yielded engine lifetime, or disposal behavior.
 - [x] **PostGIS schema constant:** replace the duplicate literal `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the canonical `APPLICATION_SCHEMA` reference while preserving the public constant and resulting SQL/error messages.
 - [x] **Requirement documentation:** update the owning database-readiness requirement in `docs/app_description.md` to distinguish required monthly database structures from the not-yet-accepted monthly aggregation workflow. Reconcile any related descriptive references without expanding the implementation scope.
@@ -49,14 +49,16 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - `CLIMATE_TABLES` now lists seven required tables. `destroy_all.py` final inventory consequently expects ten tables (seven climate/operational plus three geospatial); its explicit safety gates were not modified.
 - Runtime engine lifecycle now delegates to `managed_database_engine` and keeps the context-manager interface.
 - PostGIS schema alias uses `APPLICATION_SCHEMA` while retaining the existing exported name.
-- No live PostgreSQL, Airflow, CDS, or destructive maintenance command was executed by the assistant. Post-refactor pytest results are pending.
+- No live PostgreSQL, Airflow, CDS, or destructive maintenance command was executed by the assistant. Post-refactor unit suite passed (397 tests) and integration suite passed before the test fixture correction (17 tests).
 
 ### Post-refactor regression evidence (operator-reported, 2026-10-28)
 - Focused suite: **78 passed, 1 failed** (1.33s). Failure: `test_geospatial_readiness_remains_independent`.
 - All unit tests: **396 passed, 1 failed** (7.38s), same failure.
 - Integration tests: **17 passed** (2.23s).
 - Root cause: the new test fake matched `pg_namespace` before `pg_extension`, although the extension query joins both catalog tables. The test fake was corrected in commit `f9757efa`; production code was not changed for this correction.
-- [ ] Re-run focused and complete unit suites after this test-only fix. Integration passed prior to the fix and remains operator-reported evidence, not a new run after it.
+- [x] Re-run complete unit suite after the test-only correction: `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit -q` → **397 passed in 8.01s** (operator-reported, 2026-10-28).
+- [ ] Optional focused-suite re-run after the test-only correction; earlier focused suite had 78 passed and 1 failed.
+- Integration passed before the test-fixture fix (17 passed in 2.23s); no production code changed in that fix.
 
 ### Regression and acceptance
 - [x] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
