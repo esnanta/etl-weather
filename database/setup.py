@@ -130,7 +130,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--execute", action="store_true",
-        help="Explicitly create missing databases and initialize all eight tables in each.",
+        help="Explicitly create missing databases and initialize all ten tables in each.",
     )
     args = parser.parse_args()
     application, testing = resolve_targets()
