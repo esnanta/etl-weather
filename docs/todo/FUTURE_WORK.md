@@ -7,7 +7,7 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **dependency/source audit and operator-reported local unit/integration baselines complete; implementation not started**. Scope is intentionally narrow.
+Status: **implementation committed; post-refactor regression tests pending operator execution**. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
@@ -36,13 +36,13 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - All four commands were run locally by the operator; the assistant did not run them. Re-run relevant tests after implementation.
 
 ### Implementation
-- [ ] **Consolidate monthly DDL:** move `create_monthly_climate_tables()` unchanged from `database/monthly_climate.py` into `database/climate.py`; update imports in `database/schema.py` and tests/callers, then delete the obsolete module only after confirming no references remain. Preserve exact CREATE TABLE statements, execution order, constraints, transaction boundary, function name, and independent monthly workflow.
-- [ ] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
+- [x] **Consolidate monthly DDL:** move `create_monthly_climate_tables()` unchanged from `database/monthly_climate.py` into `database/climate.py`; update imports in `database/schema.py` and tests/callers, then delete the obsolete module only after confirming no references remain. Preserve exact CREATE TABLE statements, execution order, constraints, transaction boundary, function name, and independent monthly workflow.
+- [x] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
 - [x] **Maintenance dependency audit (static):** `scripts/maintenance/destroy_all.py` imports `CLIMATE_TABLES`, unions it with `GEOSPATIAL_TABLES` into `EXPECTED_APPLICATION_TABLES`, and uses that in post-recreation readiness verification. The additional two monthly tables will intentionally become required. No destructive action was executed.
 - [ ] Validate this changed readiness expectation with focused non-destructive maintenance tests.
-- [ ] **Engine lifecycle:** make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine()` without changing target selection, yielded engine lifetime, or disposal behavior.
-- [ ] **PostGIS schema constant:** replace the duplicate literal `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the canonical `APPLICATION_SCHEMA` reference while preserving the public constant and resulting SQL/error messages.
-- [ ] **Requirement documentation:** update the owning database-readiness requirement in `docs/app_description.md` to distinguish required monthly database structures from the not-yet-accepted monthly aggregation workflow. Reconcile any related descriptive references without expanding the implementation scope.
+- [x] **Engine lifecycle:** make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine()` without changing target selection, yielded engine lifetime, or disposal behavior.
+- [x] **PostGIS schema constant:** replace the duplicate literal `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the canonical `APPLICATION_SCHEMA` reference while preserving the public constant and resulting SQL/error messages.
+- [x] **Requirement documentation:** update the owning database-readiness requirement in `docs/app_description.md` to distinguish required monthly database structures from the not-yet-accepted monthly aggregation workflow. Reconcile any related descriptive references without expanding the implementation scope.
 
 ### Regression and acceptance
 - [ ] Add/update focused unit tests proving missing monthly parent/detail tables fail readiness, complete seven-table schema passes, and inspection stays read-only. Include the maintenance dependency contract.
