@@ -48,7 +48,7 @@ def test_url_handles_reserved_password_characters():
     assert "%40" in config.url
 
 
-def test_domains_have_exactly_five_and_three_disjoint_tables():
-    assert len(CLIMATE_TABLES) == 5
+def test_domains_have_exactly_seven_and_three_disjoint_tables():
+    assert len(CLIMATE_TABLES) == 7
     assert len(GEOSPATIAL_TABLES) == 3
     assert not (CLIMATE_TABLES & GEOSPATIAL_TABLES)
