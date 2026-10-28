@@ -36,6 +36,7 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - All four commands were run locally by the operator; the assistant did not run them. Re-run relevant tests after implementation.
 
 ### Implementation
+- [ ] **Consolidate monthly DDL:** move `create_monthly_climate_tables()` unchanged from `database/monthly_climate.py` into `database/climate.py`; update imports in `database/schema.py` and tests/callers, then delete the obsolete module only after confirming no references remain. Preserve exact CREATE TABLE statements, execution order, constraints, transaction boundary, function name, and independent monthly workflow.
 - [ ] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
 - [x] **Maintenance dependency audit (static):** `scripts/maintenance/destroy_all.py` imports `CLIMATE_TABLES`, unions it with `GEOSPATIAL_TABLES` into `EXPECTED_APPLICATION_TABLES`, and uses that in post-recreation readiness verification. The additional two monthly tables will intentionally become required. No destructive action was executed.
 - [ ] Validate this changed readiness expectation with focused non-destructive maintenance tests.
