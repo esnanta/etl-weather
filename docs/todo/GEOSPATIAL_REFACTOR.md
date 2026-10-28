@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-10-28  
-**Status:** Planned — source audit performed; no geospatial refactor implemented  
+**Status:** Baseline verified (operator-reported); implementation not started  
 **Owner boundary:** `geospatial/` owns source validation, boundary imports, and grid mapping; `database/` owns PostgreSQL connections and canonical DDL.
 
 ## Scope and acceptance rules
@@ -22,8 +22,8 @@ This is a maintainability refactor, **not** a redesign of geospatial processing.
 - [x] Inspect `geospatial/config.py`, `importers/reader.py`, `importers/districts.py`, and `mapping.py`, plus relevant unit/integration test code.
 - [ ] Search the current `dev` tree for all references to `SPATIAL_SCHEMA`, `SPATIAL_PROVINCE_TABLE`, `SPATIAL_DISTRICT_TABLE`, and `SPATIAL_GRID_REGION_TABLE`. Document each consumer before deciding whether any alias is unused.
 - [ ] Record a precise pre-refactor commit SHA and confirm a clean working tree before modifications.
-- [ ] Run focused baseline `python -m pytest tests/unit/geospatial -q`; record pass/fail count and duration.
-- [ ] Run isolated PostgreSQL baseline `python -m pytest tests/integration/geospatial -q` against `TEST_POSTGRES_*`; record pass/fail count and duration. Verify test database identity first.
+- [x] Run focused baseline `python -m pytest tests/unit/geospatial -q` → **30 passed in 0.65s** (operator-reported, 2026-10-28).
+- [x] Record isolated PostgreSQL baseline `python -m pytest tests/integration/geospatial -q` → **6 passed in 1.47s** (operator-reported, 2026-10-28). Test configuration/identity is protected by test fixtures but was not independently inspected during execution.
 
 ### 2. Engine lifecycle refactor
 - [ ] Update `geospatial/importers/districts.py::main()` to use `managed_database_engine(config)` rather than local `create_database_engine()/dispose()`.
@@ -68,6 +68,7 @@ This is a maintainability refactor, **not** a redesign of geospatial processing.
 | Date | Step | Evidence | Status |
 | --- | --- | --- | --- |
 | 2026-10-28 | Source and documentation audit | Modules, README, rules, and test coverage inspected | Complete |
-| — | Focused baseline | Awaiting local pytest output | Pending |
+| 2026-10-28 | Focused unit baseline | Operator: 30 passed in 0.65s | Complete |
+| 2026-10-28 | Geospatial integration baseline | Operator: 6 passed in 1.47s | Complete |
 | — | Implementation | No code changes yet | Pending |
 | — | Regression and final review | Awaiting implementation and tests | Pending |
