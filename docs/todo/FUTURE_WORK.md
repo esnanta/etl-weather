@@ -1,11 +1,22 @@
 # ETL Weather — Future Work
 
 Branch: `dev`  
-Updated: 2026-10-19
+Updated: 2026-10-28
 
 P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure covers documentation and default-identifier regression. It does **not** certify renewed SQL acceptance, production monthly loading, or scheduled Airflow-to-CDS operation.
 
 ## Independent workstreams
+
+### Database refactor and readiness contract (planned; not started)
+- [ ] **Baseline / inspect.** Reconfirm `AGENTS.md`, `docs/app_description.md`, `tests/AGENTS.md`, database DDL, orchestration callers, and maintenance consumers on `dev`. Record existing behavior before edits. Do not change database objects or data during planning.
+- [ ] **Monthly readiness.** Include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database.verification.CLIMATE_TABLES`, so all seven climate/operational tables are required by `inspect_database()` and `require_schema_ready()`. Monthly tables are planned application infrastructure, **not optional experimental database objects**. This changes the readiness check only; it must not activate monthly ETL, alter DDL, or modify existing data.
+- [ ] **Consumers / maintenance safety.** Audit every consumer of `CLIMATE_TABLES`, especially `scripts/maintenance/destroy_all.py`, and update focused tests and any table-inventory expectations accordingly. Preserve all explicit destructive-action guards; no destructive commands against the live database.
+- [ ] **Centralize engine lifecycle.** Make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine(DatabaseConfig.from_env())`. Preserve the same target, context-manager API, connection semantics, and engine disposal on success/failure; do not introduce database creation at runtime.
+- [ ] **Single PostGIS schema identifier.** Replace the duplicate hard-coded `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the existing `APPLICATION_SCHEMA` constant, preserving generated SQL and extension validation.
+- [ ] **Regression coverage.** Add/adjust focused tests for monthly tables missing/present in readiness, schema inspection, setup/maintenance consumers, engine disposal on success/failure, and unchanged PostGIS schema/SQL behavior. Include a negative fixture with a missing monthly table; tests must use isolated `TEST_POSTGRES_*` configuration when connecting to PostgreSQL.
+- [ ] **Validate in order.** Run `python -m pytest tests/unit/database tests/unit/geospatial -q`, then `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit tests/airflow_orchestration -q` if that path exists (otherwise use the current repository test paths), then relevant PostgreSQL integration suites against the isolated test database. Record actual results; never infer success from historical P6 tests.
+- [ ] **Documentation alignment.** Update the owning `docs/app_description.md` language to distinguish **future-use monthly persistence infrastructure** from **monthly aggregation scientific/operational acceptance still pending**. Adjust setup/readiness documentation and CLI table counts only where needed; do not silently claim that the monthly ETL is production-ready.
+- [ ] **Close out.** Verify diff contains only the agreed changes, no DDL/schema/data mutation, no contract change beyond the explicitly approved readiness rule, and no new Airflow/scientific coupling. Record modified files, passing/failing/unrun checks, and remaining risks before marking this workstream complete.
 
 ### Monthly aggregation and persistence
 - [ ] Review and approve the scientific rules for local-calendar monthly aggregates from UTC+7 daily observations.
