@@ -7,18 +7,30 @@ P6 was **closed with explicit operator approval on 2026-10-19**. P6 closure cove
 
 ## Planned workstream — Database refactor and readiness verification
 
-Status: **planned; implementation not started**. Scope is intentionally narrow.
+Status: **dependency/source audit complete; executable test baseline pending; implementation not started**. Scope is intentionally narrow.
 Decision: monthly parent/detail tables are required database schema objects for future use; their presence does not imply that monthly aggregation has been accepted for production.
 
 ### Baseline and safety checks
-- [ ] Re-read `AGENTS.md`, `tests/AGENTS.md`, `docs/app_description.md`, and `docs/python_se_principle.md` before implementation.
-- [ ] Inspect current callers, maintenance dependencies, and database tests; record the baseline on `dev`. Run focused unit tests first and report the actual results.
+- [x] Read `AGENTS.md`, `tests/AGENTS.md`, `docs/app_description.md`, and `docs/python_se_principle.md` for audit. Reconfirm before implementation if the branch changes.
+- [x] Inspect current callers, maintenance dependencies, and existing database/orchestration/operations tests on `dev` (static/source audit).
+- [ ] Run focused unit tests and record an **executed** baseline before implementation. A repository checkout and PostgreSQL test instance are not available in the current execution environment.
 - [ ] Preserve the existing seven-table creation order, table/view identifiers, SQL definitions, constraints, indexes, PostGIS checks, transactional writes, idempotency, and independent climate/geospatial initialization.
 - [ ] Do not recreate/drop databases, alter persisted records, or run schema initialization on a live database solely for this refactor. All PostgreSQL integration checks must use isolated `TEST_POSTGRES_*` targets.
 
+### Audit notes (2026-10-28, static review only)
+- `database/schema.py::initialize_climate_schema()` creates daily parent/detail, monthly parent/detail, progress parent/detail, and submission pacing (seven tables), in that order; spatial tables/views use a separate initializer.
+- `database/verification.py::CLIMATE_TABLES` currently contains only five objects; this is the exact readiness change approved for implementation.
+- `scripts/maintenance/destroy_all.py` computes its expected inventory from `CLIMATE_TABLES | GEOSPATIAL_TABLES`; adding monthly tables changes **verification**, not its explicit confirmation/preflight or recreation commands.
+- `orchestration/repositories/database.py::runtime_database_engine()` duplicates engine creation/disposal already owned by `database/connection.py::managed_database_engine()`. The existing `tests/unit/orchestration/test_database.py` patches `create_engine` at the orchestration module boundary; this test must be updated to patch the delegated context manager and exercise failure cleanup.
+- `database/bootstrap.py` duplicates the `climate_data` literal in `POSTGIS_SCHEMA`; keep that exported name stable when referencing `APPLICATION_SCHEMA`. Retain exact SQL and extension-location guards.
+- Existing related tests examined: `tests/unit/database/test_setup.py`, `tests/unit/orchestration/test_database.py`, `tests/unit/geospatial/test_spatial_schema.py`, `tests/unit/geospatial/test_region_views.py`, `tests/unit/geospatial/test_monthly_region_view.py`, `tests/unit/operations/test_destroy_all.py`. Focused readiness negative/positive tests remain to be added.
+- Historical results below are operator-reported P6 evidence, **not** a baseline run for this workstream. No pytest or PostgreSQL integration commands were executed during this audit.
+- Repository tests are organized under `tests/unit/orchestration/`; do not assume legacy `tests/airflow_orchestration/` exists.
+
 ### Implementation
 - [ ] **Database readiness:** include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database/verification.py::CLIMATE_TABLES`. Keep the existing inspection result keys and public function signatures. Confirm `inspect_database()` and `require_schema_ready()` now report a missing monthly table and accept all seven climate/operational tables.
-- [ ] **Maintenance dependency audit:** inspect consumers of `CLIMATE_TABLES` (including `scripts/maintenance/destroy_all.py`) before updating its contents; confirm no unexpected maintenance behavior or destructive operations occur.
+- [x] **Maintenance dependency audit (static):** `scripts/maintenance/destroy_all.py` imports `CLIMATE_TABLES`, unions it with `GEOSPATIAL_TABLES` into `EXPECTED_APPLICATION_TABLES`, and uses that in post-recreation readiness verification. The additional two monthly tables will intentionally become required. No destructive action was executed.
+- [ ] Validate this changed readiness expectation with focused non-destructive maintenance tests.
 - [ ] **Engine lifecycle:** make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine()` without changing target selection, yielded engine lifetime, or disposal behavior.
 - [ ] **PostGIS schema constant:** replace the duplicate literal `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the canonical `APPLICATION_SCHEMA` reference while preserving the public constant and resulting SQL/error messages.
 - [ ] **Requirement documentation:** update the owning database-readiness requirement in `docs/app_description.md` to distinguish required monthly database structures from the not-yet-accepted monthly aggregation workflow. Reconcile any related descriptive references without expanding the implementation scope.
@@ -34,17 +46,6 @@ Decision: monthly parent/detail tables are required database schema objects for 
 - Changing custom schema support, moving PostGIS bootstrap into a new module, reorganizing `schema.py`, altering monthly scientific aggregation, or enabling monthly processing in the daily Airflow DAG.
 
 ## Independent workstreams
-
-### Database refactor and readiness contract (planned; not started)
-- [ ] **Baseline / inspect.** Reconfirm `AGENTS.md`, `docs/app_description.md`, `tests/AGENTS.md`, database DDL, orchestration callers, and maintenance consumers on `dev`. Record existing behavior before edits. Do not change database objects or data during planning.
-- [ ] **Monthly readiness.** Include `MONTHLY_CLIMATE_TABLE` and `MONTHLY_CLIMATE_DETAIL_TABLE` in `database.verification.CLIMATE_TABLES`, so all seven climate/operational tables are required by `inspect_database()` and `require_schema_ready()`. Monthly tables are planned application infrastructure, **not optional experimental database objects**. This changes the readiness check only; it must not activate monthly ETL, alter DDL, or modify existing data.
-- [ ] **Consumers / maintenance safety.** Audit every consumer of `CLIMATE_TABLES`, especially `scripts/maintenance/destroy_all.py`, and update focused tests and any table-inventory expectations accordingly. Preserve all explicit destructive-action guards; no destructive commands against the live database.
-- [ ] **Centralize engine lifecycle.** Make `orchestration/repositories/database.py::runtime_database_engine()` delegate to `database.connection.managed_database_engine(DatabaseConfig.from_env())`. Preserve the same target, context-manager API, connection semantics, and engine disposal on success/failure; do not introduce database creation at runtime.
-- [ ] **Single PostGIS schema identifier.** Replace the duplicate hard-coded `POSTGIS_SCHEMA = "climate_data"` in `database/bootstrap.py` with the existing `APPLICATION_SCHEMA` constant, preserving generated SQL and extension validation.
-- [ ] **Regression coverage.** Add/adjust focused tests for monthly tables missing/present in readiness, schema inspection, setup/maintenance consumers, engine disposal on success/failure, and unchanged PostGIS schema/SQL behavior. Include a negative fixture with a missing monthly table; tests must use isolated `TEST_POSTGRES_*` configuration when connecting to PostgreSQL.
-- [ ] **Validate in order.** Run `python -m pytest tests/unit/database tests/unit/geospatial -q`, then `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false python -m pytest tests/unit tests/airflow_orchestration -q` if that path exists (otherwise use the current repository test paths), then relevant PostgreSQL integration suites against the isolated test database. Record actual results; never infer success from historical P6 tests.
-- [ ] **Documentation alignment.** Update the owning `docs/app_description.md` language to distinguish **future-use monthly persistence infrastructure** from **monthly aggregation scientific/operational acceptance still pending**. Adjust setup/readiness documentation and CLI table counts only where needed; do not silently claim that the monthly ETL is production-ready.
-- [ ] **Close out.** Verify diff contains only the agreed changes, no DDL/schema/data mutation, no contract change beyond the explicitly approved readiness rule, and no new Airflow/scientific coupling. Record modified files, passing/failing/unrun checks, and remaining risks before marking this workstream complete.
 
 ### Monthly aggregation and persistence
 - [ ] Review and approve the scientific rules for local-calendar monthly aggregates from UTC+7 daily observations.
