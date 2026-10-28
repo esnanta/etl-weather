@@ -47,10 +47,10 @@ class _Connection:
         self.statements.append(sql)
         if "current_database()" in sql:
             return _Result("weather_test")
-        if "pg_namespace" in sql:
-            return _Result(1)
         if "pg_extension" in sql:
             return _Result(APPLICATION_SCHEMA)
+        if "pg_namespace" in sql:
+            return _Result(1)
         if "information_schema.tables" in sql:
             assert params == {"schema": APPLICATION_SCHEMA}
             return _Result(self.tables)
