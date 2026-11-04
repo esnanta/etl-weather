@@ -49,7 +49,17 @@ PIPELINE_START_DATE_ENV = "PIPELINE_START_DATE"
 PIPELINE_END_DATE_ENV = "PIPELINE_END_DATE"
 
 # Active ERA5-Land variables requested from CDS, in stable request order.
-CDS_VARIABLES = ("tp", "t2m", "swvl1", "ssrd", "d2m")
+CDS_VARIABLES = (
+    "tp",
+    "t2m",
+    "d2m",
+    "swvl1",
+    "swvl2",
+    "swvl3",
+    "ssrd",
+    "u10",
+    "v10",
+)
 
 # Local timezone used by campaign eligibility and ETL task adapters.
 CAMPAIGN_TIMEZONE = ZoneInfo(APPLICATION_TIMEZONE_NAME)
