@@ -41,17 +41,21 @@ The application must not silently substitute the ERA5 single-level dataset, ERA5
 
 ## 3. Active variables
 
-The required provider variables are:
+The active ERA5-Land request must contain exactly these nine provider variables in one configuration:
 
 | Provider code | CDS variable | Application use | Source unit | Canonical output unit | Transformation |
 | --- | --- | --- | --- | --- | --- |
 | `tp` | Total precipitation | Daily accumulation | m | mm/day | UTC+7 local-day accumulation; multiply by 1,000 |
 | `t2m` | 2 metre temperature | Daily mean | K | °C | 24-hour UTC+7 local-day mean; subtract 273.15 |
 | `d2m` | 2 metre dewpoint temperature | Daily mean | K | °C | 24-hour UTC+7 local-day mean; subtract 273.15 |
-| `swvl1` | Volumetric soil water layer 1 | Daily mean | m³/m³ | m³/m³ | 24-hour UTC+7 local-day mean; unit unchanged |
+| `swvl1` | Volumetric soil water layer 1 (0–7 cm) | Daily mean | m³/m³ | m³/m³ | 24-hour UTC+7 local-day mean; unit unchanged |
+| `swvl2` | Volumetric soil water layer 2 (7–28 cm) | Daily mean | m³/m³ | m³/m³ | 24-hour UTC+7 local-day mean; unit unchanged |
+| `swvl3` | Volumetric soil water layer 3 (28–100 cm) | Daily mean | m³/m³ | m³/m³ | 24-hour UTC+7 local-day mean; unit unchanged |
 | `ssrd` | Surface solar radiation downwards | Daily accumulation | J/m² | J/m²/day | UTC+7 local-day accumulation; unit unchanged |
+| `u10` | 10 metre U wind component (eastward-positive) | Daily mean component | m/s | m/s | 24-hour UTC+7 local-day mean |
+| `v10` | 10 metre V wind component (northward-positive) | Daily mean component | m/s | m/s | 24-hour UTC+7 local-day mean |
 
-These provider codes are canonical application variable names and must remain explicit in requests, artifacts, tests, logs, and transformation contracts.
+These nine provider codes are canonical application variable names and must remain explicit in requests, artifacts, tests, logs, and transformation contracts. `swvl4` is not active. `wind_speed` and `wind_direction` are derived daily output fields, not additional CDS provider variables.
 
 ## 4. Spatial scope
 
@@ -107,9 +111,13 @@ Daily means apply to:
 t2m
 d2m
 swvl1
+swvl2
+swvl3
+u10
+v10
 ```
 
-The daily result is the mean of the valid hourly observations belonging to the same UTC+7 local day at the same grid point. Grid coordinates must never be mixed during aggregation.
+The daily result is the mean of 24 valid hourly observations belonging to the same UTC+7 local day at the same grid point. Incomplete local days must not be treated as complete daily means. Grid coordinates must never be mixed during aggregation.
 
 ### 5.2 Accumulated variables
 
@@ -130,7 +138,30 @@ Daily(D) = A(D 17 UTC) + A(D 00 UTC) - A(D-1 17 UTC)
 
 This contract prevents double-counting while reconstructing the accumulation bounded by local midnight.
 
-### 5.3 Missing values
+### 5.3 Derived daily wind statistics
+
+For every valid hourly pair of 10 m wind components at the same grid point, calculate scalar speed before daily aggregation:
+
+```text
+hourly_wind_speed = sqrt(u10^2 + v10^2)
+wind_speed_daily_mean = mean(hourly_wind_speed across 24 valid local-day hours)
+u10_daily_mean = mean(hourly u10 across 24 valid local-day hours)
+v10_daily_mean = mean(hourly v10 across 24 valid local-day hours)
+```
+
+The scalar daily mean **must not** be computed as `sqrt(u10_daily_mean^2 + v10_daily_mean^2)`: reversing winds demonstrate that these quantities differ.
+
+Daily wind direction represents the meteorological **from-direction** of the daily resultant vector, derived from `u10_daily_mean` and `v10_daily_mean`. With components positive eastward/northward, the direction in degrees is:
+
+```text
+wind_direction = (degrees(atan2(-u10_daily_mean, -v10_daily_mean)) + 360) % 360
+```
+
+The convention is `0°` from North, `90°` from East, `180°` from South, and `270°` from West. If the resultant vector magnitude is effectively zero, direction is undefined and must be missing/null, not `0°`. The near-zero decision must use an explicit, tested numerical tolerance.
+
+Wind-derived results require complete, valid hourly input coverage for the UTC+7 local day. Do not generate partial-day wind statistics from missing hours or missing wind-component pairs.
+
+### 5.4 Missing values
 
 Missing scientific observations are not zero. Missingness must be preserved through transformation and PostgreSQL persistence unless a future explicit product requirement defines an imputation method outside the canonical observations.
 
@@ -142,8 +173,14 @@ The canonical daily output units are:
 tp     = mm/day
 t2m    = degC
 d2m    = degC
-swvl1  = m3/m3
-ssrd   = J/m2/day
+swvl1          = m3/m3
+swvl2          = m3/m3
+swvl3          = m3/m3
+ssrd           = J/m2/day
+u10            = m/s
+v10            = m/s
+wind_speed     = m/s
+wind_direction = degrees (0 <= direction < 360; null if undefined)
 ```
 
 Required unit conversions include Kelvin to degrees Celsius for temperature variables and metres of water equivalent to millimetres for total precipitation.
@@ -205,7 +242,7 @@ data/
                 └── YYYY_MMDD_MMDD_<variables>.parquet
 ```
 
-RAW NetCDF is immutable. Existing RAW or transformed checkpoints may be reused only after validation. The application must not silently overwrite an existing valid or conflicting scientific artifact.
+RAW NetCDF is immutable. Existing RAW or transformed checkpoints may be reused only after validation. The application must not silently overwrite an existing valid or conflicting scientific artifact. The nine-variable request has a distinct deterministic variable signature and request key; five-variable artifacts cannot satisfy a nine-variable checkpoint. Historical five-variable artifacts must not be automatically removed or overwritten. Each monthly request produces one RAW NetCDF and one derived daily Parquet, with provenance and checksum validation preserved.
 
 ## 9. Canonical transformed schema
 
@@ -218,12 +255,18 @@ latitude
 longitude
 tp
 t2m
-swvl1
-ssrd
 d2m
+swvl1
+swvl2
+swvl3
+ssrd
+u10
+v10
+wind_speed
+wind_direction
 ```
 
-Source bookkeeping fields such as `number` and `expver` are not weather observation columns unless a later explicit requirement adds them.
+`wind_speed` and `wind_direction` are calculated only in the transformed daily product; they are not expected in the downloaded hourly RAW NetCDF. Source bookkeeping fields such as `number` and `expver` are not weather observation columns unless a later explicit requirement adds them.
 
 ## 10. Request identity and idempotency
 
@@ -269,10 +312,17 @@ Daily-statistic columns are:
 tp     -> tp_daily_total_mm
 t2m    -> t2m_daily_mean_c
 d2m    -> d2m_daily_mean_c
-swvl1  -> swvl1_daily_mean_m3_m3
-ssrd   -> ssrd_daily_total_j_m2
+swvl1          -> swvl1_daily_mean_m3_m3
+swvl2          -> swvl2_daily_mean_m3_m3
+swvl3          -> swvl3_daily_mean_m3_m3
+ssrd           -> ssrd_daily_total_j_m2
+u10            -> u10_daily_mean_m_s
+v10            -> v10_daily_mean_m_s
+wind_speed     -> wind_speed_daily_mean_m_s
+wind_direction -> wind_direction_daily_deg
 ```
 
+The six additional detail columns must be nullable. Schema initialization must create the full current definition for a missing table; for an existing table, it must inspect required columns, add missing compatible columns without dropping historical observations, retain compatible existing columns, and fail explicitly on incompatible SQL types or structural contracts. Repeated initialization must be safe and must not fabricate values for pre-existing rows. The existing table identity, constraints, and observation UPSERT key must be preserved.
 Database loading must be transactional. A failure while persisting details must not leave partially committed metadata or observations.
 
 An unchanged load may skip writes only when the existing `request_key`, transformed artifact path/checksum, and observation count match the current transformed partition.
@@ -315,7 +365,13 @@ tp_daily_total_mm
 t2m_daily_mean_c
 d2m_daily_mean_c
 swvl1_daily_mean_m3_m3
+swvl2_daily_mean_m3_m3
+swvl3_daily_mean_m3_m3
 ssrd_daily_total_j_m2
+u10_daily_mean_m_s
+v10_daily_mean_m_s
+wind_speed_daily_mean_m_s
+wind_direction_daily_deg
 ```
 
 The read path must be read-only, deterministic, bounded to the requested local-day period, and reject ambiguous duplicate local-day/grid observations.
@@ -406,18 +462,24 @@ It must not silently become part of the daily Airflow workflow or canonical dail
 
 The application satisfies its current WHAT contract when:
 
-- a valid ERA5-Land request for the configured extent and five active variables can be deterministically constructed;
+- a valid ERA5-Land request for the configured extent and exactly nine active provider variables (`tp`, `t2m`, `d2m`, `swvl1`, `swvl2`, `swvl3`, `ssrd`, `u10`, `v10`) can be deterministically constructed;
 - hourly source data can be downloaded to immutable NetCDF checkpoints and validated;
 - UTC+7 daily means and accumulations are calculated per grid point with correct cross-UTC-day handling;
-- `tp`, `t2m`, `d2m`, `swvl1`, and `ssrd` are emitted in the defined daily units;
-- canonical transformed Parquet contains the required schema and provenance;
+- all nine requested provider variables are emitted in the defined daily units, preserving existing `tp`, `t2m`, `d2m`, `swvl1`, and `ssrd` behavior;
+- `swvl2` and `swvl3` use complete 24-hour UTC+7 local-day means;
+- daily mean scalar wind speed is the mean of 24 hourly vector magnitudes, not the magnitude of the daily-mean components;
+- daily wind direction uses tested meteorological from-direction cardinal conventions and remains null for an effectively zero resultant;
+- canonical transformed Parquet contains the nine provider fields, derived `wind_speed` and `wind_direction`, both timestamps, coordinates, and required provenance;
+- existing five-variable checkpoints cannot be reused for the nine-variable request, and historical artifacts remain untouched unless deletion is separately authorized;
+- fresh PostgreSQL installations create all six new nullable detail columns, while existing installations converge additively and reject incompatible columns;
 - repeating an unchanged logical request does not create duplicate canonical PostgreSQL observations;
 - mismatched artifacts or metadata are detected instead of silently accepted;
 - PostgreSQL load failure is transactionally rolled back;
-- controlled daily-climate reads are deterministic, read-only, period-bounded, and preserve missing values and both timestamps;
+- controlled daily-climate reads expose all expanded daily observation columns, are deterministic, read-only, period-bounded, and preserve missing values and both timestamps;
 - geospatial mapping can associate persisted grid coordinates with supported administrative regions without changing the climate observations;
 - the core pipeline and geospatial modules remain independently testable without Airflow;
 - Airflow can coordinate the pipeline without duplicating ETL/scientific logic;
+- one isolated pilot month passes download, RAW validation, daily transformation, PostgreSQL load, controlled read, and idempotent rerun before a full historical rebuild is authorized;
 - routine unit and integration suites verify the relevant contracts.
 
 ## 21. Out of scope unless explicitly approved
@@ -428,6 +490,8 @@ The current application contract does not include:
 - silent substitution of ERA5 for ERA5-Land;
 - global deduplication across unrelated request partitions;
 - automatic imputation of missing scientific observations;
+- `swvl4`, ET0, VPD, root-zone indices, drought indices, or other downstream analytical features as canonical daily observations;
+- automatic deletion of historical five-variable RAW or Parquet artifacts;
 - embedding wet-day, clustering, recommendation, or cultural-interpretation labels into canonical daily climate observations;
 - treating the experimental monthly aggregation path as production;
 - moving scientific processing into Airflow DAG definitions;
