@@ -126,6 +126,8 @@ def test_transformed_rejects_missing_derived_column(missing: str) -> None:
 def test_transformed_rejects_invalid_new_values(column, value) -> None:
     transformed = _transformed()
     frame = transformed.dataset.copy()
+    if isinstance(value, str):
+        frame[column] = frame[column].astype(object)
     frame.loc[0, column] = value
     with pytest.raises(ValidationError, match=column):
         validate_transformed_dataset(replace(transformed, dataset=frame))
