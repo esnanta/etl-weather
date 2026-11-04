@@ -104,6 +104,8 @@ Re-running the mapping updates existing coordinate rows instead of duplicating t
 
 `vw_daily_climate_region` preserves one row per daily climate detail record and attaches region labels through grid mapping.
 
+The daily view exposes the canonical climate observation values, including `swvl2_daily_mean_m3_m3`, `swvl3_daily_mean_m3_m3`, `u10_daily_mean_m_s`, `v10_daily_mean_m_s`, `wind_speed_daily_mean_m_s`, and `wind_direction_daily_deg`. These six fields are appended after the existing regional columns to preserve the previous view projection order. Historical five-variable rows may contain `NULL` in these fields. The view does not recompute wind or change stored observations.
+
 Unmatched, ambiguous, or not-yet-mapped observations remain visible with nullable region labels.
 
 Administrative classification is point-based, not area-weighted. Aggregating grid observations by district must not be interpreted as an area-weighted district climate statistic.
