@@ -67,6 +67,12 @@ def _dataframe() -> pd.DataFrame:
             "d2m_daily_mean_c": [22.0, 21.0],
             "swvl1_daily_mean_m3_m3": [0.3, 0.31],
             "ssrd_daily_total_j_m2": [12_000_000.0, 13_000_000.0],
+            "swvl2_daily_mean_m3_m3": [0.4, None],
+            "swvl3_daily_mean_m3_m3": [0.5, 0.51],
+            "u10_daily_mean_m_s": [3.0, -2.0],
+            "v10_daily_mean_m_s": [4.0, 0.0],
+            "wind_speed_daily_mean_m_s": [5.0, 2.0],
+            "wind_direction_daily_deg": [216.86989764584402, None],
         }
     )
 
@@ -204,12 +210,21 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
         "d2m_daily_mean_c",
         "swvl1_daily_mean_m3_m3",
         "ssrd_daily_total_j_m2",
+        "swvl2_daily_mean_m3_m3",
+        "swvl3_daily_mean_m3_m3",
+        "u10_daily_mean_m_s",
+        "v10_daily_mean_m_s",
+        "wind_speed_daily_mean_m_s",
+        "wind_direction_daily_deg",
     ]
     assert result["valid_time_local"].tolist() == [
         pd.Timestamp("2022-01-01 00:00:00"),
         pd.Timestamp("2022-01-02 00:00:00"),
     ]
     assert pd.isna(result.loc[1, "tp_daily_total_mm"])
+    assert pd.isna(result.loc[1, "swvl2_daily_mean_m3_m3"])
+    assert pd.isna(result.loc[1, "wind_direction_daily_deg"])
+    assert result.loc[0, "wind_speed_daily_mean_m_s"] == 5.0
 
     statement_text = str(captured["sql"])
     assert "climate_data.t_daily_climate AS dc" in statement_text
