@@ -414,12 +414,12 @@ python -m pytest tests/integration -q
 
 ### Phase 8 — Documentation reconciliation
 
-- [ ] Update root `README.md` active variables and daily-output table.
-- [ ] Update `pipeline/README.md` current request/transformation/schema behavior.
-- [ ] Update `orchestration/README.md` only if operator-facing campaign behavior/commands materially change.
-- [ ] Update database/schema documentation where current columns are enumerated.
-- [ ] Update query/geospatial documentation only where exposed climate-column lists change.
-- [ ] Keep implementation detail in domain docs and avoid duplicating the full scientific contract outside `docs/app_description.md`.
+- [x] Update root `README.md` active variables and daily-output table.
+- [x] Update `pipeline/README.md` current request/transformation/schema behavior.
+- [x] Update `orchestration/README.md` to clarify active request identity and configured campaign range without changing the DAG, schedule, or operator commands.
+- [x] Update database/schema documentation where current columns are enumerated (`README.md` overview and `pipeline/README.md` persistence contract; no `database/README.md` exists).
+- [x] Update query/geospatial documentation only where exposed climate-column lists change (`geospatial/README.md`; generic operational SQL audits have no expanded projection requirement).
+- [x] Keep implementation detail in domain docs and avoid duplicating the full scientific contract outside `docs/app_description.md`.
 
 ### Phase 9 — Regression verification
 
@@ -503,9 +503,14 @@ Plan C is complete when all of the following are true:
 | --- | --- | --- | --- |
 | 2026-11-04 | Plan C selected | Rebuild historical campaign using one expanded nine-variable ERA5-Land request | Complete |
 | 2026-11-04 | Work plan created | Checklist recorded in `docs/todo`; no production code changed | Complete |
-| — | Baseline verification | Awaiting local/unit/integration baseline | Pending |
-| — | Requirement update | Awaiting implementation | Pending |
-| — | Pipeline/database implementation | Awaiting implementation | Pending |
-| — | Pilot month | Awaiting implementation and verification | Pending |
-| — | Historical rebuild | Requires explicit pilot acceptance | Pending |
-| — | Final regression/closure | Awaiting tests and review | Pending |
+| 2026-11-04 | Baseline verification (Phase 0) | User-reported 397 unit + 17 integration tests passed | Complete |
+| 2026-11-04 | Scientific requirements (Phase 1) | `docs/app_description.md` defines nine provider fields and derived wind statistics | Complete |
+| 2026-11-04 | Request/provider and transformation (Phases 2–3) | User-reported Phase 2 focused 42 passed; Phase 3 full unit 417 passed | Complete |
+| 2026-11-04 | Validation/artifacts (Phase 4) | User-reported focused 22 passed, full unit 439 passed | Complete |
+| 2026-11-04 | Database schema convergence (Phase 5) | User-reported full unit 443 and integration 20 passed | Complete |
+| 2026-11-04 | Loader/read paths (Phase 6) | User-reported full unit 446 and integration 22 passed | Complete |
+| 2026-11-04 | Orchestration/historical progress (Phase 7) | User-reported full unit 454 and integration 23 passed | Complete |
+| 2026-11-05 | Documentation reconciliation (Phase 8) | Root, pipeline, orchestration, and geospatial READMEs aligned; no production changes | Documentation updated; Phase 9 verification pending |
+| — | Final regression/closure (Phase 9) | Re-run targeted and complete suites after documentation review | Pending |
+| — | Isolated pilot month (Phase 10) | Requires explicitly approved execution and verification | Pending |
+| — | Historical rebuild | Requires separate pilot acceptance; old artifacts remain untouched | Pending |
