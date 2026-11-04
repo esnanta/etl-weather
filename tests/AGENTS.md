@@ -52,7 +52,18 @@ tp
 t2m
 d2m
 swvl1
+swvl2
+swvl3
 ssrd
+u10
+v10
+```
+
+Derived daily fields (transformed data only):
+
+```text
+wind_speed
+wind_direction
 ```
 
 Daily timestamps:
@@ -71,10 +82,16 @@ tp    = mm/day
 t2m   = degC
 d2m   = degC
 swvl1 = m3/m3
+swvl2 = m3/m3
+swvl3 = m3/m3
 ssrd  = J/m2/day
+u10   = m/s
+v10   = m/s
+wind_speed = m/s
+wind_direction = degrees (meteorological from-direction; nullable for calm resultant)
 ```
 
-Missing values are not zero.
+Wind speed is the daily mean of hourly scalar magnitudes; wind direction is derived from the daily mean vector. Both require complete local-day hourly wind-component pairs. Missing values are not zero.
 
 Expected scientific values must be traceable to accumulation rules, unit conversion, timezone offset, grid behavior, or an explicit schema contract. Prefer exact assertions over truthy/non-empty assertions.
 
