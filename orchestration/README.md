@@ -155,6 +155,10 @@ Current operational tables are derived from `database/config.py` and use the con
 
 A quarter is complete only when all expected monthly partitions have valid persisted evidence.
 
+The active ERA5-Land requests use nine provider variables (`tp`, `t2m`, `d2m`, `swvl1`, `swvl2`, `swvl3`, `ssrd`, `u10`, `v10`). Request keys, configuration identities, and RAW/Parquet artifact filenames include the variable set; completed five-variable campaign rows do **not** count toward nine-variable progress. Manual repair only reconciles an exact current campaign month. Historical five-variable artifacts are not removed automatically. The DAG ID and scheduled/manual workflows remain unchanged.
+
+`CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR` determine the actual scheduled year range; `CAMPAIGN_KEY` is an identity label, not a year-range override. An environment showing `CAMPAIGN_END_YEAR=2016` schedules only the configured 2016 quarters even if the key is named `era5_land_2016_2025`. Before authorizing a full 2016–2025 rebuild, align the year range and run a separately approved isolated pilot. Do not enable scheduling or delete old data as part of documentation reconciliation.
+
 Inspect campaign progress with:
 
 ```bash
