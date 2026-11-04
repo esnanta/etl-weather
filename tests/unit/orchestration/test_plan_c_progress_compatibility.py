@@ -7,7 +7,7 @@ own integration coverage, and Airflow DAG structure is tested separately.
 
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -177,5 +177,30 @@ def test_scheduled_and_manual_jobs_share_active_variables_and_one_job_shape(
         assert scheduled_job["progress_id"] == 23
         assert weather_request_from_spec(manual_job["request_spec"]).variables == list(CDS_VARIABLES)
         assert datetime.fromisoformat(scheduled_job["earliest_start_at"]) == (
-            anchor + __import__("datetime").timedelta(minutes=index * MONTHLY_SLOT_SPACING_MINUTES)
+            anchor + timedelta(minutes=index * MONTHLY_SLOT_SPACING_MINUTES)
         )
+
+
+def test_boundary_rejects_legacy_result_key_for_nine_variable_request() -> None:
+    from orchestration.progress.tracking import require_request_key
+
+    current = weather_request_from_spec(_specs()[0])
+    legacy = weather_request_from_spec(_old_spec(_specs()[0]))
+    with pytest.raises(ValueError, match="does not match"):
+        require_request_key(
+            {"request_key": build_request_key(legacy)},
+            build_request_key(current),
+        )
+
+
+def test_reconciliation_query_matches_request_key_and_artifact_evidence() -> None:
+    """Inspect production SQL; real database reconciliation has separate integration tests."""
+    from tests._paths import REPOSITORY_ROOT
+
+    sql = (
+        REPOSITORY_ROOT / "orchestration/repositories/pipeline_progress.py"
+    ).read_text(encoding="utf-8")
+    assert "persisted.request_key = partition.request_key" in sql
+    assert "persisted.transformed_artifact_path =" in sql
+    assert "persisted.transformed_sha256 =" in sql
+    assert "observations.row_count = partition.row_count" in sql
