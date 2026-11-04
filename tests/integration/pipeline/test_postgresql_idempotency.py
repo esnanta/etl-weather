@@ -572,6 +572,22 @@ def test_plan_c_invalid_detail_rolls_back_parent_and_all_observations(
         v10=[4.0, 4.0], wind_speed=[5.0, 5.0], wind_direction=[216.87, 216.87],
     )
     expanded = replace(transformed, request=request, dataset=frame)
+    downloaded_at = datetime(2022, 1, 2, 3, 4, 5, tzinfo=UTC)
+    raw = save_raw_netcdf(RawWeatherDataset(
+        request=request,
+        downloaded_at=downloaded_at,
+        raw_data=xr.Dataset(
+            {"tp": (("valid_time", "latitude", "longitude"), [[[0.001]]])},
+            coords={
+                "valid_time": pd.to_datetime(["2022-01-01 00:00:00"]),
+                "latitude": [4.5],
+                "longitude": [96.8],
+            },
+        ),
+    ))
+    artifact = save_transformed_parquet(
+        frame, request, downloaded_at, expanded.transformed_at, raw,
+    )
 
     with pytest.raises(IntegrityError):
         load_to_postgresql(expanded, artifact, postgres_config)
