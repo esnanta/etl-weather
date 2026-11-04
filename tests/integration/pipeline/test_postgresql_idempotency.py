@@ -531,5 +531,26 @@ def test_plan_c_loader_persists_new_columns_idempotently_and_preserves_null(
             assert row["v10_daily_mean_m_s"] == pytest.approx(4.0)
             assert row["wind_speed_daily_mean_m_s"] == pytest.approx(5.0)
             assert row["wind_direction_daily_deg"] is None
+
+        from datetime import date
+        from pipeline.repositories.daily_climate_reader import (
+            DailyClimateSelection, load_daily_climate_for_modelling,
+        )
+
+        selected = load_daily_climate_for_modelling(
+            DailyClimateSelection(
+                source=DataSource.CDS,
+                dataset_name=request.dataset,
+                start_date=date(2022, 1, 1),
+                end_date=date(2022, 1, 1),
+                bbox=request.bbox,
+            ),
+            postgres_config,
+            engine=engine,
+        )
+        assert len(selected) == 1
+        assert selected.loc[0, "wind_speed_daily_mean_m_s"] == pytest.approx(5.0)
+        assert pd.isna(selected.loc[0, "wind_direction_daily_deg"])
+        assert selected.loc[0, "swvl2_daily_mean_m3_m3"] == pytest.approx(0.4)
     finally:
         engine.dispose()
