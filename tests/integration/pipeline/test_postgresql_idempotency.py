@@ -456,3 +456,80 @@ def test_database_enforces_detail_fk_uniqueness_and_cascade(
             ).scalar_one() == 2
     finally:
         engine.dispose()
+
+
+def test_plan_c_loader_persists_new_columns_idempotently_and_preserves_null(
+    postgres_config, tmp_path, monkeypatch,
+) -> None:
+    """Verify real PostgreSQL values and unchanged-partition behavior for nine variables."""
+    from dataclasses import replace
+
+    monkeypatch.setattr("pipeline.storage.artifacts.DATA_DIRECTORY", tmp_path)
+    request = replace(
+        _request(),
+        variables=["tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3", "ssrd", "u10", "v10"],
+    )
+    downloaded_at = datetime(2022, 1, 2, 3, 4, 5, tzinfo=UTC)
+    transformed_at = datetime(2022, 1, 2, 4, 5, 6, tzinfo=UTC)
+    raw = save_raw_netcdf(
+        RawWeatherDataset(
+            request=request,
+            downloaded_at=downloaded_at,
+            raw_data=xr.Dataset(
+                {"tp": (("valid_time", "latitude", "longitude"), [[[0.001]]])},
+                coords={
+                    "valid_time": pd.to_datetime(["2022-01-01 00:00:00"]),
+                    "latitude": [4.5],
+                    "longitude": [96.8],
+                },
+            ),
+        )
+    )
+    dataframe = pd.DataFrame({
+        "valid_time": pd.to_datetime(["2021-12-31 17:00:00"]),
+        "valid_time_local": pd.to_datetime(["2022-01-01 00:00:00"]),
+        "latitude": [4.5],
+        "longitude": [96.8],
+        "tp": [10.0],
+        "t2m": [26.0],
+        "d2m": [22.0],
+        "swvl1": [0.3],
+        "swvl2": [0.4],
+        "swvl3": [None],
+        "ssrd": [12_000_000.0],
+        "u10": [3.0],
+        "v10": [4.0],
+        "wind_speed": [5.0],
+        "wind_direction": [None],
+    })
+    dataset = TransformedWeatherDataset(
+        request=request, transformed_at=transformed_at, dataset=dataframe,
+    )
+    artifact = save_transformed_parquet(
+        dataframe, request, downloaded_at, transformed_at, raw,
+    )
+    first_id, inserted = load_to_postgresql(dataset, artifact, postgres_config)
+    repeated_id, skipped = load_to_postgresql(dataset, artifact, postgres_config)
+    assert first_id == repeated_id
+    assert (inserted, skipped) == (1, 0)
+
+    engine = create_engine(postgres_config.url, future=True)
+    detail = f"{postgres_config.schema}.{postgres_config.daily_climate_detail_table}"
+    try:
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    f"SELECT swvl2_daily_mean_m3_m3, swvl3_daily_mean_m3_m3, "
+                    f"u10_daily_mean_m_s, v10_daily_mean_m_s, "
+                    f"wind_speed_daily_mean_m_s, wind_direction_daily_deg "
+                    f"FROM {detail} WHERE daily_climate_id = :id"
+                ), {"id": first_id},
+            ).mappings().one()
+            assert row["swvl2_daily_mean_m3_m3"] == pytest.approx(0.4)
+            assert row["swvl3_daily_mean_m3_m3"] is None
+            assert row["u10_daily_mean_m_s"] == pytest.approx(3.0)
+            assert row["v10_daily_mean_m_s"] == pytest.approx(4.0)
+            assert row["wind_speed_daily_mean_m_s"] == pytest.approx(5.0)
+            assert row["wind_direction_daily_deg"] is None
+    finally:
+        engine.dispose()
