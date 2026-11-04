@@ -86,6 +86,21 @@ def test_raw_still_rejects_missing_hour_and_wrong_grid() -> None:
         validate_raw_dataset(outside)
 
 
+def test_raw_rejects_requested_variable_with_extra_dimension() -> None:
+    raw = _raw()
+    altered = raw.raw_data.copy()
+    altered["u10"] = altered["u10"].expand_dims(member=[0, 1])
+    with pytest.raises(ValidationError, match="RAW variable 'u10'.*dimensions"):
+        validate_raw_dataset(replace(raw, raw_data=altered))
+
+
+def test_old_five_variable_raw_does_not_validate_as_nine_variable_request() -> None:
+    old = _raw(_request(["tp", "t2m", "d2m", "swvl1", "ssrd"]))
+    incompatible = replace(old, request=_request())
+    with pytest.raises(ValidationError, match="Missing requested variables"):
+        validate_raw_dataset(incompatible)
+
+
 def test_transformed_accepts_fifteen_columns_and_calm_null_direction() -> None:
     transformed = _transformed()
     assert len(transformed.dataset.columns) == 15
