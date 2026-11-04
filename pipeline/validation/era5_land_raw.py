@@ -33,6 +33,20 @@ def _validate_request_variables(dataset: xr.Dataset, variables: list[str]) -> No
     if missing:
         raise ValidationError(f"Missing requested variables: {missing}")
 
+def _validate_requested_variable_dimensions(
+    dataset: xr.Dataset, variables: list[str]
+) -> None:
+    """Require each requested hourly field to cover the same time/grid axes."""
+    required = {"valid_time", "latitude", "longitude"}
+    for variable in variables:
+        dimensions = set(dataset[variable].dims)
+        if dimensions != required:
+            raise ValidationError(
+                f"RAW variable '{variable}' must have exactly valid_time, "
+                "latitude, and longitude dimensions."
+            )
+
+
 def _validate_time_dimension(dataset: xr.Dataset) -> None:
     """Validate canonical valid_time coordinate."""
     if "valid_time" not in dataset.coords:
@@ -239,6 +253,7 @@ def validate_raw_dataset(raw_dataset: RawWeatherDataset) -> None:
     _validate_dataset_type(dataset)
     _validate_dataset_structure(dataset)
     _validate_request_variables(dataset, raw_dataset.request.variables)
+    _validate_requested_variable_dimensions(dataset, raw_dataset.request.variables)
     _validate_time_dimension(dataset)
     _validate_raw_temporal_continuity(dataset)
     _validate_raw_spatial_grid(dataset, raw_dataset.request)
