@@ -27,6 +27,12 @@ MODELLING_COLUMNS = (
     "d2m_daily_mean_c",
     "swvl1_daily_mean_m3_m3",
     "ssrd_daily_total_j_m2",
+    "swvl2_daily_mean_m3_m3",
+    "swvl3_daily_mean_m3_m3",
+    "u10_daily_mean_m_s",
+    "v10_daily_mean_m_s",
+    "wind_speed_daily_mean_m_s",
+    "wind_direction_daily_deg",
 )
 
 MODELLING_OBSERVATION_KEY = (
@@ -76,7 +82,13 @@ def _build_modelling_statement(config: DatabaseConfig) -> TextClause:
             dcd.t2m_daily_mean_c,
             dcd.d2m_daily_mean_c,
             dcd.swvl1_daily_mean_m3_m3,
-            dcd.ssrd_daily_total_j_m2
+            dcd.ssrd_daily_total_j_m2,
+            dcd.swvl2_daily_mean_m3_m3,
+            dcd.swvl3_daily_mean_m3_m3,
+            dcd.u10_daily_mean_m_s,
+            dcd.v10_daily_mean_m_s,
+            dcd.wind_speed_daily_mean_m_s,
+            dcd.wind_direction_daily_deg
         FROM {daily_climate} AS dc
         JOIN {detail} AS dcd
           ON dcd.daily_climate_id = dc.id
