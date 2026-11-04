@@ -43,13 +43,13 @@ The application must not silently substitute the ERA5 single-level dataset, ERA5
 
 The required provider variables are:
 
-| Provider code | CDS variable | Application use | Source unit |
-| --- | --- | --- | --- |
-| `tp` | Total precipitation | Daily accumulation | m |
-| `t2m` | 2 metre temperature | Daily mean | K |
-| `d2m` | 2 metre dewpoint temperature | Daily mean | K |
-| `swvl1` | Volumetric soil water layer 1 | Daily mean | m³/m³ |
-| `ssrd` | Surface solar radiation downwards | Daily accumulation | J/m² |
+| Provider code | CDS variable | Application use | Source unit | Canonical output unit | Transformation |
+| --- | --- | --- | --- | --- | --- |
+| `tp` | Total precipitation | Daily accumulation | m | mm/day | UTC+7 local-day accumulation; multiply by 1,000 |
+| `t2m` | 2 metre temperature | Daily mean | K | °C | 24-hour UTC+7 local-day mean; subtract 273.15 |
+| `d2m` | 2 metre dewpoint temperature | Daily mean | K | °C | 24-hour UTC+7 local-day mean; subtract 273.15 |
+| `swvl1` | Volumetric soil water layer 1 | Daily mean | m³/m³ | m³/m³ | 24-hour UTC+7 local-day mean; unit unchanged |
+| `ssrd` | Surface solar radiation downwards | Daily accumulation | J/m² | J/m²/day | UTC+7 local-day accumulation; unit unchanged |
 
 These provider codes are canonical application variable names and must remain explicit in requests, artifacts, tests, logs, and transformation contracts.
 
