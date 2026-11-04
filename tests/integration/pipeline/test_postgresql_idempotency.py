@@ -554,3 +554,37 @@ def test_plan_c_loader_persists_new_columns_idempotently_and_preserves_null(
         assert selected.loc[0, "swvl2_daily_mean_m3_m3"] == pytest.approx(0.4)
     finally:
         engine.dispose()
+
+
+def test_plan_c_invalid_detail_rolls_back_parent_and_all_observations(
+    postgres_config, tmp_path, monkeypatch,
+) -> None:
+    """Expanded field binding must not weaken the existing transactional rollback."""
+    from dataclasses import replace
+
+    transformed, artifact = _save_test_partition(tmp_path, monkeypatch, invalid_detail=True)
+    request = replace(
+        transformed.request,
+        variables=["tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3", "ssrd", "u10", "v10"],
+    )
+    frame = transformed.dataset.assign(
+        swvl2=[0.4, 0.41], swvl3=[0.5, 0.51], u10=[3.0, 3.0],
+        v10=[4.0, 4.0], wind_speed=[5.0, 5.0], wind_direction=[216.87, 216.87],
+    )
+    expanded = replace(transformed, request=request, dataset=frame)
+
+    with pytest.raises(IntegrityError):
+        load_to_postgresql(expanded, artifact, postgres_config)
+
+    engine = create_engine(postgres_config.url, future=True)
+    try:
+        with engine.connect() as connection:
+            for table in (
+                postgres_config.daily_climate_table,
+                postgres_config.daily_climate_detail_table,
+            ):
+                assert connection.execute(
+                    text(f"SELECT COUNT(*) FROM {postgres_config.schema}.{table}")
+                ).scalar_one() == 0
+    finally:
+        engine.dispose()
