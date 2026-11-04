@@ -1,3 +1,5 @@
+"""Own canonical climate PostgreSQL DDL and safe additive daily-detail convergence."""
+
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -15,7 +17,60 @@ DAILY_CLIMATE_COLUMNS = (
     "d2m_daily_mean_c",
     "swvl1_daily_mean_m3_m3",
     "ssrd_daily_total_j_m2",
+    "swvl2_daily_mean_m3_m3",
+    "swvl3_daily_mean_m3_m3",
+    "u10_daily_mean_m_s",
+    "v10_daily_mean_m_s",
+    "wind_speed_daily_mean_m_s",
+    "wind_direction_daily_deg",
 )
+
+
+# Identity/timestamp columns are structural: never fabricate them in an old table.
+_DAILY_DETAIL_STRUCTURAL_COLUMNS = {
+    "id": ("bigint", "NO"),
+    "daily_climate_id": ("bigint", "NO"),
+    "valid_time": ("timestamp without time zone", "NO"),
+    "valid_time_local": ("timestamp without time zone", "NO"),
+    "latitude": ("double precision", "NO"),
+    "longitude": ("double precision", "NO"),
+}
+
+
+def _converge_daily_climate_detail_columns(connection, config: DatabaseConfig) -> None:
+    """Validate existing detail columns and add only missing nullable observations."""
+    table = f"{config.schema}.{config.daily_climate_detail_table}"
+    result = connection.execute(
+        text(
+            "SELECT column_name, data_type, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE table_schema = :schema AND table_name = :table_name"
+        ),
+        {"schema": config.schema, "table_name": config.daily_climate_detail_table},
+    )
+    existing = {
+        row["column_name"]: (row["data_type"], row["is_nullable"])
+        for row in result.mappings()
+    }
+
+    for name, expected in _DAILY_DETAIL_STRUCTURAL_COLUMNS.items():
+        if existing.get(name) != expected:
+            raise RuntimeError(
+                f"Incompatible daily climate detail structural column {table}.{name}: "
+                f"expected {expected}, found {existing.get(name)}."
+            )
+
+    for name in DAILY_CLIMATE_COLUMNS:
+        actual = existing.get(name)
+        if actual is None:
+            connection.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN {name} DOUBLE PRECISION")
+            )
+        elif actual != ("double precision", "YES"):
+            raise RuntimeError(
+                f"Incompatible daily climate detail observation column {table}.{name}: "
+                f"expected nullable DOUBLE PRECISION, found {actual}."
+            )
 
 
 def create_schema(
@@ -119,6 +174,12 @@ def create_daily_climate_detail_table(
                     d2m_daily_mean_c DOUBLE PRECISION,
                     swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
                     ssrd_daily_total_j_m2 DOUBLE PRECISION,
+                    swvl2_daily_mean_m3_m3 DOUBLE PRECISION,
+                    swvl3_daily_mean_m3_m3 DOUBLE PRECISION,
+                    u10_daily_mean_m_s DOUBLE PRECISION,
+                    v10_daily_mean_m_s DOUBLE PRECISION,
+                    wind_speed_daily_mean_m_s DOUBLE PRECISION,
+                    wind_direction_daily_deg DOUBLE PRECISION,
                     CONSTRAINT fk_daily_climate_detail_daily_climate
                     FOREIGN KEY (daily_climate_id)
                     REFERENCES {resolved_config.schema}.{resolved_config.daily_climate_table}(id)
@@ -127,6 +188,7 @@ def create_daily_climate_detail_table(
                 """
             )
         )
+        _converge_daily_climate_detail_columns(connection, resolved_config)
         connection.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
