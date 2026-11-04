@@ -192,15 +192,3 @@ def test_boundary_rejects_legacy_result_key_for_nine_variable_request() -> None:
             build_request_key(current),
         )
 
-
-def test_reconciliation_query_matches_request_key_and_artifact_evidence() -> None:
-    """Inspect production SQL; real database reconciliation has separate integration tests."""
-    from tests._paths import REPOSITORY_ROOT
-
-    sql = (
-        REPOSITORY_ROOT / "orchestration/repositories/pipeline_progress.py"
-    ).read_text(encoding="utf-8")
-    assert "persisted.request_key = partition.request_key" in sql
-    assert "persisted.transformed_artifact_path =" in sql
-    assert "persisted.transformed_sha256 =" in sql
-    assert "observations.row_count = partition.row_count" in sql
