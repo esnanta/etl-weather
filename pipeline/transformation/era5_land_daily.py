@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 from typing import cast
 
+import numpy as np
 import pandas as pd
 
 from pipeline.contracts.era5_land import (
@@ -18,6 +19,9 @@ from pipeline.contracts.era5_land import (
     LOCAL_MIDNIGHT_IN_UTC_HOUR,
     LOCAL_TIMEZONE,
     LOCAL_UTC_OFFSET_HOURS,
+    WIND_COMPONENT_VARIABLES,
+    WIND_DERIVED_VARIABLES,
+    WIND_DIRECTION_CALM_TOLERANCE_M_S,
 )
 from pipeline.interfaces.etl import DataTransformer
 from pipeline.observability.logging import (
@@ -80,6 +84,30 @@ def _aggregate_instantaneous_variable(
     sample_count = grouped.count()
     complete = sample_count == EXPECTED_HOURLY_SAMPLES_PER_DAY
     return daily_mean[complete].rename(variable).reset_index()
+
+
+def _aggregate_daily_wind(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Calculate scalar hourly speed before averaging; direction uses daily vector."""
+    working = dataframe[["valid_time", "latitude", "longitude", "u10", "v10"]].copy()
+    working["_local_day"] = (
+        working["valid_time"] + pd.Timedelta(hours=LOCAL_UTC_OFFSET_HOURS)
+    ).dt.floor("D")
+
+    # A speed sample is valid only if both orthogonal components are present.
+    working["wind_speed"] = np.hypot(working["u10"], working["v10"])
+    keys = ["_local_day", "latitude", "longitude"]
+    grouped = working.groupby(keys, sort=True)
+    complete = grouped["wind_speed"].count() == EXPECTED_HOURLY_SAMPLES_PER_DAY
+
+    daily = grouped[["wind_speed", "u10", "v10"]].mean().loc[complete].reset_index()
+    resultant_speed = np.hypot(daily["u10"], daily["v10"])
+    direction = (
+        np.degrees(np.arctan2(-daily["u10"], -daily["v10"])) + 360.0
+    ) % 360.0
+    daily["wind_direction"] = direction.where(
+        resultant_speed > WIND_DIRECTION_CALM_TOLERANCE_M_S, np.nan
+    )
+    return daily[keys + ["wind_speed", "wind_direction"]]
 
 
 def _aggregate_accumulated_variable(
@@ -194,7 +222,10 @@ def _convert_era5_land_units(
             "conversions": conversions,
             "output_units": {
                 variable: ERA5_LAND_OUTPUT_UNITS[variable]
-                for variable in request.variables
+                for variable in [
+                    *request.variables,
+                    *(WIND_DERIVED_VARIABLES if WIND_COMPONENT_VARIABLES.issubset(request.variables) else ()),
+                ]
                 if variable in ERA5_LAND_OUTPUT_UNITS
             },
         },
@@ -254,6 +285,16 @@ def _aggregate_era5_land_daily(
                 validate="one_to_one",
             )
 
+    if WIND_COMPONENT_VARIABLES.issubset(request.variables):
+        daily_wind = _aggregate_daily_wind(selected)
+        if daily is not None:
+            daily = daily.merge(
+                daily_wind,
+                on=["_local_day", "latitude", "longitude"],
+                how="inner",
+                validate="one_to_one",
+            )
+
     if daily is None or daily.empty:
         raise ValueError("ERA5-Land daily aggregation produced no complete local days.")
 
@@ -265,8 +306,11 @@ def _aggregate_era5_land_daily(
         )
 
     daily_frame = _convert_era5_land_units(daily_frame, request)
+    output_variables = [*request.variables]
+    if WIND_COMPONENT_VARIABLES.issubset(request.variables):
+        output_variables.extend(WIND_DERIVED_VARIABLES)
     daily_frame = daily_frame[
-        ["valid_time", "valid_time_local", "latitude", "longitude", *request.variables]
+        ["valid_time", "valid_time_local", "latitude", "longitude", *output_variables]
     ].sort_values(
         ["valid_time_local", "latitude", "longitude"]
     ).reset_index(drop=True)
