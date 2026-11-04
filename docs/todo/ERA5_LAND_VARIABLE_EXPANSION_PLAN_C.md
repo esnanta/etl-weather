@@ -423,33 +423,28 @@ python -m pytest tests/integration -q
 
 ### Phase 9 — Regression verification
 
-Run focused suites first, then wider suites.
+Final audit compared `dev` with the pre-Plan C reference `9f59b5ca94cb`
+(40 commits in the comparison), then inspected the active source contracts.
+The application was not executed against CDS, Airflow, or the development
+PostgreSQL database during this audit.
 
-- [ ] Run request/provider/storage unit tests.
-- [ ] Run ERA5-Land transformation/validation unit tests.
-- [ ] Run database/loader/read-path unit tests.
-- [ ] Run orchestration unit tests.
-- [ ] Run complete unit suite:
+- [x] Request/provider/storage regression: covered by prior focused tests and the complete user-run suite; `pipeline/requests/weather.py` and `pipeline/storage/artifacts.py` are unchanged from the comparison reference.
+- [x] ERA5-Land transformation/validation regression: covered by prior focused tests and the complete suite; existing accumulation, instantaneous-mean, UTC+7 day attachment, and target-period functions are unchanged.
+- [x] Database/loader/read-path regression: covered by prior focused tests, schema-convergence and persistence integration tests, and the complete suite.
+- [x] Orchestration regression: covered by Phase 7 focused tests and integration proof that completed five-variable partitions do not complete nine-variable progress.
+- [x] Complete unit suite, run by the user after Phase 8: **454 passed in 9.63s** with `ERA5_CAMPAIGN_SCHEDULE_ENABLED=false`.
+- [x] Complete integration suite, run by the user after Phase 8: **23 passed in 2.73s**.
+- [x] Compare results with the recorded Phase 0 baseline: 397 unit + 17 integration = 414; current 454 + 23 = **477 passed** (+63).
+- [x] Inspect source diff for accidental changes: Aceh bbox and UTC+7 timezone unchanged; legacy accumulation and instantaneous daily-mean functions unchanged; request identity, artifact naming, DAG graph, scheduling requests, and durable progress repository unchanged.
+- [x] Confirm the active provider remains CDS ERA5-Land; no ARCO/provider execution branch was introduced by Plan C.
 
-```bash
-source activate-airflow.sh
-
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
-python -m pytest tests/unit -q
-```
-
-- [ ] Run focused PostgreSQL integration tests for schema migration, load idempotency, rollback, controlled reads, and progress reconciliation.
-- [ ] Run complete integration suite:
-
-```bash
-source activate-airflow.sh
-
-python -m pytest tests/integration -q
-```
-
-- [ ] Compare results with the pre-implementation baseline; do not rely on historical pass counts as proof of this change.
-- [ ] Inspect final diff for accidental changes to bbox, local-day accumulation formulas, request partitioning, idempotency, pacing, or unrelated domains.
-- [ ] Confirm no ARCO/provider branch was introduced.
+**Scope note:** The comparison includes removal of two older `docs/todo/`
+documents in an earlier standalone `remove` commit; those removals are not
+Phase 9 changes. This comparison is a remote GitHub ref audit, not a claim
+about the developer's uncommitted local working-tree state. The successful
+477-test run is user-provided evidence, not a test run performed by the
+assistant. Phase 10 still requires isolated, explicitly authorized live-pilot
+verification before any historical rebuild or destructive cleanup.
 
 ### Phase 10 — Historical rebuild readiness
 
@@ -511,6 +506,6 @@ Plan C is complete when all of the following are true:
 | 2026-11-04 | Loader/read paths (Phase 6) | User-reported full unit 446 and integration 22 passed | Complete |
 | 2026-11-04 | Orchestration/historical progress (Phase 7) | User-reported full unit 454 and integration 23 passed | Complete |
 | 2026-11-05 | Documentation reconciliation (Phase 8) | Root, pipeline, orchestration, and geospatial READMEs aligned; no production changes | Documentation updated; Phase 9 verification pending |
-| — | Final regression/closure (Phase 9) | Re-run targeted and complete suites after documentation review | Pending |
+| 2026-11-05 | Final regression audit (Phase 9) | User-run 454 unit + 23 integration tests passed after Phase 8; remote diff and invariants reviewed | Complete |
 | — | Isolated pilot month (Phase 10) | Requires explicitly approved execution and verification | Pending |
 | — | Historical rebuild | Requires separate pilot acceptance; old artifacts remain untouched | Pending |
