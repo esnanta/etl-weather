@@ -143,7 +143,7 @@ def test_missing_hourly_observation_does_not_create_partial_daily_mean(
 def test_missing_hourly_row_prevents_daily_wind_and_soil_outputs() -> None:
     loaded = _loaded()
     missing = loaded.raw_data["valid_time"].eq(pd.Timestamp("2022-01-01 06:00:00"))
-    loaded.raw_data = loaded.raw_data.loc[~missing].copy()
+    loaded = replace(loaded, raw_data=loaded.raw_data.loc[~missing].copy())
     with pytest.raises(ValueError, match="produced no complete local days"):
         transform_data(loaded)
 
@@ -151,7 +151,7 @@ def test_missing_hourly_row_prevents_daily_wind_and_soil_outputs() -> None:
 def test_legacy_five_variable_request_keeps_original_output_columns() -> None:
     loaded = _loaded()
     old_variables = ["tp", "t2m", "d2m", "swvl1", "ssrd"]
-    loaded.request = replace(loaded.request, variables=old_variables)
+    loaded = replace(loaded, request=replace(loaded.request, variables=old_variables))
     transformed = transform_data(loaded).dataset
     assert list(transformed.columns) == [
         "valid_time", "valid_time_local", "latitude", "longitude", *old_variables
