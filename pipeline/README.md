@@ -22,7 +22,11 @@ tp
 t2m
 d2m
 swvl1
+swvl2
+swvl3
 ssrd
+u10
+v10
 ```
 
 Configured Aceh bounding box:
@@ -189,6 +193,10 @@ This reconstructs the local-day accumulation from ERA5-Land forecast accumulatio
 t2m
 d2m
 swvl1
+swvl2
+swvl3
+u10
+v10
 ```
 
 Daily means are formed from hourly values assigned to the UTC+7 local day. A mean is retained only when the grid cell has all 24 expected hourly samples.
@@ -201,7 +209,15 @@ Daily means are formed from hourly values assigned to the UTC+7 local day. A mea
 | `t2m` | kelvin → Celsius | degC |
 | `d2m` | kelvin → Celsius | degC |
 | `swvl1` | unchanged | m3/m3 |
+| `swvl2` | unchanged | m3/m3 |
+| `swvl3` | unchanged | m3/m3 |
 | `ssrd` | local-day accumulation | J/m2/day |
+| `u10` | unchanged | m/s |
+| `v10` | unchanged | m/s |
+| `wind_speed` | daily mean of 24 paired hourly magnitudes | m/s |
+| `wind_direction` | daily mean-vector meteorological from-direction; null for calm resultant | degrees [0, 360) |
+
+Wind speed uses `mean(sqrt(u10_hourly² + v10_hourly²))`, not `sqrt(mean(u10)² + mean(v10)²)`. Direction is derived from the daily mean `u10`/`v10` vector using the meteorological from-direction convention, with a tested near-zero threshold of `1e-10 m/s`. A full 24 valid hourly pairs is required. For the scientific derivation, see [docs/app_description.md](../docs/app_description.md).
 
 Missing values remain missing. They are never converted to zero.
 
@@ -216,9 +232,15 @@ latitude
 longitude
 tp
 t2m
-swvl1
-ssrd
 d2m
+swvl1
+swvl2
+swvl3
+ssrd
+u10
+v10
+wind_speed
+wind_direction
 ```
 
 `valid_time_local` represents local midnight for the observation day. `valid_time` is the corresponding UTC instant, which is seven hours earlier.
@@ -307,6 +329,12 @@ Provider variables map to database columns as follows:
 | `d2m` | `d2m_daily_mean_c` |
 | `swvl1` | `swvl1_daily_mean_m3_m3` |
 | `ssrd` | `ssrd_daily_total_j_m2` |
+| `swvl2` | `swvl2_daily_mean_m3_m3` |
+| `swvl3` | `swvl3_daily_mean_m3_m3` |
+| `u10` | `u10_daily_mean_m_s` |
+| `v10` | `v10_daily_mean_m_s` |
+| `wind_speed` (derived) | `wind_speed_daily_mean_m_s` |
+| `wind_direction` (derived) | `wind_direction_daily_deg` |
 
 Partition metadata is keyed by deterministic `request_key`.
 
@@ -326,6 +354,8 @@ expected observation count
 ```
 
 If any item differs, the normal transactional metadata and observation UPSERT path is used.
+
+The canonical table is created with all eleven nullable observation columns; reinitialization inspects `information_schema.columns`, adds missing compatible columns through transactional `ALTER TABLE`, and fails explicitly for incompatible existing types or structural columns. Historical five-variable observations remain valid with `NULL` in the six new fields. Primary/foreign keys, unique observation identity, and cascade behavior are unchanged.
 
 Pandas missing values are converted to SQL `NULL`, not zero.
 
@@ -358,6 +388,12 @@ t2m_daily_mean_c
 d2m_daily_mean_c
 swvl1_daily_mean_m3_m3
 ssrd_daily_total_j_m2
+swvl2_daily_mean_m3_m3
+swvl3_daily_mean_m3_m3
+u10_daily_mean_m_s
+v10_daily_mean_m_s
+wind_speed_daily_mean_m_s
+wind_direction_daily_deg
 ```
 
 The repository validates the selection and returned data, preserves missing values and both timestamps, rejects duplicate local-day/grid observations, and returns deterministic ordering.
