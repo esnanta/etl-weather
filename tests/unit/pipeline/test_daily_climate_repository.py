@@ -245,3 +245,40 @@ def test_load_daily_climate_for_modelling_preserves_missing_values_and_schema(
         "start_time": pd.Timestamp("2022-01-01 00:00:00").to_pydatetime(),
         "end_time_exclusive": pd.Timestamp("2022-01-03 00:00:00").to_pydatetime(),
     }
+
+
+def test_modelling_selection_filters_nine_variable_generation_explicitly(monkeypatch) -> None:
+    """Keep existing selections unchanged while allowing Plan C disambiguation."""
+    from dataclasses import replace
+    from pipeline.requests.weather import build_variable_signature
+
+    signature = build_variable_signature([
+        "tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3", "ssrd", "u10", "v10",
+    ])
+    selected = replace(_selection(), variable_signature=signature)
+    captured = {}
+
+    def fake_query(connection, statement, params):
+        del connection
+        captured["sql"] = str(statement)
+        captured["params"] = params
+        return _dataframe()
+
+    monkeypatch.setattr(
+        "pipeline.repositories.daily_climate_reader._execute_modelling_query",
+        fake_query,
+    )
+    engine = create_engine("sqlite://", future=True)
+    result = load_daily_climate_for_modelling(selected, _config(), engine=engine)
+    assert len(result) == 2
+    assert "dc.variable_signature = :variable_signature" in captured["sql"]
+    assert captured["params"]["variable_signature"] == signature
+
+
+def test_modelling_selection_rejects_empty_explicit_signature() -> None:
+    from dataclasses import replace
+
+    with pytest.raises(ValueError, match="variable_signature"):
+        validate_daily_climate_selection(
+            replace(_selection(), variable_signature="   ")
+        )
