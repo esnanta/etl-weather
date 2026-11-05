@@ -4,11 +4,13 @@ Uses production progress DDL/reconciliation and a temporary TEST_POSTGRES_*
 schema. No Airflow, CDS or application campaign tables are touched.
 """
 
+import os
 from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 import database.schema as schema_module
@@ -29,6 +31,14 @@ OLD_VARIABLES = ["tp", "t2m", "d2m", "swvl1", "ssrd"]
 
 
 def test_completed_legacy_partition_is_not_plan_c_completion_evidence(monkeypatch):
+    load_dotenv()
+    required = (
+        "TEST_POSTGRES_HOST", "TEST_POSTGRES_PORT", "TEST_POSTGRES_DATABASE",
+        "TEST_POSTGRES_USER", "TEST_POSTGRES_PASSWORD",
+    )
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        pytest.skip("Isolated PostgreSQL integration test requires: " + ", ".join(missing))
     config = replace(
         resolve_test_database_config(),
         schema=f"climate_test_plan_c_progress_{uuid4().hex}",
