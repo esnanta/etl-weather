@@ -450,6 +450,17 @@ verification before any historical rebuild or destructive cleanup.
 
 Do not start destructive cleanup merely to force the new campaign.
 
+**Live CDS finding (2026-11-05):** The first pilot's April 30 context
+chunk downloaded, but the nine-variable May 1–31 provider submission
+returned HTTP 403 `cost limits exceeded`. Retrieval is now adapted to
+two independent variable groups (five existing + four additional) per
+calendar chunk, with exact coordinate merging and request-specific
+subchunk caches. This changes **provider submission strategy** but keeps
+one canonical nine-variable monthly RAW/Parquet/database partition and
+preserves all Phase 1–9 scientific contracts. The revised extraction code
+and new unit tests require local verification before another CDS pilot.
+No historical rebuild is authorized.
+
 **Preparation status (2026-11-05):** The [isolated pilot runbook](PLAN_C_PILOT_RUNBOOK.md)
 now defines a non-campaign May 2024 request, read-only environment/asset
 preflight, additive schema preparation, separately staged CDS → Parquet →
@@ -519,4 +530,5 @@ Plan C is complete when all of the following are true:
 | 2026-11-05 | Documentation reconciliation (Phase 8) | Root, pipeline, orchestration, and geospatial READMEs aligned; no production changes | Documentation updated; Phase 9 verification pending |
 | 2026-11-05 | Final regression audit (Phase 9) | User-run 454 unit + 23 integration tests passed after Phase 8; remote diff and invariants reviewed | Complete |
 | 2026-11-05 | Phase 10 pilot preparation | Gated May 2024 runbook prepared; optional generation-filter reader and tests added; awaiting local tests, preflight and real pilot | Prepared; live pilot pending |
+| 2026-11-05 | Live CDS pilot rejected | Context 2024-04-30 downloaded; 2024-05-01 to 2024-05-31 nine-variable request returned 403 cost limits exceeded; grouped 5+4 retrieval implemented | Retry pending unit tests |
 | — | Historical rebuild | Requires separate pilot acceptance; old artifacts remain untouched | Pending |
