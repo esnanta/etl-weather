@@ -450,6 +450,17 @@ verification before any historical rebuild or destructive cleanup.
 
 Do not start destructive cleanup merely to force the new campaign.
 
+**Preparation status (2026-11-05):** The [isolated pilot runbook](PLAN_C_PILOT_RUNBOOK.md)
+now defines a non-campaign May 2024 request, read-only environment/asset
+preflight, additive schema preparation, separately staged CDS → Parquet →
+PostgreSQL execution, controlled-read selection by nine-variable signature,
+idempotency checks, and explicit GO/NO-GO requirements. This is preparation
+only: **no real CDS pilot or development-database migration has been
+executed by the assistant**, and no historical campaign has been approved.
+The optional reader signature filter addresses overlapping old/new data
+without deleting historical partitions; corresponding regression tests require
+local pytest verification before the pilot.
+
 - [ ] Confirm database schema upgrade succeeds against the intended development database.
 - [ ] Confirm at least one isolated/manual month can download all nine provider variables.
 - [ ] Validate RAW dimensions, variable presence, UTC time coverage, grid counts, and checksums for the pilot month.
@@ -507,5 +518,5 @@ Plan C is complete when all of the following are true:
 | 2026-11-04 | Orchestration/historical progress (Phase 7) | User-reported full unit 454 and integration 23 passed | Complete |
 | 2026-11-05 | Documentation reconciliation (Phase 8) | Root, pipeline, orchestration, and geospatial READMEs aligned; no production changes | Documentation updated; Phase 9 verification pending |
 | 2026-11-05 | Final regression audit (Phase 9) | User-run 454 unit + 23 integration tests passed after Phase 8; remote diff and invariants reviewed | Complete |
-| — | Isolated pilot month (Phase 10) | Requires explicitly approved execution and verification | Pending |
+| 2026-11-05 | Phase 10 pilot preparation | Gated May 2024 runbook prepared; optional generation-filter reader and tests added; awaiting local tests, preflight and real pilot | Prepared; live pilot pending |
 | — | Historical rebuild | Requires separate pilot acceptance; old artifacts remain untouched | Pending |
