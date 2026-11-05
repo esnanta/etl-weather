@@ -373,7 +373,16 @@ dataset_name
 start_date
 end_date
 bbox
+variable_signature (optional, for selecting an exact variable generation)
 ```
+
+When historical five-variable and current nine-variable partitions coexist
+for the same period and bounding box, provide the active signature
+(`d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10`) in
+`DailyClimateSelection.variable_signature` to read only the expanded
+generation. Omitting the optional filter keeps the existing behavior:
+ambiguous duplicate local-day/grid observations are rejected, not silently
+deduplicated or merged.
 
 Returned columns are:
 
