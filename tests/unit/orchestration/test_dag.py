@@ -26,8 +26,15 @@ LOAD_TASK_ID = "monthly_etl.load"
 
 @pytest.fixture(scope="module")
 def dag():
-    dag_bag = DagBag(dag_folder=DAG_FOLDER)
-    dag_bag.process_file(str(DAG_FOLDER / "cds_era5_land_etl.py"), only_if_updated=False, safe_mode=False)
+    # Make DAG parsing independent of the developer's scheduling setting.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("ERA5_CAMPAIGN_SCHEDULE_ENABLED", "false")
+        dag_bag = DagBag(dag_folder=DAG_FOLDER)
+        dag_bag.process_file(
+            str(DAG_FOLDER / "cds_era5_land_etl.py"),
+            only_if_updated=False,
+            safe_mode=False,
+        )
     assert dag_bag.import_errors == {}
     assert DAG_ID in dag_bag.dags
     return dag_bag.dags[DAG_ID]
