@@ -217,6 +217,45 @@ print(dict(row))
 PY
 ```
 
+Check the public controlled-reader boundary as a separate read-only proof:
+
+```bash
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \\
+PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-31 \\
+python - <<'PY'
+from datetime import date
+from database.config import DatabaseConfig
+from pipeline.requests.factory import build_cds_request
+from pipeline.repositories.daily_climate_reader import (
+    DailyClimateSelection, load_daily_climate_for_modelling,
+)
+
+request = build_cds_request(require_api_key=False)
+selection = DailyClimateSelection(
+    source=request.source, dataset_name=request.dataset,
+    start_date=date(2024, 5, 1), end_date=date(2024, 5, 31),
+    bbox=request.bbox,
+)
+frame = load_daily_climate_for_modelling(selection, DatabaseConfig.from_env())
+assert len(frame) == 31 * 43 * 35
+assert {
+    "swvl2_daily_mean_m3_m3", "swvl3_daily_mean_m3_m3",
+    "u10_daily_mean_m_s", "v10_daily_mean_m_s",
+    "wind_speed_daily_mean_m_s", "wind_direction_daily_deg",
+}.issubset(frame.columns)
+print("controlled_read_rows:", len(frame))
+print("controlled_read_columns:", list(frame.columns))
+print("wind_direction_missing:", int(frame.wind_direction_daily_deg.isna().sum()))
+PY
+```
+
+This selection must not include duplicate local-day/grid observations from
+an older five-variable partition; the exact active result must be unique.
+The repository intentionally rejects ambiguous selections rather than
+silently choosing a partition. If legacy data overlaps this month, record
+that collision as **NO-GO** for the current read-selection contract and
+resolve it before the rebuild; do not delete the old partition.
+
 Then repeat **only** the load stage:
 
 ```bash
