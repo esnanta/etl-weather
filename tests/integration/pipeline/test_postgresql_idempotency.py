@@ -604,3 +604,72 @@ def test_plan_c_invalid_detail_rolls_back_parent_and_all_observations(
                 ).scalar_one() == 0
     finally:
         engine.dispose()
+
+
+def test_plan_c_controlled_read_selects_new_generation_among_legacy_rows(
+    postgres_config, tmp_path, monkeypatch,
+) -> None:
+    """Old and new request partitions may coexist without ambiguous explicit reads."""
+    from dataclasses import replace
+    from datetime import date
+
+    from pipeline.repositories.daily_climate_reader import (
+        DailyClimateSelection, load_daily_climate_for_modelling,
+    )
+    from pipeline.requests.weather import build_variable_signature
+
+    legacy, legacy_artifact = _save_test_partition(tmp_path, monkeypatch)
+    old_id, old_rows = load_to_postgresql(legacy, legacy_artifact, postgres_config)
+    assert old_rows == 2
+
+    request = replace(
+        legacy.request,
+        variables=["tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3", "ssrd", "u10", "v10"],
+    )
+    frame = legacy.dataset.assign(
+        swvl2=[0.4, 0.42], swvl3=[0.5, 0.52],
+        u10=[3.0, 0.0], v10=[4.0, 0.0],
+        wind_speed=[5.0, 0.0], wind_direction=[216.86989764584402, None],
+    )
+    expanded = replace(legacy, request=request, dataset=frame)
+    downloaded_at = datetime(2022, 1, 2, 3, 4, 5, tzinfo=UTC)
+    raw = save_raw_netcdf(RawWeatherDataset(
+        request=request,
+        downloaded_at=downloaded_at,
+        raw_data=xr.Dataset(
+            {"tp": (("valid_time", "latitude", "longitude"), [[[0.001]]])},
+            coords={
+                "valid_time": pd.to_datetime(["2022-01-01 00:00:00"]),
+                "latitude": [4.5], "longitude": [96.8],
+            },
+        ),
+    ))
+    artifact = save_transformed_parquet(
+        frame, request, downloaded_at, expanded.transformed_at, raw,
+    )
+    new_id, new_rows = load_to_postgresql(expanded, artifact, postgres_config)
+    assert new_rows == 2 and new_id != old_id
+
+    selection = DailyClimateSelection(
+        source=request.source, dataset_name=request.dataset,
+        start_date=date(2022, 1, 1), end_date=date(2022, 1, 1),
+        bbox=request.bbox,
+    )
+    engine = create_engine(postgres_config.url, future=True)
+    try:
+        with pytest.raises(ValueError, match="duplicate local-day grid observations"):
+            load_daily_climate_for_modelling(selection, postgres_config, engine=engine)
+
+        explicit = replace(
+            selection,
+            variable_signature=build_variable_signature(request.variables),
+        )
+        result = load_daily_climate_for_modelling(
+            explicit, postgres_config, engine=engine,
+        )
+        assert len(result) == 2
+        assert set(result.daily_climate_id) == {new_id}
+        assert result.wind_speed_daily_mean_m_s.tolist() == [5.0, 0.0]
+        assert pd.isna(result.loc[1, "wind_direction_daily_deg"])
+    finally:
+        engine.dispose()
