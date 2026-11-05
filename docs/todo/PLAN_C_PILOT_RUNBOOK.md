@@ -52,10 +52,14 @@ Expected provider codes (9):
 Derived daily columns (2): `wind_speed,wind_direction`.
 Stable variable signature:
 `d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10`.
-The configured Aceh grid has 43 latitudes × 35 longitudes = 1,505 points
-at 0.1°. May has 31 local days; at full coverage this is 46,655
-daily grid observations. The 24-hour scientific completeness and spatial
+The configured Aceh grid has 43 latitudes × 35 longitudes = 1,505 RAW
+coordinates at 0.1°. The May 2024 live pilot produced **530 complete, valid
+land-grid points per day**, stable over 31 local days: **16,430 daily
+observations**. The hypothetical all-grid count of 46,655 is **not** the
+PostgreSQL acceptance target. The 24-hour scientific completeness and spatial
 validation rules remain authoritative rather than accepting a row count alone.
+The transform log also reported **three negative `tp` daily accumulations**, all
+retained for scientific review; do not silently replace them with zero.
 
 ## Gate A — Read-only preflight
 
@@ -232,7 +236,7 @@ with create_engine(config.url, future=True).connect() as conn:
         WHERE p.request_key = :key
         GROUP BY p.id
     """), {"key": key}).mappings().one()
-assert row["row_count"] == 31 * 43 * 35
+assert row["row_count"] == 31 * 530  # May 2024 transformed checkpoint
 assert row["transformed_sha256"] == calculate_file_sha256(artifact.path)
 assert row["transformed_artifact_path"] == artifact_path_for_metadata(artifact.path)
 print(dict(row))
@@ -242,8 +246,8 @@ PY
 Check the public controlled-reader boundary as a separate read-only proof:
 
 ```bash
-ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \\
-PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-31 \\
+ERA5_CAMPAIGN_SCHEDULE_ENABLED=false \
+PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-31 \
 python - <<'PY'
 from datetime import date
 from database.config import DatabaseConfig
@@ -261,7 +265,7 @@ selection = DailyClimateSelection(
     variable_signature=build_variable_signature(request.variables),
 )
 frame = load_daily_climate_for_modelling(selection, DatabaseConfig.from_env())
-assert len(frame) == 31 * 43 * 35
+assert len(frame) == 31 * 530  # May 2024 transformed checkpoint
 assert {
     "swvl2_daily_mean_m3_m3", "swvl3_daily_mean_m3_m3",
     "u10_daily_mean_m_s", "v10_daily_mean_m_s",
@@ -303,9 +307,10 @@ load is not fully validated, stop rather than treating a second run as proof.
 - Gate B completes additive DDL without dropping any existing table.
 - Gate C performs one successful nine-variable real CDS month.
 - Gate D passes RAW/Parquet scientific validation, provenance and coverage.
-- Gate E verifies 46,655 observations (or explains and validates an approved
-  alternative coverage contract), correct PostgreSQL values/NULL handling,
-  controlled read, and idempotent resume/load.
+- Gate E verifies **16,430** pilot observations (31 days × 530 validated
+  land-grid points), correct PostgreSQL values/NULL handling, controlled read,
+  and idempotent resume/load. Three negative precipitation accumulations must
+  be quantified and reviewed before approving the historical campaign.
 - Historical five-variable artifacts/records remain unchanged.
 - Scheduled/manual campaign controls, pacing and monitoring are reviewed.
 - Before full 2016–2025 processing, deliberately update
