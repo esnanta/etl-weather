@@ -6,10 +6,12 @@ TEST_POSTGRES_* database. No application or production tables are modified.
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from uuid import uuid4
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from database.climate import (
@@ -27,6 +29,14 @@ ADDITIONAL_COLUMNS = DAILY_CLIMATE_COLUMNS[5:]
 
 @pytest.fixture
 def isolated_schema():
+    load_dotenv()
+    required = (
+        "TEST_POSTGRES_HOST", "TEST_POSTGRES_PORT", "TEST_POSTGRES_DATABASE",
+        "TEST_POSTGRES_USER", "TEST_POSTGRES_PASSWORD",
+    )
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        pytest.skip("Isolated PostgreSQL integration test requires: " + ", ".join(missing))
     base = resolve_test_database_config()
     config = replace(base, schema=f"climate_test_plan_c_{uuid4().hex}")
     engine = create_engine(config.url, future=True)
