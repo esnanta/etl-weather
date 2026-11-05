@@ -1,4 +1,4 @@
-# ERA5-Land Variable Expansion — nine-variable expansion Work Plan and Checklist
+# ERA5-Land Nine-Variable Expansion — Implementation Checklist
 
 **Document role:** Track the implementation of **nine-variable expansion**: rebuild the configured historical ERA5-Land campaign using one expanded variable set, preserving the existing one-request → one-RAW → one-Parquet → one-database-partition architecture. Product/scientific requirements remain owned by [app_description.md](../app_description.md); current operator-facing behavior remains owned by the root [README.md](../../README.md) and domain READMEs.
 
