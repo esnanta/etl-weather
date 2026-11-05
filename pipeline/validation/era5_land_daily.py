@@ -11,6 +11,8 @@ from pipeline.contracts.era5_land import (
     ERA5_LAND_DATASET,
     LOCAL_MIDNIGHT_IN_UTC_HOUR,
     LOCAL_UTC_OFFSET_HOURS,
+    WIND_COMPONENT_VARIABLES,
+    WIND_DERIVED_VARIABLES,
 )
 from pipeline.observability.logging import log_metric
 from pipeline.models.weather import TransformedWeatherDataset, WeatherRequest
@@ -21,6 +23,10 @@ ERA5_LAND_TRANSFORMED_HARD_RANGES = {
     "t2m": (-273.15, None),
     "d2m": (-273.15, None),
     "swvl1": (0.0, 1.0),
+    "swvl2": (0.0, 1.0),
+    "swvl3": (0.0, 1.0),
+    "wind_speed": (0.0, None),
+    "wind_direction": (0.0, None),
 }
 
 def _validate_dataframe_type(dataframe: pd.DataFrame) -> None:
@@ -37,6 +43,8 @@ def _required_dataframe_columns(
     if dataset_name == ERA5_LAND_DATASET:
         required_columns.append("valid_time_local")
     required_columns.extend(["latitude", "longitude", *variables])
+    if dataset_name == ERA5_LAND_DATASET and WIND_COMPONENT_VARIABLES.issubset(variables):
+        required_columns.extend(WIND_DERIVED_VARIABLES)
     return required_columns
 
 def _validate_dataframe_columns(
@@ -221,7 +229,10 @@ def _validate_era5_land_transformed_values(
     request: WeatherRequest,
 ) -> None:
     """Validate finite values and only scientifically hard physical bounds."""
-    for variable in request.variables:
+    value_columns = [*request.variables]
+    if WIND_COMPONENT_VARIABLES.issubset(request.variables):
+        value_columns.extend(WIND_DERIVED_VARIABLES)
+    for variable in value_columns:
         variable_series = cast(pd.Series, dataframe[variable])
         values = cast(
             pd.Series,
@@ -237,6 +248,11 @@ def _validate_era5_land_transformed_values(
         if not np.isfinite(observed.to_numpy(dtype=float)).all():
             raise ValidationError(
                 f"ERA5-Land variable '{variable}' contains non-finite values."
+            )
+
+        if variable == "wind_direction" and bool(observed.ge(360.0).any()):
+            raise ValidationError(
+                "ERA5-Land variable 'wind_direction' must be < 360.0."
             )
 
         bounds = ERA5_LAND_TRANSFORMED_HARD_RANGES.get(variable)

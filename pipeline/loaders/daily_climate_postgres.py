@@ -35,6 +35,12 @@ ERA5_LAND_DATABASE_COLUMNS = {
     "d2m": "d2m_daily_mean_c",
     "swvl1": "swvl1_daily_mean_m3_m3",
     "ssrd": "ssrd_daily_total_j_m2",
+    "swvl2": "swvl2_daily_mean_m3_m3",
+    "swvl3": "swvl3_daily_mean_m3_m3",
+    "u10": "u10_daily_mean_m_s",
+    "v10": "v10_daily_mean_m_s",
+    "wind_speed": "wind_speed_daily_mean_m_s",
+    "wind_direction": "wind_direction_daily_deg",
 }
 
 

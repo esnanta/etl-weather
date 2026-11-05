@@ -14,6 +14,10 @@ VARIABLE_DESCRIPTIONS = {
     "t2m": "2 metre temperature",
     "d2m": "2 metre dewpoint temperature",
     "swvl1": "volumetric soil water layer 1",
+    "swvl2": "volumetric soil water layer 2",
+    "swvl3": "volumetric soil water layer 3",
+    "u10": "10 metre u-component of wind",
+    "v10": "10 metre v-component of wind",
     "ssrd": "surface solar radiation downwards",
 }
 
@@ -22,6 +26,10 @@ CDS_API_VARIABLE_NAMES = {
     "t2m": "2m_temperature",
     "d2m": "2m_dewpoint_temperature",
     "swvl1": "volumetric_soil_water_layer_1",
+    "swvl2": "volumetric_soil_water_layer_2",
+    "swvl3": "volumetric_soil_water_layer_3",
+    "u10": "10m_u_component_of_wind",
+    "v10": "10m_v_component_of_wind",
     "ssrd": "surface_solar_radiation_downwards",
 }
 
@@ -35,7 +43,11 @@ CDS_ERA5_LAND_VARIABLES = {
     "t2m",
     "d2m",
     "swvl1",
+    "swvl2",
+    "swvl3",
     "ssrd",
+    "u10",
+    "v10",
 }
 
 CDS_DATASET_PROFILES = {

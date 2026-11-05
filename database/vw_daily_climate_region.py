@@ -48,7 +48,13 @@ SELECT
     g.province_id,
     p.province_name,
     g.district_id,
-    dist.district_name
+    dist.district_name,
+    d.swvl2_daily_mean_m3_m3,
+    d.swvl3_daily_mean_m3_m3,
+    d.u10_daily_mean_m_s,
+    d.v10_daily_mean_m_s,
+    d.wind_speed_daily_mean_m_s,
+    d.wind_direction_daily_deg
 FROM {APPLICATION_SCHEMA}.{DAILY_CLIMATE_DETAIL_TABLE} AS d
 JOIN {APPLICATION_SCHEMA}.{DAILY_CLIMATE_TABLE} AS c
     ON c.id = d.daily_climate_id

@@ -11,6 +11,8 @@ from typing import cast
 from sqlalchemy.engine import Engine
 
 from database.climate import (
+    DAILY_CLIMATE_COLUMNS,
+    _DAILY_DETAIL_STRUCTURAL_COLUMNS,
     create_daily_climate_detail_table,
     create_daily_climate_table,
     create_schema,
@@ -41,12 +43,29 @@ def _config() -> DatabaseConfig:
     )
 
 
-class _Connection:
-    def __init__(self):
-        self.statements: list[str] = []
+class _Rows:
+    def __init__(self, rows):
+        self.rows = rows
 
-    def execute(self, statement):
+    def mappings(self):
+        return iter(self.rows)
+
+
+class _Connection:
+    def __init__(self, rows=None):
+        self.statements: list[str] = []
+        self.rows = rows if rows is not None else [
+            {"column_name": name, "data_type": kind, "is_nullable": nullable}
+            for name, (kind, nullable) in _DAILY_DETAIL_STRUCTURAL_COLUMNS.items()
+        ] + [
+            {"column_name": name, "data_type": "double precision", "is_nullable": "YES"}
+            for name in DAILY_CLIMATE_COLUMNS
+        ]
+
+    def execute(self, statement, params=None):
         self.statements.append(str(statement))
+        if "information_schema.columns" in str(statement):
+            return _Rows(self.rows)
         return None
 
 
@@ -62,8 +81,8 @@ class _BeginContext:
 
 
 class _Engine:
-    def __init__(self):
-        self.connection = _Connection()
+    def __init__(self, rows=None):
+        self.connection = _Connection(rows)
 
     def begin(self):
         return _BeginContext(self.connection)
@@ -115,6 +134,9 @@ def test_daily_climate_detail_table_protects_fk_and_observation_identity() -> No
     assert "d2m_daily_mean_c DOUBLE PRECISION" in sql
     assert "swvl1_daily_mean_m3_m3 DOUBLE PRECISION" in sql
     assert "ssrd_daily_total_j_m2 DOUBLE PRECISION" in sql
+    for column in DAILY_CLIMATE_COLUMNS:
+        assert f"{column} DOUBLE PRECISION" in sql
+    assert "information_schema.columns" in sql
     assert "FOREIGN KEY (daily_climate_id)" in sql
     assert "REFERENCES climate_data.t_daily_climate(id)" in sql
     assert "ON DELETE CASCADE" in sql
@@ -138,3 +160,48 @@ def test_canonical_database_names_are_owned_by_database_config() -> None:
     assert PACING_TABLE == table_name("submission_pacing")
     assert DAILY_CLIMATE_REGION_VIEW == view_name("daily_climate_region")
     assert MONTHLY_CLIMATE_REGION_VIEW == view_name("monthly_climate_region")
+
+
+def test_missing_observation_columns_emit_only_additive_ddl() -> None:
+    from database.climate import _converge_daily_climate_detail_columns
+    rows = [
+        {"column_name": name, "data_type": kind, "is_nullable": nullable}
+        for name, (kind, nullable) in _DAILY_DETAIL_STRUCTURAL_COLUMNS.items()
+    ] + [
+        {"column_name": name, "data_type": "double precision", "is_nullable": "YES"}
+        for name in DAILY_CLIMATE_COLUMNS[:5]
+    ]
+    engine = _Engine(rows)
+    _converge_daily_climate_detail_columns(engine.connection, _config())
+    alters = [statement for statement in engine.connection.statements if statement.startswith("ALTER TABLE")]
+    assert alters == [
+        f"ALTER TABLE climate_data.t_daily_climate_detail ADD COLUMN {column} DOUBLE PRECISION"
+        for column in DAILY_CLIMATE_COLUMNS[5:]
+    ]
+
+
+def test_compatible_columns_require_no_additive_ddl() -> None:
+    from database.climate import _converge_daily_climate_detail_columns
+    engine = _Engine()
+    _converge_daily_climate_detail_columns(engine.connection, _config())
+    assert not any(statement.startswith("ALTER TABLE") for statement in engine.connection.statements)
+
+
+def test_incompatible_observation_type_fails_explicitly() -> None:
+    import pytest
+    from database.climate import _converge_daily_climate_detail_columns
+    engine = _Engine()
+    engine.connection.rows[-1]["data_type"] = "text"
+    with pytest.raises(RuntimeError, match="Incompatible.*wind_direction_daily_deg"):
+        _converge_daily_climate_detail_columns(engine.connection, _config())
+
+
+def test_missing_structural_column_fails_explicitly() -> None:
+    import pytest
+    from database.climate import _converge_daily_climate_detail_columns
+    engine = _Engine()
+    engine.connection.rows = [
+        row for row in engine.connection.rows if row["column_name"] != "valid_time"
+    ]
+    with pytest.raises(RuntimeError, match="structural column.*valid_time"):
+        _converge_daily_climate_detail_columns(engine.connection, _config())

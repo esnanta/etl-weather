@@ -249,3 +249,58 @@ def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> N
 
     assert rows_processed == 0
     assert connection.statements == []
+
+
+def test_expanded_plan_c_observation_columns_and_nulls_use_existing_upsert() -> None:
+    """Exercise production mapping without mocking SQL or persistence decisions."""
+    from dataclasses import replace
+
+    dataset = _dataset()
+    variables = [
+        "tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3",
+        "ssrd", "u10", "v10",
+    ]
+    expanded = dataset.dataset.assign(
+        swvl2=[0.4],
+        swvl3=[None],
+        u10=[3.0],
+        v10=[4.0],
+        wind_speed=[5.0],
+        wind_direction=[None],
+    )
+    dataset = replace(
+        dataset,
+        request=replace(dataset.request, variables=variables),
+        dataset=expanded,
+    )
+    dataframe, renamed = prepare_observation_dataframe(dataset, daily_climate_id=42)
+    expected = {
+        "swvl2": "swvl2_daily_mean_m3_m3",
+        "swvl3": "swvl3_daily_mean_m3_m3",
+        "u10": "u10_daily_mean_m_s",
+        "v10": "v10_daily_mean_m_s",
+        "wind_speed": "wind_speed_daily_mean_m_s",
+        "wind_direction": "wind_direction_daily_deg",
+    }
+    for provider, database_column in expected.items():
+        assert renamed[provider] == database_column
+        assert database_column in dataframe.columns
+        assert provider not in dataframe.columns
+    assert dataframe.loc[0, "swvl3_daily_mean_m3_m3"] is None
+    assert dataframe.loc[0, "wind_direction_daily_deg"] is None
+    assert dataframe.loc[0, "wind_speed_daily_mean_m_s"] == 5.0
+
+    connection = _RecordingConnection()
+    assert upsert_daily_climate_observations(
+        dataset,
+        daily_climate_id=42,
+        connection=cast(Connection, cast(object, connection)),
+        config=_config(),
+    ) == 1
+    sql = connection.statements[0]
+    assert "ON CONFLICT (daily_climate_id, valid_time, latitude, longitude)" in sql
+    for database_column in expected.values():
+        assert f"{database_column} = EXCLUDED.{database_column}" in sql
+    records = connection.params[0]
+    assert isinstance(records, list)
+    assert records[0]["wind_direction_daily_deg"] is None

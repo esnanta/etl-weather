@@ -96,6 +96,28 @@ def _download_cds(
     return normalize_cds_dataset(dataset)
 
 
+# Keep the previously proven five-variable CDS payload together; fetch the
+# four Plan C additions separately to avoid the nine-variable monthly cost.
+_BASE_RETRIEVAL_VARIABLES = frozenset({"tp", "t2m", "d2m", "swvl1", "ssrd"})
+_MAX_VARIABLES_PER_CDS_REQUEST = 5
+
+
+def _variable_retrieval_chunks(request: WeatherRequest) -> list[WeatherRequest]:
+    """Split provider submissions, not the logical monthly weather partition."""
+    if len(request.variables) <= _MAX_VARIABLES_PER_CDS_REQUEST:
+        return [request]
+    base = [name for name in request.variables if name in _BASE_RETRIEVAL_VARIABLES]
+    additions = [name for name in request.variables if name not in _BASE_RETRIEVAL_VARIABLES]
+    if len(base) > _MAX_VARIABLES_PER_CDS_REQUEST:
+        raise ValueError("Base ERA5-Land retrieval group exceeds the provider limit.")
+    groups = [base] if base else []
+    groups.extend(
+        additions[index:index + _MAX_VARIABLES_PER_CDS_REQUEST]
+        for index in range(0, len(additions), _MAX_VARIABLES_PER_CDS_REQUEST)
+    )
+    return [replace(request, variables=group) for group in groups]
+
+
 def _download_cds_period(
     request: WeatherRequest,
     *,
@@ -103,42 +125,60 @@ def _download_cds_period(
     before_submission: Callable[[WeatherRequest], None] | None = None,
     chunk_cache_directory: Path | None = None,
 ) -> xr.Dataset:
-    chunks = split_request_by_month(request)
+    """Retrieve resumable calendar/variable chunks and reconstruct one RAW dataset."""
+    months = split_request_by_month(request)
     datasets = []
-    for chunk in chunks:
-        cache_path = (
-            chunk_cache_directory / f"{build_request_key(chunk)}.nc"
-            if chunk_cache_directory is not None else None
-        )
-        if cache_path is not None and cache_path.exists():
-            with xr.open_dataset(cache_path) as opened:
-                if opened.attrs.get("retrieval_request_key") != build_request_key(chunk):
-                    raise ValueError("CDS chunk checkpoint identity does not match.")
-                dataset = opened.load()
-            logger.info("Resumed CDS retrieval chunk from %s", cache_path)
-        else:
-            dataset = _download_cds(
-                chunk,
-                purpose=_retrieval_chunk_purpose(chunk, target_request),
-                before_submission=before_submission,
+    for month in months:
+        variable_datasets = []
+        for chunk in _variable_retrieval_chunks(month):
+            chunk_key = build_request_key(chunk)
+            cache_path = (
+                chunk_cache_directory / f"{chunk_key}.nc"
+                if chunk_cache_directory is not None else None
             )
-            if cache_path is not None:
-                cache_path.parent.mkdir(parents=True, exist_ok=True)
-                with tempfile.NamedTemporaryFile(
-                    dir=cache_path.parent,
-                    prefix=".chunk-",
-                    suffix=".nc",
-                    delete=False,
-                ) as temporary:
-                    temporary_path = Path(temporary.name)
-                try:
-                    dataset.assign_attrs(
-                        retrieval_request_key=build_request_key(chunk)
-                    ).to_netcdf(temporary_path)
-                    os.replace(temporary_path, cache_path)
-                finally:
-                    temporary_path.unlink(missing_ok=True)
-        datasets.append(dataset)
+            if cache_path is not None and cache_path.exists():
+                with xr.open_dataset(cache_path) as opened:
+                    if opened.attrs.get("retrieval_request_key") != chunk_key:
+                        raise ValueError("CDS chunk checkpoint identity does not match.")
+                    dataset = opened.load()
+                logger.info("Resumed CDS retrieval chunk from %s", cache_path)
+            else:
+                dataset = _download_cds(
+                    chunk,
+                    purpose=_retrieval_chunk_purpose(chunk, target_request),
+                    before_submission=before_submission,
+                )
+                if cache_path is not None:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    with tempfile.NamedTemporaryFile(
+                        dir=cache_path.parent,
+                        prefix=".chunk-",
+                        suffix=".nc",
+                        delete=False,
+                    ) as temporary:
+                        temporary_path = Path(temporary.name)
+                    try:
+                        dataset.assign_attrs(
+                            retrieval_request_key=chunk_key
+                        ).to_netcdf(temporary_path)
+                        os.replace(temporary_path, cache_path)
+                    finally:
+                        temporary_path.unlink(missing_ok=True)
+            missing = set(chunk.variables) - set(dataset.data_vars)
+            if missing:
+                raise ValueError(
+                    "CDS retrieval chunk lacks requested variables: "
+                    + ", ".join(sorted(missing))
+                )
+            variable_datasets.append(dataset[chunk.variables])
+
+        # Exact coordinate alignment prevents silently merging distinct grids
+        # or hourly sequences from independently submitted variable groups.
+        datasets.append(
+            xr.merge(variable_datasets, join="exact", compat="no_conflicts")
+            if len(variable_datasets) > 1 else variable_datasets[0]
+        )
+
     if len(datasets) == 1:
         return datasets[0]
 
@@ -190,7 +230,10 @@ class CdsEra5LandExtractor(WeatherExtractor):
                     retrieval_request,
                     normalized_request,
                 ),
-                "download_chunks": len(retrieval_chunks),
+                "download_chunks": sum(
+                    len(_variable_retrieval_chunks(chunk)) for chunk in retrieval_chunks
+                ),
+                "calendar_chunks": len(retrieval_chunks),
             },
         )
 

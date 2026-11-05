@@ -15,7 +15,7 @@ database output    : PostgreSQL daily climate observations
 The active CDS variables are:
 
 ```text
-tp, t2m, swvl1, ssrd, d2m
+tp, t2m, d2m, swvl1, swvl2, swvl3, ssrd, u10, v10
 ```
 
 Monthly climate aggregation exists as a separate experimental CLI and is not part of the active daily ETL workflow.
@@ -99,7 +99,13 @@ source activate-airflow.sh -q
 | `ssrd` | Surface solar radiation downwards | Accumulation | J/m²/day |
 | `t2m` | 2 metre temperature | Mean | °C |
 | `d2m` | 2 metre dewpoint temperature | Mean | °C |
-| `swvl1` | Volumetric soil water layer 1 | Mean | m³/m³ |
+| `swvl1` | Volumetric soil water layer 1 (0–7 cm) | Mean | m³/m³ |
+| `swvl2` | Volumetric soil water layer 2 (7–28 cm) | Mean | m³/m³ |
+| `swvl3` | Volumetric soil water layer 3 (28–100 cm) | Mean | m³/m³ |
+| `u10` | Eastward-positive 10 m wind component | Mean | m/s |
+| `v10` | Northward-positive 10 m wind component | Mean | m/s |
+| `wind_speed` (derived) | Hourly scalar wind speed averaged over the local day | Mean | m/s |
+| `wind_direction` (derived) | Daily mean-vector meteorological from-direction | Vector direction, nullable when calm | degrees [0, 360) |
 
 ## Local-Day Time Semantics
 
@@ -118,7 +124,7 @@ Example for local day 2024-05-01:
 2024-05-02 00:00 UTC+7 = 2024-05-01 17:00 UTC
 ```
 
-Daily means for `t2m`, `d2m`, and `swvl1` use the complete hourly samples belonging to the same local day. Missing observations remain missing rather than being converted to zero.
+Daily means for `t2m`, `d2m`, `swvl1`, `swvl2`, `swvl3`, `u10`, and `v10` require 24 valid hourly samples per grid point for the local day. Derived `wind_speed` is the mean of 24 paired hourly wind-vector magnitudes (not the magnitude of the daily-mean components); `wind_direction` uses the daily-mean components and is missing for an effectively calm resultant. The two wind outputs are not additional CDS provider variables. Missing observations remain missing rather than being converted to zero. Full formulas and scientific requirements are in [docs/app_description.md](./docs/app_description.md).
 
 ## Architecture Overview
 
@@ -330,11 +336,11 @@ data/
                 └── YYYY_MMDD_MMDD_<variables>.parquet
 ```
 
-RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as Parquet. Deterministic paths allow valid artifacts to be resumed safely.
+RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as Parquet. The active variable signature is `d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10`; five-variable artifacts have different paths and cannot resume nine-variable requests. Artifacts are validated before reuse, and historical five-variable files are not deleted automatically.
 
 ## Persistence and Idempotency
 
-PostgreSQL stores the canonical daily observations. Re-running the same logical request validates and reuses existing artifacts and avoids duplicate canonical observations.
+PostgreSQL stores canonical daily observations in `climate_data.t_daily_climate_detail`. Schema initialization adds six nullable `DOUBLE PRECISION` fields (`swvl2`, `swvl3`, `u10`, `v10`, daily wind speed, and direction, using the database field names listed in [pipeline/README.md](./pipeline/README.md)) to compatible older tables without dropping historical observations. Re-running the same logical request validates and reuses existing artifacts and avoids duplicate canonical observations.
 
 The project treats idempotency per request partition rather than as a global deduplication rule across unrelated requests.
 
