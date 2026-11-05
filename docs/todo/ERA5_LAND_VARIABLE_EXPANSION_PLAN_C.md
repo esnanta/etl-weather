@@ -450,6 +450,20 @@ verification before any historical rebuild or destructive cleanup.
 
 Do not start destructive cleanup merely to force the new campaign.
 
+**Pilot PostgreSQL verification (2026-11-05):** User-confirmed May 2024
+nine-variable EXTRACT and TRANSFORM succeeded (768 hourly timestamps,
+43 × 35 RAW coordinates, 530 complete land-grid points per day, 31 days,
+16,430 transformed rows, 15 Parquet columns). PostgreSQL LOAD inserted
+16,430 observations into partition id 1; repeated LOAD reported
+`request_key_match=True`, `checksum_match=True`,
+`artifact_path_match=True`, `expected_rows=database_rows=16430`,
+and `database_write=skipped`. Updated full local regression:
+**460 unit + 24 integration tests passed**. Three retained negative
+precipitation values have a minimum around -0.0000149 mm and require
+scientific sign-off. Actual controlled-reader invocation and an explicit
+final campaign GO decision are not yet evidenced. Pilot readiness and
+repository merge approval are distinct decisions.
+
 **Live CDS finding (2026-11-05):** The first pilot's April 30 context
 chunk downloaded, but the nine-variable May 1–31 provider submission
 returned HTTP 403 `cost limits exceeded`. Retrieval is now adapted to
@@ -531,4 +545,5 @@ Plan C is complete when all of the following are true:
 | 2026-11-05 | Final regression audit (Phase 9) | User-run 454 unit + 23 integration tests passed after Phase 8; remote diff and invariants reviewed | Complete |
 | 2026-11-05 | Phase 10 pilot preparation | Gated May 2024 runbook prepared; optional generation-filter reader and tests added; awaiting local tests, preflight and real pilot | Prepared; live pilot pending |
 | 2026-11-05 | Live CDS pilot rejected | Context 2024-04-30 downloaded; 2024-05-01 to 2024-05-31 nine-variable request returned 403 cost limits exceeded; grouped 5+4 retrieval implemented | Retry pending unit tests |
+| 2026-11-05 | Grouped live pilot and idempotency | Four CDS submissions succeeded; RAW and 16,430-row Parquet validated, 16,430 PostgreSQL rows loaded, rerun skipped writes; 460 unit + 24 integration passed | Verified; controlled read and release gate pending |
 | — | Historical rebuild | Requires separate pilot acceptance; old artifacts remain untouched | Pending |
