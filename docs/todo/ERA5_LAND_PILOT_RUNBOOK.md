@@ -1,4 +1,4 @@
-# nine-variable expansion — Isolated Pilot and Historical Rebuild Readiness
+# ERA5-Land Pilot — Validation and Historical Rebuild Readiness
 
 **Role:** Operator runbook for Phase 10. Scientific requirements belong to
 [`docs/app_description.md`](../app_description.md); pipeline and Airflow behavior
