@@ -251,7 +251,7 @@ def test_upsert_daily_climate_observations_returns_zero_for_empty_dataset() -> N
     assert connection.statements == []
 
 
-def test_expanded_plan_c_observation_columns_and_nulls_use_existing_upsert() -> None:
+def test_expanded_observation_columns_and_nulls_use_existing_upsert() -> None:
     """Exercise production mapping without mocking SQL or persistence decisions."""
     from dataclasses import replace
 

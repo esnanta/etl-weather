@@ -1,4 +1,4 @@
-"""Protect the Plan C nine-variable provider and request identity contract.
+"""Protect the nine-variable expansion nine-variable provider and request identity contract.
 
 These offline tests verify CDS payload naming, provider normalization, and
 artifact isolation without changing daily scientific transformation behavior.

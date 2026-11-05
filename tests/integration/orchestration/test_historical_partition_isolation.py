@@ -1,4 +1,4 @@
-"""Prove old completed PostgreSQL progress cannot complete Plan C progress.
+"""Prove old completed PostgreSQL progress cannot complete nine-variable expansion progress.
 
 Uses production progress DDL/reconciliation and a temporary TEST_POSTGRES_*
 schema. No Airflow, CDS or application campaign tables are touched.
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.integration
 OLD_VARIABLES = ["tp", "t2m", "d2m", "swvl1", "ssrd"]
 
 
-def test_completed_legacy_partition_is_not_plan_c_completion_evidence(monkeypatch):
+def test_completed_legacy_partition_does_not_satisfy_expanded_campaign(monkeypatch):
     load_dotenv()
     required = (
         "TEST_POSTGRES_HOST", "TEST_POSTGRES_PORT", "TEST_POSTGRES_DATABASE",
@@ -41,7 +41,7 @@ def test_completed_legacy_partition_is_not_plan_c_completion_evidence(monkeypatc
         pytest.skip("Isolated PostgreSQL integration test requires: " + ", ".join(missing))
     config = replace(
         resolve_test_database_config(),
-        schema=f"climate_test_plan_c_progress_{uuid4().hex}",
+        schema=f"climate_test_variable_progress_{uuid4().hex}",
     )
     engine = create_engine(config.url, future=True)
     monkeypatch.setattr(schema_module, "APPLICATION_SCHEMA", config.schema)

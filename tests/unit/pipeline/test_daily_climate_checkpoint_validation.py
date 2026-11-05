@@ -1,4 +1,4 @@
-"""Verify Plan C RAW, daily validation, and checkpoint safety offline.
+"""Verify nine-variable expansion RAW, daily validation, and checkpoint safety offline.
 
 Production validators and filesystem checkpoint functions are exercised directly.
 Network and PostgreSQL are not involved; those boundaries have separate suites.
