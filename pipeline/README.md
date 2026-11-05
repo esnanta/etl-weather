@@ -143,6 +143,19 @@ Airflow wrappers call these boundaries and exchange only small control metadata.
 
 ## RAW Extraction and Context
 
+### Provider cost-limit grouping
+
+The active nine-variable **logical monthly partition** is retrieved through
+two smaller CDS submissions per calendar chunk: the original five provider
+variables (`tp,t2m,d2m,swvl1,ssrd`) and four additions
+(`swvl2,swvl3,u10,v10`). The final RAW remains one canonical
+nine-variable NetCDF for the month, not two independent science products.
+Subrequests have distinct deterministic cache identities; cached successful
+subrequests are reused after a later CDS failure. Source coordinates and
+hourly timestamps must align exactly before variable groups are merged.
+The same pacing gate applies before **each** provider POST.
+
+
 ERA5-Land input is hourly. UTC+7 local days cross UTC calendar boundaries, so extraction must include the context needed by the scientific transformation instead of downloading only the visible target dates.
 
 The pipeline preserves provider timestamps as `valid_time` and later derives `valid_time_local`; it does not replace them with a generic `date` column.
