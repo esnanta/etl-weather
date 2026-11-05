@@ -226,6 +226,7 @@ python - <<'PY'
 from datetime import date
 from database.config import DatabaseConfig
 from pipeline.requests.factory import build_cds_request
+from pipeline.requests.weather import build_variable_signature
 from pipeline.repositories.daily_climate_reader import (
     DailyClimateSelection, load_daily_climate_for_modelling,
 )
@@ -235,6 +236,7 @@ selection = DailyClimateSelection(
     source=request.source, dataset_name=request.dataset,
     start_date=date(2024, 5, 1), end_date=date(2024, 5, 31),
     bbox=request.bbox,
+    variable_signature=build_variable_signature(request.variables),
 )
 frame = load_daily_climate_for_modelling(selection, DatabaseConfig.from_env())
 assert len(frame) == 31 * 43 * 35
@@ -249,12 +251,12 @@ print("wind_direction_missing:", int(frame.wind_direction_daily_deg.isna().sum()
 PY
 ```
 
-This selection must not include duplicate local-day/grid observations from
-an older five-variable partition; the exact active result must be unique.
-The repository intentionally rejects ambiguous selections rather than
-silently choosing a partition. If legacy data overlaps this month, record
-that collision as **NO-GO** for the current read-selection contract and
-resolve it before the rebuild; do not delete the old partition.
+The explicit nine-variable signature excludes completed five-variable
+partitions for the same local day/grid. Without this optional filter, the
+existing reader deliberately rejects overlapping generations as duplicate
+local-day/grid observations rather than silently selecting one. Treat a
+duplicate even with the explicit filter as **NO-GO**; do not delete the
+old partition to bypass it.
 
 Then repeat **only** the load stage:
 
