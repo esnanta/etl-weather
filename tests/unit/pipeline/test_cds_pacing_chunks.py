@@ -207,3 +207,127 @@ def test_real_cdsapi_retry_is_deferred_before_second_post(
         client.retrieve("reanalysis-era5-land", {"variable": ["tp"]})
 
     assert events == ["GET", "reserve", "POST", "reserve"]
+
+
+def _expanded_request(start: str, end: str) -> WeatherRequest:
+    from dataclasses import replace
+
+    return replace(
+        _request(start, end),
+        variables=["tp", "t2m", "d2m", "swvl1", "swvl2", "swvl3", "ssrd", "u10", "v10"],
+    )
+
+
+def test_monthly_cds_request_splits_legacy_and_additional_variables() -> None:
+    request = _expanded_request("2024-05-01", "2024-05-31")
+    groups = cds._variable_retrieval_chunks(request)
+    assert len(groups) == 2
+    assert groups[0].variables == ["tp", "t2m", "d2m", "swvl1", "ssrd"]
+    assert groups[1].variables == ["swvl2", "swvl3", "u10", "v10"]
+    assert all(group.bbox == request.bbox for group in groups)
+    assert all(group.start_date == request.start_date for group in groups)
+    assert all(group.end_date == request.end_date for group in groups)
+    assert sum(len(group.variables) for group in groups) == 9
+
+
+def test_variable_group_download_merges_exact_grid_and_resumes_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from pipeline.requests.weather import build_request_key
+
+    target = _expanded_request("2024-05-01", "2024-05-02")
+    retrieval = _expanded_request("2024-04-30", "2024-05-02")
+    calls: list[str] = []
+
+    def download(chunk, *, purpose, before_submission=None):
+        if before_submission is not None:
+            before_submission(chunk)
+        calls.append(build_request_key(chunk))
+        dates = [chunk.start_date]
+        if chunk.end_date != chunk.start_date:
+            dates.append(chunk.end_date)
+        return xr.Dataset(
+            {
+                variable: (("valid_time", "latitude", "longitude"),
+                           [[[float(index)]] for _ in dates])
+                for index, variable in enumerate(chunk.variables)
+            },
+            coords={
+                "valid_time": dates, "latitude": [4.5], "longitude": [96.8],
+            },
+        )
+
+    monkeypatch.setattr(cds, "_download_cds", download)
+    cache = tmp_path / "chunks"
+    output = cds._download_cds_period(
+        retrieval, target_request=target, chunk_cache_directory=cache,
+    )
+    assert set(output.data_vars) == set(target.variables)
+    assert output.sizes["valid_time"] == 3
+    assert len(calls) == 4
+    assert len(list(cache.glob("*.nc"))) == 4
+
+    cached = cds._download_cds_period(
+        retrieval, target_request=target, chunk_cache_directory=cache,
+    )
+    assert set(cached.data_vars) == set(target.variables)
+    assert len(calls) == 4
+
+
+def test_variable_group_failure_preserves_successful_subchunk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    request = _expanded_request("2024-05-01", "2024-05-01")
+    calls = []
+    rejected = True
+
+    def download(chunk, *, purpose, before_submission=None):
+        nonlocal rejected
+        calls.append(tuple(chunk.variables))
+        if "u10" in chunk.variables and rejected:
+            rejected = False
+            raise RuntimeError("CDS cost limits exceeded")
+        return xr.Dataset(
+            {name: (("valid_time", "latitude", "longitude"), [[[1.0]]])
+             for name in chunk.variables},
+            coords={
+                "valid_time": ["2024-05-01"],
+                "latitude": [4.5], "longitude": [96.8],
+            },
+        )
+
+    monkeypatch.setattr(cds, "_download_cds", download)
+    cache = tmp_path / "chunks"
+    with pytest.raises(RuntimeError, match="cost limits exceeded"):
+        cds._download_cds_period(
+            request, target_request=request, chunk_cache_directory=cache,
+        )
+    assert len(list(cache.glob("*.nc"))) == 1
+
+    result = cds._download_cds_period(
+        request, target_request=request, chunk_cache_directory=cache,
+    )
+    assert set(result.data_vars) == set(request.variables)
+    assert len(calls) == 3
+    assert len(list(cache.glob("*.nc"))) == 2
+
+
+def test_variable_group_rejects_misaligned_coordinates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _expanded_request("2024-05-01", "2024-05-01")
+
+    def download(chunk, *, purpose, before_submission=None):
+        time = "2024-05-02" if "u10" in chunk.variables else "2024-05-01"
+        return xr.Dataset(
+            {name: (("valid_time", "latitude", "longitude"), [[[1.0]]])
+             for name in chunk.variables},
+            coords={
+                "valid_time": [time],
+                "latitude": [4.5], "longitude": [96.8],
+            },
+        )
+
+    monkeypatch.setattr(cds, "_download_cds", download)
+    with pytest.raises(ValueError, match="align|join"):
+        cds._download_cds_period(request, target_request=request)
