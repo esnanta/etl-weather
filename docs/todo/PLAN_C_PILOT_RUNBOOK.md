@@ -17,6 +17,26 @@ The latest reported local configuration uses
 does not override its year range. Do not change the year range or enable the
 Airflow campaign during the pilot.
 
+## CDS cost-limit recovery (2026-11-05)
+
+The first real May 2024 nine-variable monthly request was rejected by CDS with
+HTTP 403 `cost limits exceeded` after the April 30 context request succeeded.
+This is a provider request-size/cost rejection, not a RAW schema failure.
+
+**Revised retrieval strategy (Plan A-style grouped submissions):** each
+calendar chunk is submitted as two provider requests: base group
+`tp,t2m,d2m,swvl1,ssrd` and extension group `swvl2,swvl3,u10,v10`.
+The provider responses must have precisely matching time and spatial
+coordinates before merging. Successful subrequests are independently cached
+by request key. One canonical nine-variable monthly RAW, daily Parquet, and
+PostgreSQL partition are preserved after successful assembly. The April 30
+nine-variable cache, if present, is not treated as equivalent to a grouped
+five- or four-variable response.
+
+A new local unit regression is required before retrying the live request.
+If the five-variable group is also refused, stop and measure a smaller
+calendar subdivision rather than guessing that CDS limits are fixed.
+
 ## Pilot identity and scope
 
 Use one **manual, non-campaign month: 2024-05-01 through 2024-05-31**.
@@ -128,8 +148,10 @@ PIPELINE_START_DATE=2024-05-01 PIPELINE_END_DATE=2024-05-31 \
 python -m scripts.run_load
 ```
 
-The first command submits CDS retrieval if no valid nine-variable RAW
+The first command submits the grouped CDS requests if no valid nine-variable RAW
 checkpoint exists; it can incur substantial CDS wait time and storage use.
+If a failed run left validated grouped chunk caches, rerunning the command
+can resume completed groups without re-submission.
 The second requires existing validated RAW. The third writes canonical
 PostgreSQL observations. The commands run the existing pipeline directly;
 there is **no new DAG** and no scheduler activation.
