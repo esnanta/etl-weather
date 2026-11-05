@@ -1,4 +1,4 @@
-"""Verify Plan C daily soil and wind science against explicit hourly fixtures.
+"""Verify nine-variable expansion daily soil and wind science against explicit hourly fixtures.
 
 Tests invoke the production transform_data() without mocking its calculations.
 No network, Airflow, or database is needed; persistence is verified separately.

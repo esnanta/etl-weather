@@ -1,6 +1,6 @@
-# ERA5-Land Variable Expansion — Plan C Work Plan and Checklist
+# ERA5-Land Variable Expansion — nine-variable expansion Work Plan and Checklist
 
-**Document role:** Track the implementation of **Plan C**: rebuild the configured historical ERA5-Land campaign using one expanded variable set, preserving the existing one-request → one-RAW → one-Parquet → one-database-partition architecture. Product/scientific requirements remain owned by [app_description.md](../app_description.md); current operator-facing behavior remains owned by the root [README.md](../../README.md) and domain READMEs.
+**Document role:** Track the implementation of **nine-variable expansion**: rebuild the configured historical ERA5-Land campaign using one expanded variable set, preserving the existing one-request → one-RAW → one-Parquet → one-database-partition architecture. Product/scientific requirements remain owned by [app_description.md](../app_description.md); current operator-facing behavior remains owned by the root [README.md](../../README.md) and domain READMEs.
 
 **Branch:** `dev`  
 **Created:** 2026-11-04  
@@ -9,7 +9,7 @@
 
 ## 1. Approved direction
 
-Plan C intentionally replaces the current five-variable active ERA5-Land request with one expanded nine-variable request and re-downloads the historical campaign.
+nine-variable expansion intentionally replaces the current five-variable active ERA5-Land request with one expanded nine-variable request and re-downloads the historical campaign.
 
 Current provider variables:
 
@@ -235,7 +235,7 @@ Existing five-variable artifacts are immutable historical inputs. This workstrea
 
 Keep one active ERA5-Land DAG and the existing ETL stage flow.
 
-No second DAG is required for Plan C.
+No second DAG is required for nine-variable expansion.
 
 Preserve:
 
@@ -336,7 +336,7 @@ python -m pytest tests/integration -q
 ### Phase 2 — Expand request/provider contract
 
 - [ ] Update `config.py::CDS_VARIABLES` to the approved nine provider variables in one stable explicit configuration.
-- [ ] Preserve a single active variable configuration; do not introduce base/extension profiles for Plan C.
+- [ ] Preserve a single active variable configuration; do not introduce base/extension profiles for nine-variable expansion.
 - [ ] Ensure provider catalog supports all nine requested names.
 - [ ] Confirm `build_request()` accepts the new variables and still rejects unsupported/duplicate variables.
 - [ ] Confirm `build_variable_signature()` remains deterministic.
@@ -423,7 +423,7 @@ python -m pytest tests/integration -q
 
 ### Phase 9 — Regression verification
 
-Final audit compared `dev` with the pre-Plan C reference `9f59b5ca94cb`
+Final audit compared `dev` with the pre-nine-variable expansion reference `9f59b5ca94cb`
 (40 commits in the comparison), then inspected the active source contracts.
 The application was not executed against CDS, Airflow, or the development
 PostgreSQL database during this audit.
@@ -436,7 +436,7 @@ PostgreSQL database during this audit.
 - [x] Complete integration suite, run by the user after Phase 8: **23 passed in 2.73s**.
 - [x] Compare results with the recorded Phase 0 baseline: 397 unit + 17 integration = 414; current 454 + 23 = **477 passed** (+63).
 - [x] Inspect source diff for accidental changes: Aceh bbox and UTC+7 timezone unchanged; legacy accumulation and instantaneous daily-mean functions unchanged; request identity, artifact naming, DAG graph, scheduling requests, and durable progress repository unchanged.
-- [x] Confirm the active provider remains CDS ERA5-Land; no ARCO/provider execution branch was introduced by Plan C.
+- [x] Confirm the active provider remains CDS ERA5-Land; no ARCO/provider execution branch was introduced by nine-variable expansion.
 
 **Scope note:** The comparison includes removal of two older `docs/todo/`
 documents in an earlier standalone `remove` commit; those removals are not
@@ -475,7 +475,7 @@ preserves all Phase 1–9 scientific contracts. The revised extraction code
 and new unit tests require local verification before another CDS pilot.
 No historical rebuild is authorized.
 
-**Preparation status (2026-11-05):** The [isolated pilot runbook](PLAN_C_PILOT_RUNBOOK.md)
+**Preparation status (2026-11-05):** The [isolated pilot runbook](ERA5_LAND_PILOT_RUNBOOK.md)
 now defines a non-campaign May 2024 request, read-only environment/asset
 preflight, additive schema preparation, separately staged CDS → Parquet →
 PostgreSQL execution, controlled-read selection by nine-variable signature,
@@ -498,7 +498,7 @@ local pytest verification before the pilot.
 
 ## 8. Acceptance criteria
 
-Plan C is complete when all of the following are true:
+nine-variable expansion is complete when all of the following are true:
 
 - [ ] The active ERA5-Land request contains exactly the approved nine provider variables.
 - [ ] One monthly request produces one immutable RAW NetCDF containing those variables.
@@ -532,7 +532,7 @@ Plan C is complete when all of the following are true:
 
 | Date | Step | Evidence | Status |
 | --- | --- | --- | --- |
-| 2026-11-04 | Plan C selected | Rebuild historical campaign using one expanded nine-variable ERA5-Land request | Complete |
+| 2026-11-04 | nine-variable expansion selected | Rebuild historical campaign using one expanded nine-variable ERA5-Land request | Complete |
 | 2026-11-04 | Work plan created | Checklist recorded in `docs/todo`; no production code changed | Complete |
 | 2026-11-04 | Baseline verification (Phase 0) | User-reported 397 unit + 17 integration tests passed | Complete |
 | 2026-11-04 | Scientific requirements (Phase 1) | `docs/app_description.md` defines nine provider fields and derived wind statistics | Complete |

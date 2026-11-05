@@ -458,7 +458,7 @@ def test_database_enforces_detail_fk_uniqueness_and_cascade(
         engine.dispose()
 
 
-def test_plan_c_loader_persists_new_columns_idempotently_and_preserves_null(
+def test_expanded_loader_persists_new_columns_idempotently_and_preserves_null(
     postgres_config, tmp_path, monkeypatch,
 ) -> None:
     """Verify real PostgreSQL values and unchanged-partition behavior for nine variables."""
@@ -556,7 +556,7 @@ def test_plan_c_loader_persists_new_columns_idempotently_and_preserves_null(
         engine.dispose()
 
 
-def test_plan_c_invalid_detail_rolls_back_parent_and_all_observations(
+def test_expanded_detail_failure_rolls_back_parent_and_observations(
     postgres_config, tmp_path, monkeypatch,
 ) -> None:
     """Expanded field binding must not weaken the existing transactional rollback."""
@@ -606,7 +606,7 @@ def test_plan_c_invalid_detail_rolls_back_parent_and_all_observations(
         engine.dispose()
 
 
-def test_plan_c_controlled_read_selects_new_generation_among_legacy_rows(
+def test_controlled_read_selects_expanded_variables_among_legacy_rows(
     postgres_config, tmp_path, monkeypatch,
 ) -> None:
     """Old and new request partitions may coexist without ambiguous explicit reads."""

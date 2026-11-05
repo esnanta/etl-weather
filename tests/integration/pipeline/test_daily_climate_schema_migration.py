@@ -1,4 +1,4 @@
-"""Verify Plan C schema convergence on isolated real PostgreSQL.
+"""Verify nine-variable expansion schema convergence on isolated real PostgreSQL.
 
 The tests exercise production DDL against a temporary schema within the
 TEST_POSTGRES_* database. No application or production tables are modified.
@@ -38,7 +38,7 @@ def isolated_schema():
     if missing:
         pytest.skip("Isolated PostgreSQL integration test requires: " + ", ".join(missing))
     base = resolve_test_database_config()
-    config = replace(base, schema=f"climate_test_plan_c_{uuid4().hex}")
+    config = replace(base, schema=f"climate_test_schema_migration_{uuid4().hex}")
     engine = create_engine(config.url, future=True)
     try:
         create_schema(engine, config)
@@ -82,7 +82,7 @@ def _old_detail_table(connection, config, *, wrong_wind_type=False):
             swvl1_daily_mean_m3_m3 DOUBLE PRECISION,
             ssrd_daily_total_j_m2 DOUBLE PRECISION,
             {wind}
-            CONSTRAINT uq_plan_c_grid UNIQUE (
+            CONSTRAINT uq_legacy_grid UNIQUE (
                 daily_climate_id, valid_time, latitude, longitude
             )
         )
@@ -113,7 +113,7 @@ def test_old_detail_converges_without_changing_historical_row(isolated_schema):
                 downloaded_at, transformed_artifact_path, transformed_sha256,
                 transformed_at
             ) VALUES (
-                'plan_c_old', 'reanalysis-era5-land', 'cds', '2024-01-01',
+                'legacy_request', 'reanalysis-era5-land', 'cds', '2024-01-01',
                 '2024-01-01', 'd2m_ssrd_swvl1_t2m_tp', 6.1, 1.9, 98.3,
                 94.9, CURRENT_TIMESTAMP, 'legacy.parquet', 'legacy-sha',
                 CURRENT_TIMESTAMP

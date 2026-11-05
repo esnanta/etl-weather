@@ -1,4 +1,4 @@
-"""Protect Plan C campaign identity and checkpoint separation across orchestration.
+"""Protect nine-variable expansion campaign identity and checkpoint separation across orchestration.
 
 Tests exercise real request construction, progress definitions and campaign matching.
 Only database side effects are isolated; PostgreSQL reconciliation/locking has its
@@ -43,7 +43,7 @@ def _old_spec(spec):
     return weather_request_to_spec(replace(request, variables=list(OLD_VARIABLES)))
 
 
-def test_monthly_request_factory_uses_exact_plan_c_variables() -> None:
+def test_monthly_request_factory_uses_nine_provider_variables() -> None:
     specs = _specs()
     assert len(specs) == 3
     assert len(CDS_VARIABLES) == 9
@@ -161,7 +161,7 @@ def test_scheduled_and_manual_jobs_share_active_variables_and_one_job_shape(
         slot_anchor=anchor,
     )
     scheduled = monthly_jobs.prepare_monthly_jobs(
-        "scheduled", {}, run_id="scheduled__plan_c", slot_anchor=anchor,
+        "scheduled", {}, run_id="scheduled__nine_variables", slot_anchor=anchor,
     )
 
     assert len(manual) == len(scheduled) == 3
