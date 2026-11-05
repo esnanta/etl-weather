@@ -53,6 +53,7 @@ class DailyClimateSelection:
     start_date: date
     end_date: date
     bbox: BoundingBox
+    variable_signature: str | None = None
 
 
 def validate_daily_climate_selection(selection: DailyClimateSelection) -> None:
@@ -65,9 +66,14 @@ def validate_daily_climate_selection(selection: DailyClimateSelection) -> None:
         raise ValueError("north_lat must be greater than or equal to south_lat.")
     if selection.bbox.east_lon < selection.bbox.west_lon:
         raise ValueError("east_lon must be greater than or equal to west_lon.")
+    if selection.variable_signature is not None and not selection.variable_signature.strip():
+        raise ValueError("variable_signature must not be empty when provided.")
 
 
-def _build_modelling_statement(config: DatabaseConfig) -> TextClause:
+def _build_modelling_statement(
+    config: DatabaseConfig, *, filter_variable_signature: bool = False
+) -> TextClause:
+    signature_clause = "AND dc.variable_signature = :variable_signature" if filter_variable_signature else ""
     daily_climate = f"{config.schema}.{config.daily_climate_table}"
     detail = f"{config.schema}.{config.daily_climate_detail_table}"
     return text(
@@ -98,6 +104,7 @@ def _build_modelling_statement(config: DatabaseConfig) -> TextClause:
           AND dc.south_lat = :south_lat
           AND dc.east_lon = :east_lon
           AND dc.west_lon = :west_lon
+          {signature_clause}
           AND dcd.valid_time_local >= :start_time
           AND dcd.valid_time_local < :end_time_exclusive
         ORDER BY
@@ -110,7 +117,7 @@ def _build_modelling_statement(config: DatabaseConfig) -> TextClause:
 
 
 def _build_query_params(selection: DailyClimateSelection) -> dict[str, SqlParamValue]:
-    return {
+    params: dict[str, SqlParamValue] = {
         "source": selection.source.value,
         "dataset_name": selection.dataset_name,
         "north_lat": selection.bbox.north_lat,
@@ -122,6 +129,9 @@ def _build_query_params(selection: DailyClimateSelection) -> dict[str, SqlParamV
             selection.end_date + timedelta(days=1), time.min
         ),
     }
+    if selection.variable_signature is not None:
+        params["variable_signature"] = selection.variable_signature
+    return params
 
 
 def _execute_modelling_query(
@@ -187,7 +197,10 @@ def load_daily_climate_for_modelling(
     """
     validate_daily_climate_selection(selection)
     resolved_config = resolve_database_config(config)
-    statement = _build_modelling_statement(resolved_config)
+    statement = _build_modelling_statement(
+        resolved_config,
+        filter_variable_signature=selection.variable_signature is not None,
+    )
     params = _build_query_params(selection)
 
     owns_engine = engine is None
