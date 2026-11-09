@@ -126,33 +126,6 @@ Example for local day 2024-05-01:
 
 Daily means for `t2m`, `d2m`, `swvl1`, `swvl2`, `swvl3`, `u10`, and `v10` require 24 valid hourly samples per grid point for the local day. Derived `wind_speed` is the mean of 24 paired hourly wind-vector magnitudes (not the magnitude of the daily-mean components); `wind_direction` uses the daily-mean components and is missing for an effectively calm resultant. The two wind outputs are not additional CDS provider variables. Missing observations remain missing rather than being converted to zero. Full formulas and scientific requirements are in [docs/app_description.md](./docs/app_description.md).
 
-## Architecture Overview
-
-```text
-Copernicus CDS
-      │
-      ▼
-   pipeline/
- acquire hourly data
- validate source
- transform UTC → UTC+7 daily
- preserve NetCDF / Parquet
- load canonical observations
-      │
-      ├──────────────► PostgreSQL
-      │                    │
-      │                    ├── geospatial/
-      │                    │   boundaries + grid mapping
-      │                    │
-      │                    └── query/
-      │                        read-only operational audit
-      │
-      └──────────────► orchestration/
-                       Apache Airflow coordinates
-                       the existing pipeline
-```
-
-Airflow coordinates pipeline execution but does not redefine the scientific transformation or persistence rules.
 
 ## Project Structure
 
