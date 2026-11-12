@@ -1,7 +1,7 @@
 """Preview validated sources or export annual analytics Parquet checkpoints.
 
 Exports read existing RAW/transformed files only and never download data.
-The P3 writer refuses all overwrites. Dataset manifests are deferred to P4.
+Existing output is verified before reuse; P4 writes source/output manifests.
 """
 
 from __future__ import annotations
@@ -52,10 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.execute:
         try:
             for destination, rows in export_selection(plan, output_directory=args.output):
-                print(f"  Exported: {destination} | rows={rows}")
+                print(f"  Verified/published: {destination} | rows={rows}")
         except (ValueError, FileExistsError, OSError) as error:
             parser.error(str(error))
-        print("P3 export completed. Dataset manifest is deferred to P4.")
+        print("P4 export verification and manifest publication completed.")
     else:
         print("P2 validation passed. Preview only; no analytics dataset was written.")
     return 0
