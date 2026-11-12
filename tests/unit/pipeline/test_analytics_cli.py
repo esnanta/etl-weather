@@ -43,13 +43,29 @@ def test_cli_explicit_months_does_not_require_campaign_config(monkeypatch, capsy
     assert "Preview only" in capsys.readouterr().out
 
 
-def test_cli_rejects_mixed_date_year_flags():
+def test_cli_rejects_obsolete_year_flags():
     with pytest.raises(SystemExit) as error:
         run_analytics.main([
             "--resolution", "hourly",
             "--start-date", "2024-05-01",
             "--end-date", "2024-06-30",
             "--start-year", "2024",
+        ])
+    assert error.value.code == 2
+
+
+def test_cli_requires_explicit_date_bounds():
+    with pytest.raises(SystemExit) as error:
+        run_analytics.main(["--resolution", "hourly"])
+    assert error.value.code == 2
+
+
+def test_cli_rejects_reversed_dates():
+    with pytest.raises(SystemExit) as error:
+        run_analytics.main([
+            "--resolution", "hourly",
+            "--start-date", "2024-06-30",
+            "--end-date", "2024-05-01",
         ])
     assert error.value.code == 2
 
