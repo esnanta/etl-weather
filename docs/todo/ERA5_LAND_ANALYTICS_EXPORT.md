@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 accepted; P3 pilot exported successfully per user-reported local results (19 passed); date-only CLI refinement awaiting regression tests; P4 not started  
+**Status:** P2 accepted; P3 pilot exported successfully (21 focused tests passed); P4 implementation committed, local tests and legacy-file adoption pending  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -223,7 +223,7 @@ python -m scripts.run_analytics --resolution daily --variables all \
 
 Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and `analytics/all/daily/pilot_20240501_20240630/`. Do not run `--execute` twice without inspecting the first output: P3 correctly rejects already-published files rather than overwriting them. P4 adds dataset manifests/checksums and verified idempotent reuse.
 
-**P3 gate:** Pending local tests and input/output fidelity checks. The manifest, per-source SHA-256 inventory, and automated rerun reuse are P4 work.
+**P3 gate:** Pending local tests and input/output fidelity checks. The manifest, per-source SHA-256 inventory and verified rerun reuse have been implemented in P4; local verification remains pending.
 
 ### P3 — Parquet export for both resolutions
 
@@ -233,19 +233,59 @@ Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and
 - [x] Write one Parquet per target calendar year, incrementally (chunked/streamed) without materializing an entire year or campaign in memory. Partition hourly by UTC year and daily by local UTC+7 year.
 - [x] Preserve stable column naming, ordering, and numeric precision where supported; explicitly detect incompatible dtypes/schema.
 - [x] Stage each annual Parquet to a temporary file and publish only after complete validation. Remove incomplete temporary files on failure without deleting valid prior partitions. Keep manifest consistency when some yearly partitions succeed and others fail.
-- [ ] **P4:** Add manifest/checksum-aware per-year reuse. P3 refuses existing output rather than guessing whether it is unchanged; a new non-conflicting year can be written independently.
-- [x] Reject conflicting annual output by default using exclusive publication. **P4:** Decide guarded replacement and file/manifest consistency before offering `--force`; do not replace unrelated years.
+- [x] P4 adds manifest/checksum-aware per-year reuse, verifying unchanged existing output and adopting valid P3 legacy files without rewriting them. New non-conflicting years are independent.
+- [x] Reject conflicting annual output by default and keep exclusive Parquet publication. P4 intentionally does not expose `--force`; replacement remains a separate explicit design decision.
 
 **Gate:** Each resolution yields one logical, year-partitioned dataset with independently readable annual Parquet files faithful to their respective sources.
 
+### P4 implementation checkpoint — 2026-11-12
+
+**Status:** Implementation committed to `dev`, verification on the user's host **not yet run**.
+
+- `pipeline/analytics/verification.py` performs **streaming, row-for-row source/output equality** for the selected time/grid columns and provider variables, including missing positions. It rejects changes to output coverage metadata, schema, values, row counts, or source identity.
+- One `manifest.json` is published in each physical dataset directory. Complete years live under `analytics/<variables>/<resolution>/manifest.json`; **partial pilot exports** retain their own `pilot_<start>_<end>/manifest.json` so incomplete years cannot masquerade as complete ones.
+- Each manifest records CDS ERA5-Land identity, bbox, selected variables, resolution, timezone and treatment, plus per-partition target date coverage, completion flag, column identities, row count, source/output SHA-256 digests and units. Daily units are those of the **upstream** transformed dataset, not a new conversion.
+- Existing P3 Parquet files with **no manifest** are adopted only after the source/output equality check passes, preserving the existing Parquet bytes. If an existing source or output differs, the run fails rather than replacing it.
+- The writer performs preflight on existing outputs; missing outputs are written, verified and then registered. A crash after the Parquet publish but before the manifest publish leaves an unregistered file that can be revalidated and adopted on the next run. Manifest publication uses a same-directory temporary file and `os.replace()`.
+- Same-selection, unchanged reruns verify and reuse Parquet and manifest. **Do not enable `--force`** without a separately agreed multi-artifact replacement/recovery policy; the P4 implementation never overwrites Parquet.
+- Added offline `tests/unit/pipeline/test_analytics_verification.py` for manifest, reuse, legacy adoption, source/output changes, missing values and failed JSON publication, and updated the existing export/CLI tests.
+
+**Focused tests to run on the local `dev` checkout:**
+
+```bash
+python -m pytest tests/unit/pipeline/test_analytics_selection.py \
+  tests/unit/pipeline/test_analytics_cli.py \
+  tests/unit/pipeline/test_analytics_export.py \
+  tests/unit/pipeline/test_analytics_verification.py -q
+```
+
+**After tests pass, adopt the two existing real May–June P3 outputs without deleting/re-exporting them:**
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+
+python -m scripts.run_analytics --resolution daily --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+```
+
+Expected new JSON files:
+
+```text
+analytics/all/hourly/pilot_20240501_20240630/manifest.json
+analytics/all/daily/pilot_20240501_20240630/manifest.json
+```
+
+If the fidelity check reports a discrepancy, **stop** and investigate the source/output values; do not delete or overwrite existing checkpoints or outputs. A successful P3 row-count report alone does not prove source fidelity.
+
 ### P4 — Manifest and fidelity verification
 
-- [ ] Publish one dataset-level `manifest.json` in each `<selection>/<resolution>/` directory, with a partition inventory for every published `YYYY.parquet`.
-- [ ] Record provider/dataset, bbox, requested target year range, resolution/timezone, variable list and source units, generation time, and **for each year**: actual coverage, expected coordinates/timestamps, row count, source artifact paths and SHA-256 digests, output SHA-256, and partition status.
-- [ ] State that hourly values are raw-preserving, whereas daily values were **already transformed upstream**. The export itself performs no scientific transformation.
-- [ ] Track overlap/partition-selection decisions and any source decoding choices sufficient for reproducibility; do not store quality statistics.
-- [ ] Verify input vs exported values and missing-value positions; test equality of the resulting column and time/grid identities, not only row totals or checksums.
-- [ ] Confirm the manifest partition inventory and filesystem contain the same committed annual artifacts, even after incremental reruns or interrupted writes. Never advertise a partial/incomplete campaign as complete.
+- [x] Publish one dataset-level `manifest.json` in each `<selection>/<resolution>/` directory, with a partition inventory for every published `YYYY.parquet`.
+- [x] Record provider/dataset, bbox, requested target year range, resolution/timezone, variable list and source units, generation time, and **for each year**: actual coverage, expected coordinates/timestamps, row count, source artifact paths and SHA-256 digests, output SHA-256, and partition status.
+- [x] State that hourly values are raw-preserving, whereas daily values were **already transformed upstream**. The export itself performs no scientific transformation.
+- [ ] Track detailed overlap/partition-selection decisions and any source decoding choices sufficient for reproducibility; do not store quality statistics.
+- [x] Verify input vs exported values and missing-value positions; test equality of the resulting column and time/grid identities, not only row totals or checksums.
+- [x] Confirm the manifest partition inventory and filesystem contain the same committed annual artifacts, even after incremental reruns or interrupted writes. Never advertise a partial/incomplete campaign as complete.
 
 **Gate:** Every annual partition can be traced to its exact input files, and the dataset manifest describes the validated published years.
 
