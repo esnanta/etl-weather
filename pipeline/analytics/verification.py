@@ -18,6 +18,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from config import ACEH_BBOX_COORDINATES, CDS_DATASET
+from pipeline.contracts.era5_land import ERA5_LAND_OUTPUT_UNITS
 from pipeline.analytics.selection import AnalyticsSelection
 from pipeline.storage.artifacts import artifact_path_for_metadata, calculate_file_sha256
 
@@ -184,7 +185,16 @@ def _entry(
         ),
         "rows": rows,
         "sha256": calculate_file_sha256(path),
-        "source_units": units if selection.resolution == "hourly" else {},
+        "time_columns": (
+            ["valid_time"] if selection.resolution == "hourly"
+            else ["valid_time", "valid_time_local"]
+        ),
+        "coordinate_columns": ["latitude", "longitude"],
+        "columns": list(reader.schema_arrow.names),
+        "units": (
+            units if selection.resolution == "hourly"
+            else {key: ERA5_LAND_OUTPUT_UNITS[key] for key in selection.variables}
+        ),
         "sources": _source_inventory(selection, year),
     }
 
