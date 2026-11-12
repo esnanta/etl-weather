@@ -101,8 +101,8 @@ A supported selection must be complete **for every requested annual partition an
 - [x] Inspect existing RAW and transformed file readers, storage paths, validation, checksums, metadata, and dependencies. Reuse production helpers instead of duplicating them. (Repository code audit; actual files pending.)
 - [ ] Confirm real NetCDF coordinate/dimension names, masks/fill values, dtypes, and variable availability; confirm transformed daily schema (including both timestamps).
 - [ ] Determine whether overlapping context hours exist among stored RAW partitions; specify unambiguous period ownership and source-selection priority before implementation.
-- [ ] Inspect available memory/disk headroom and realistic artifact sizes; do not assume all hourly rows fit in RAM.
-- [ ] Record source coverage and schema findings; do not start an export if coverage or identity is ambiguous.
+- [x] Host-wide memory/disk capacity audit waived by user for the initial pilot; retain streaming/chunked design without assuming all rows fit in RAM.
+- [ ] Record coverage/schema for the selected pilot inputs only; full 2016–2025 inventory waived. Never label incomplete year coverage as complete.
 - [ ] Establish CLI parameter validation, default campaign range, year-partition ownership, output naming, preview behavior, and exit codes.
 
 **Gate:** Scientific/source layout and selection semantics are confirmed before writing.
@@ -141,7 +141,11 @@ A supported selection must be complete **for every requested annual partition an
 - [ ] Validate a concrete small-period source-selection example and estimate annual memory/disk needs from actual data before accepting P2.
 - [ ] Clarify whether analytics output under `data/` being deleted by reset/destroy is acceptable; until resolved, leave destructive maintenance unchanged.
 
-**P1 status:** Repository-level module and contract audit completed; **local data/host verification pending**. No source code, test, RAW, transformed checkpoint, or database mutation was performed during this audit.
+**P1 scope decision — 2026-11-12:** The user explicitly waived the full historical source inventory and host capacity inspection as prerequisites to implementation. Only one real nine-variable RAW file is currently reported locally: `raw/2024/2024_0501_0531_d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10.nc`. Use a second adjacent month (proposed June 2024) as an **optional, narrowly scoped integration pilot**, acquired separately through the existing extraction pipeline if needed; never make Analytics Export download missing inputs. For the daily pilot, the corresponding existing transformed Parquet is also required or must first be generated through the existing transform stage. No second month is claimed to exist yet.
+
+The test gate for P2–P5 is therefore **two adjacent months** plus synthetic offline fixtures; it does **not** require a completed 2016–2025 campaign or a host-wide capacity report. Keep chunked/streamed processing, input completeness checks for whichever years/months are explicitly requested, missing-variable errors, checksums, source fidelity, and safe output writes. Do not weaken these correctness guarantees simply because the pilot is small. Do not treat the single available month as a complete 2024 export; a partial-year research pilot needs an explicitly scoped test mode or temporary destination that cannot be mistaken for the complete annual dataset. Export completeness and accurate manifest coverage remain mandatory.
+
+**P1 status:** Repository-level module and contract audit completed. The broad data-inventory and capacity gates are **waived by decision**; representative source-schema confirmation and two-month pilot evidence remain pending but are not blockers to starting P2 on synthetic fixtures. No source code, test, RAW, transformed checkpoint, or database mutation was performed during this audit.
 
 ### P2 — Reusable selection and validation
 
