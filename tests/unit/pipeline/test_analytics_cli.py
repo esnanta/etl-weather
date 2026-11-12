@@ -1,8 +1,8 @@
-"""Test the P2 analytics CLI as a read-only source-plan entrypoint.
+"""Test analytics CLI preview and explicit P3 execution routing.
 
-Only the source-discovery boundary is replaced. The parser, date resolution,
-and preview behavior are real; source content validation is covered by the
-offline selection tests. P3 owns tests for actual Parquet writes.
+Source discovery and actual file writes are isolated because this module
+tests CLI dispatch. Production selection and Parquet integrity have separate
+offline tests, without live CDS or PostgreSQL.
 """
 
 from __future__ import annotations
@@ -68,7 +68,51 @@ def test_cli_rejects_missing_inputs(monkeypatch):
     assert error.value.code == 2
 
 
-def test_cli_has_no_execute_option():
-    with pytest.raises(SystemExit) as error:
-        run_analytics.main(["--resolution", "hourly", "--execute"])
-    assert error.value.code == 2
+def test_cli_execute_dispatches_after_validation(monkeypatch, tmp_path, capsys):
+    calls = []
+
+    def discover(*args):
+        calls.append("discover")
+        return AnalyticsSelection(
+            "daily", ("tp",), date(2024, 5, 1), date(2024, 5, 31),
+            (SourceMonth(Path("fixture.parquet"), date(2024, 5, 1), date(2024, 5, 31)),),
+        )
+
+    monkeypatch.setattr(run_analytics, "discover_sources", discover)
+    monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: calls.append("validate"))
+    monkeypatch.setattr(
+        run_analytics, "export_selection",
+        lambda plan, output_directory: (
+            calls.append(("export", output_directory))
+            or ((output_directory / "2024.parquet", 2),)
+        ),
+    )
+    assert run_analytics.main([
+        "--resolution", "daily",
+        "--start-date", "2024-05-01",
+        "--end-date", "2024-05-31",
+        "--output", str(tmp_path),
+        "--execute",
+    ]) == 0
+    assert calls == ["discover", "validate", ("export", tmp_path)]
+    assert "P3 export completed" in capsys.readouterr().out
+
+
+def test_cli_preview_never_calls_export(monkeypatch):
+    monkeypatch.setattr(
+        run_analytics, "discover_sources",
+        lambda *args: AnalyticsSelection(
+            "daily", ("tp",), date(2024, 5, 1), date(2024, 5, 31),
+            (SourceMonth(Path("fixture.parquet"), date(2024, 5, 1), date(2024, 5, 31)),),
+        ),
+    )
+    monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: None)
+    monkeypatch.setattr(
+        run_analytics, "export_selection",
+        lambda *args, **kwargs: pytest.fail("Preview must not export"),
+    )
+    assert run_analytics.main([
+        "--resolution", "daily",
+        "--start-date", "2024-05-01",
+        "--end-date", "2024-05-31",
+    ]) == 0
