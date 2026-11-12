@@ -7,44 +7,28 @@ The P3 writer refuses all overwrites. Dataset manifests are deferred to P4.
 from __future__ import annotations
 
 import argparse
-import logging
 from datetime import date
 from pathlib import Path
 
-import config
 from pipeline.analytics.selection import discover_sources, validate_sources
 from pipeline.analytics.export import export_selection, output_paths
 
-logger = logging.getLogger(__name__)
-
-
 def _date_bounds(args: argparse.Namespace) -> tuple[date, date]:
-    dates = args.start_date is not None or args.end_date is not None
-    years = args.start_year is not None or args.end_year is not None
-    if dates and years:
-        raise ValueError("Use either --start-date/--end-date or --start-year/--end-year.")
-    if dates:
-        if args.start_date is None or args.end_date is None:
-            raise ValueError("Both --start-date and --end-date are required.")
-        start, end = date.fromisoformat(args.start_date), date.fromisoformat(args.end_date)
-    else:
-        start_year = args.start_year if args.start_year is not None else config.CAMPAIGN_START_YEAR
-        end_year = args.end_year if args.end_year is not None else config.CAMPAIGN_END_YEAR
-        start, end = date(start_year, 1, 1), date(end_year, 12, 31)
+    """Validate the required inclusive ISO date range."""
+    start = date.fromisoformat(args.start_date)
+    end = date.fromisoformat(args.end_date)
     if start > end:
         raise ValueError("Start date must not be after end date.")
     return start, end
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print the validated source plan; never write RAW, Parquet, or database."""
+    """Preview or export a selected period without changing source checkpoints."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resolution", choices=("hourly", "daily"), required=True)
     parser.add_argument("--variables", default="all")
-    parser.add_argument("--start-year", type=int)
-    parser.add_argument("--end-year", type=int)
-    parser.add_argument("--start-date")
-    parser.add_argument("--end-date")
+    parser.add_argument("--start-date", required=True, help="Inclusive start date (YYYY-MM-DD).")
+    parser.add_argument("--end-date", required=True, help="Inclusive end date (YYYY-MM-DD).")
     parser.add_argument("--execute", action="store_true", help="Write Parquet; default is preview only.")
     parser.add_argument("--output", type=Path, help="Explicit dataset output directory.")
     args = parser.parse_args(argv)
