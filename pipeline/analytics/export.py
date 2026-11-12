@@ -1,8 +1,8 @@
 """Stream validated ERA5-Land checkpoints to independent annual Parquet files.
 
-This module never changes source checkpoints. Explicit partial-year selections
-are isolated under a period-scoped pilot directory; P4 will add manifests and
-provenance-based reuse. Existing outputs are never overwritten in P3.
+This module never changes source checkpoints. Partial-year selections are
+isolated under a period-scoped directory. P4 verifies existing P3 exports
+before adopting them into provenance manifests; outputs are never overwritten.
 """
 
 from __future__ import annotations
@@ -223,23 +223,43 @@ def export_selection(
     data_directory: Path = DATA_DIRECTORY,
     output_directory: Path | None = None,
 ) -> tuple[tuple[Path, int], ...]:
-    """Export validated selections; reject pre-existing outputs unconditionally.
+    """Write missing partitions or verify/adopt unchanged existing partitions.
 
-    The caller must run validate_sources() before this write boundary.
-    Manifest-aware reuse and explicit replacement are deferred until P4.
+    The caller must run validate_sources() before this boundary. A changed
+    existing output is rejected; there is deliberately no unsafe --force path.
+    Per-year manifests are published only after complete source/output checks.
     """
+    from pipeline.analytics.verification import (
+        _read_manifest,
+        _verify_manifest_inventory,
+        publish_manifest,
+        verify_output,
+    )
+
     destinations = output_paths(
         selection, data_directory=data_directory, output_directory=output_directory
     )
-    existing = [path for path in destinations if path.exists()]
-    if existing:
-        raise FileExistsError(
-            "Analytics output already exists; P3 never overwrites: "
-            + ", ".join(str(path) for path in existing)
-        )
-    return tuple(
-        (path, _write_year(selection, year, path))
-        for year, path in zip(
-            range(selection.start.year, selection.end.year + 1), destinations
-        )
-    )
+    years = tuple(range(selection.start.year, selection.end.year + 1))
+
+    # Preflight all existing artifacts and manifests before any new writes.
+    # This avoids adding a new partition to a dataset with a corrupt older one.
+    for path in destinations:
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Analytics output is not a regular file: {path}")
+        if path.exists():
+            verify_output(selection, int(path.stem), path)
+        manifest_path = path.parent / "manifest.json"
+        if manifest_path.exists():
+            manifest = _read_manifest(manifest_path, selection)
+            _verify_manifest_inventory(path.parent, manifest)
+
+    results: list[tuple[Path, int]] = []
+    for year, path in zip(years, destinations):
+        if path.exists():
+            rows = verify_output(selection, year, path)
+        else:
+            _write_year(selection, year, path)
+            rows = verify_output(selection, year, path)
+        publish_manifest(selection, year, path, rows)
+        results.append((path, rows))
+    return tuple(results)
