@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 implementation committed; local unit tests and two-month pilot validation pending; P3/P4 not started  
+**Status:** P2 validated by user-reported local tests and two-month preview; P3/P4 not started  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -149,14 +149,14 @@ The test gate for P2–P5 is therefore **two adjacent months** plus synthetic of
 
 #### P2 implementation update — 2026-11-12
 
-**Status: implemented on `dev`; local pytest and real two-month preview are pending.** No analytics Parquet or manifest is written in P2.
+**Status: P2 source selection and validation accepted based on user-reported local verification (2026-11-12).** No analytics Parquet or manifest is written in P2.
 
 - `pipeline/analytics/selection.py` discovers one unambiguous existing monthly RAW/ transformed checkpoint per month, using the canonical dataset, Aceh bbox, month boundaries, and variable signature. Missing months, unsupported variables, and competing source generations are hard errors.
 - Source variables are restricted to the nine provider variables; `all` does not include derived daily wind fields.
 - RAW validation checks full target-month hourly coverage, ordering, timestamps, coordinates and spacing; identical overlapping context values are allowed for later deterministic month ownership, while different values raise an error.
 - Daily validation checks the two time columns, UTC+7 offset, local midnight, day-by-day coverage, and stable local-day/grid identities. It reads time/grid columns only.
 - `scripts/run_analytics.py` is an intentionally **read-only preview/validation CLI**. For the May–June 2024 pilot it also accepts explicit `--start-date` / `--end-date` in addition to year switches. The `--execute` write mode is intentionally unavailable until P3.
-- Offline tests: `tests/unit/pipeline/test_analytics_selection.py` and `tests/unit/pipeline/test_analytics_cli.py`. Tests have been committed but **not executed on the user's local Python environment**.
+- Offline tests: `tests/unit/pipeline/test_analytics_selection.py` and `tests/unit/pipeline/test_analytics_cli.py`. User ran these tests locally: **12 passed in 0.75s**.
 
 Pilot commands (after activating the existing local environment):
 
@@ -170,7 +170,7 @@ python -m scripts.run_analytics --resolution daily --variables all \
   --start-date 2024-05-01 --end-date 2024-06-30
 ```
 
-The pilot verifies **May–June only**, not the completeness of calendar year 2024. Once successful, P3 must filter output strictly to target timestamps and retain pilot coverage in the manifest rather than publishing a falsely complete year.
+The user ran both CLI previews locally with `--variables all` for **2024-05-01 through 2024-06-30**: both reported **P2 validation passed**, selecting one May and one June source checkpoint in their respective layers. The pilot verifies **May–June only**, not the completeness of calendar year 2024. Once successful, P3 must filter output strictly to target timestamps and retain pilot coverage in the manifest rather than publishing a falsely complete year.
 
 **Open P2/P3 boundary:** Missing-value preservation and source-export numerical equivalence must be tested against the actual streamed output in P3/P4; P2 validates source identity and overlap values but does not serialize data.
 
@@ -179,13 +179,13 @@ The pilot verifies **May–June only**, not the completeness of calendar year 20
 - [x] Add narrow analytics source selection/validation functions under `pipeline/` and a thin read-only `scripts/run_analytics.py` preview entrypoint; no `weather_cli` package.
 - [x] Discover input artifacts by dataset, bbox, year, date partition, and variable signature; reject other sources/areas.
 - [x] Validate selected variable presence in source schemas for every included partition; report missing/ambiguous files and variables.
-- [x] Validate RAW coordinate/time axes and UTC+7 daily local-day/grid identities; real pilot confirmation remains pending.
+- [x] Validate RAW coordinate/time axes and UTC+7 daily local-day/grid identities; real May–June 2024 preview confirmed by user.
 - [ ] Apply output-row filtering by target timestamp in P3; P2 validates monthly source coverage and context boundaries.
 - [ ] P2 compares overlapping RAW values and **fails** on conflicts; select canonical month-owned output rows and record overlap provenance in P3/P4.
 - [ ] Verify NetCDF mask/`_FillValue` decoding and numerical/missing-value fidelity in P3/P4 using the actual export.
-- [x] P2 CLI is preview-only and contains no source/output write path (local test execution pending).
+- [x] P2 CLI is preview-only and contains no source/output write path; local tests and both source previews passed.
 
-**Gate:** Selected sources and rows are deterministic, with no scientific value changes.
+**P2 gate accepted:** Source discovery and validation passed offline unit tests (12 passed) and two real May–June 2024 previews, per user-reported local output. No export serialization has been tested yet; output-row filtering, missing-value fidelity, and manifest correctness remain P3/P4 gates.
 
 ### P3 — Parquet export for both resolutions
 
