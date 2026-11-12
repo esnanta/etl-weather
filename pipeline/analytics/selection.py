@@ -157,6 +157,11 @@ def _check_axis(values: np.ndarray, name: str, expected: int) -> None:
         raise ValueError(f"Incompatible {name} grid axis.")
     if not np.issubdtype(values.dtype, np.number):
         raise ValueError(f"{name} coordinate must be numeric.")
+    differences = np.diff(np.asarray(values, dtype=float))
+    if not (np.all(differences > 0) or np.all(differences < 0)):
+        raise ValueError(f"{name} grid axis must be monotonic.")
+    if not np.allclose(np.abs(differences), 0.1, rtol=0, atol=1e-6):
+        raise ValueError(f"{name} grid axis must use 0.1 degree spacing.")
 
 
 def _validate_raw_month(month: SourceMonth, variables: tuple[str, ...]) -> None:
