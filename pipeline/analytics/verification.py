@@ -175,6 +175,7 @@ def _entry(
     with pq.ParquetFile(path) as reader:
         metadata = reader.schema_arrow.metadata or {}
         units = json.loads(metadata.get(b"analytics_source_units", b"{}"))
+        columns = list(reader.schema_arrow.names)
     return {
         "year": year,
         "target_start": first.isoformat(),
@@ -190,7 +191,7 @@ def _entry(
             else ["valid_time", "valid_time_local"]
         ),
         "coordinate_columns": ["latitude", "longitude"],
-        "columns": list(reader.schema_arrow.names),
+        "columns": columns,
         "units": (
             units if selection.resolution == "hourly"
             else {key: ERA5_LAND_OUTPUT_UNITS[key] for key in selection.variables}
