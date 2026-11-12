@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 accepted; P3 implementation committed, awaiting local tests and two-month export; P4 not started  
+**Status:** P2 accepted; P3 pilot exported successfully per user-reported local results (19 passed); date-only CLI refinement awaiting regression tests; P4 not started  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -86,7 +86,7 @@ python -m scripts.run_analytics --resolution daily --variables all --execute
 Proposed arguments:
 - `--resolution {hourly,daily}` (required).
 - `--variables all|comma,separated,codes` (default `all`).
-- `--start-year`, `--end-year` (defaults resolved from `CAMPAIGN_START_YEAR` and `CAMPAIGN_END_YEAR`, **not** inferred from `CAMPAIGN_KEY`).
+- `--start-date` and `--end-date` (both required, inclusive `YYYY-MM-DD` dates; used for monthly pilots, full years, or multi-year periods). The analytics CLI does not infer periods from campaign settings.
 - `--output` (optional, explicit **dataset directory** destination; preserve the year partitions, dataset manifest, and collision safeguards).
 - `--execute` (default preview-only).
 - `--force` (explicit replacement intent; valid only with `--execute`, after all preflight checks).
@@ -103,7 +103,7 @@ A supported selection must be complete **for every requested annual partition an
 - [ ] Determine whether overlapping context hours exist among stored RAW partitions; specify unambiguous period ownership and source-selection priority before implementation.
 - [x] Host-wide memory/disk capacity audit waived by user for the initial pilot; retain streaming/chunked design without assuming all rows fit in RAM.
 - [ ] Record coverage/schema for the selected pilot inputs only; full 2016–2025 inventory waived. Never label incomplete year coverage as complete.
-- [ ] Establish CLI parameter validation, default campaign range, year-partition ownership, output naming, preview behavior, and exit codes.
+- [x] Establish CLI date-only parameter validation, year-partition ownership, output naming and preview behavior. No implicit campaign date defaults.
 
 **Gate:** Scientific/source layout and selection semantics are confirmed before writing.
 
@@ -155,7 +155,7 @@ The test gate for P2–P5 is therefore **two adjacent months** plus synthetic of
 - Source variables are restricted to the nine provider variables; `all` does not include derived daily wind fields.
 - RAW validation checks full target-month hourly coverage, ordering, timestamps, coordinates and spacing; identical overlapping context values are allowed for later deterministic month ownership, while different values raise an error.
 - Daily validation checks the two time columns, UTC+7 offset, local midnight, day-by-day coverage, and stable local-day/grid identities. It reads time/grid columns only.
-- `scripts/run_analytics.py` is an intentionally **read-only preview/validation CLI**. For the May–June 2024 pilot it also accepts explicit `--start-date` / `--end-date` in addition to year switches. The `--execute` write mode is intentionally unavailable until P3.
+- `scripts/run_analytics.py` is an intentionally **read-only preview/validation CLI**. The CLI requires explicit `--start-date` and `--end-date`, with no year-based alternative. The `--execute` write mode is intentionally unavailable until P3.
 - Offline tests: `tests/unit/pipeline/test_analytics_selection.py` and `tests/unit/pipeline/test_analytics_cli.py`. User ran these tests locally: **12 passed in 0.75s**.
 
 Pilot commands (after activating the existing local environment):
@@ -186,6 +186,10 @@ The user ran both CLI previews locally with `--variables all` for **2024-05-01 t
 - [x] P2 CLI is preview-only and contains no source/output write path; local tests and both source previews passed.
 
 **P2 gate accepted:** Source discovery and validation passed offline unit tests (12 passed) and two real May–June 2024 previews, per user-reported local output. No export serialization has been tested yet; output-row filtering, missing-value fidelity, and manifest correctness remain P3/P4 gates.
+
+### CLI contract simplification — 2026-11-12
+
+After successful user-reported P3 pilot exports (**19 focused unit tests passed; 2,203,320 hourly rows and 32,330 daily rows for 2024-05-01 through 2024-06-30**), the user chose **one explicit date-only CLI contract**: both `--start-date` and `--end-date` are required. The redundant `--start-year` and `--end-year` flags and campaign-derived default date range are removed. Annual Parquet partitioning remains unchanged. CLI date argument regression tests were updated; these new tests await local execution.
 
 ### P3 implementation checkpoint — 2026-11-12
 
@@ -269,5 +273,5 @@ Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and
 ## 6. Follow-up decisions (do not guess during coding)
 
 - Confirm whether daily `wind_speed` and `wind_direction` should eventually be selectable as **derived** fields; keep provider-only `all` for the initial implementation.
-- Decide whether supporting partial-year date ranges is necessary; current proposal exposes year-based campaign bounds only.
+- Resolved: partial-year and full-year periods are supported using required `--start-date` and `--end-date`; year-only flags are not supported.
 - Determine the safest coordinated replacement strategy for annual Parquet partitions + dataset manifest on the available filesystem before enabling `--force`.
