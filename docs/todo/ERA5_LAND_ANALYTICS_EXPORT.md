@@ -98,7 +98,7 @@ A supported selection must be complete **for every requested annual partition an
 ### P1 — Source and CLI contract audit
 
 - [ ] Verify `dev`, clean/known working-tree status, and repository docs: `AGENTS.md`, `docs/app_description.md`, `pipeline/README.md`, `README.md`, `tests/AGENTS.md`, and `docs/python_se_principle.md`.
-- [ ] Inspect existing RAW and transformed file readers, storage paths, validation, checksums, metadata, and dependencies. Reuse production helpers instead of duplicating them.
+- [x] Inspect existing RAW and transformed file readers, storage paths, validation, checksums, metadata, and dependencies. Reuse production helpers instead of duplicating them. (Repository code audit; actual files pending.)
 - [ ] Confirm real NetCDF coordinate/dimension names, masks/fill values, dtypes, and variable availability; confirm transformed daily schema (including both timestamps).
 - [ ] Determine whether overlapping context hours exist among stored RAW partitions; specify unambiguous period ownership and source-selection priority before implementation.
 - [ ] Inspect available memory/disk headroom and realistic artifact sizes; do not assume all hourly rows fit in RAM.
@@ -106,6 +106,42 @@ A supported selection must be complete **for every requested annual partition an
 - [ ] Establish CLI parameter validation, default campaign range, year-partition ownership, output naming, preview behavior, and exit codes.
 
 **Gate:** Scientific/source layout and selection semantics are confirmed before writing.
+
+#### P1 audit findings — 2026-11-12 (repository-only; no local RAW access)
+
+**Evidence base:** Read-only inspection of the GitHub `dev` branch at `8fe2a782b26338f92546d3c07682671a09a5ad8f`. The working tree on the execution server, actual `data/` files, file sizes, disk/RAM capacity, and local environment settings were **not accessible** through this inspection. Therefore the full P1 gate remains **open**.
+
+| Subject | Verified from source | Consequence for export |
+| --- | --- | --- |
+| Ownership | `AGENTS.md` assigns reusable scientific/storage logic to `pipeline/` and thin entrypoints to `scripts/`. | Keep export reusable and Airflow-independent. |
+| Paths/provenance | `pipeline/storage/artifacts.py` provides `DATA_DIRECTORY`, `build_bbox_signature()`, `calculate_file_sha256()`, and `artifact_path_for_metadata()`. Existing checkpoints have deterministic month/variable paths. | Reuse these helpers; do not infer the active variable generation merely from the filename. |
+| I/O | `pipeline/storage/local_checkpoints.py` uses `xr.open_dataset`, `pd.read_parquet`, PyArrow metadata, and a same-directory temporary file for atomic single-file writes. Its `load_raw_netcdf()`, `convert_netcdf_to_dataframe()`, and `load_transformed_parquet()` materialize data in memory. | Reuse metadata/checksum policies but **do not** reuse whole-file materializing readers as the long-range export path. Design chunked reads / Parquet row-group writes. |
+| RAW schema | `pipeline/validation/era5_land_raw.py` requires `valid_time`, `latitude`, `longitude`, hourly time ordering/continuity, and every requested variable on precisely those three axes. | Validate every source partition; examine actual file dtypes and fill-value encoding locally before selecting Parquet types. |
+| RAW context | `pipeline/extraction/cds_era5_land.py` retrieves one preceding day using `LOCAL_DAY_CONTEXT_DAYS = 1`; the retrieval can span the prior month/year. | Assign rows to the requested **UTC** year by `valid_time` and resolve boundary overlaps explicitly. No duplicate row should survive by default. |
+| Daily schema | `pipeline/transformation/era5_land_daily.py` produces `valid_time` and `valid_time_local` plus grid coordinates, nine configured provider variables, and derived wind columns when `u10,v10` exist. `pipeline/validation/era5_land_daily.py` checks local midnight and per-day grid identity. | Assign rows to the **UTC+7 local** calendar year using `valid_time_local`; export existing values without recomputation. |
+| Variable set | `config.CDS_VARIABLES` contains nine provider variables. `pipeline/requests/weather.py` already has deterministic sorted variable signatures. | Keep `all` limited to these nine provider variables initially; check actual presence in **every** source partition. |
+| Campaign range | `config.py` resolves `CAMPAIGN_START_YEAR` / `CAMPAIGN_END_YEAR` lazily from the environment. The pilot runbook reports an example with `CAMPAIGN_KEY=era5_land_2016_2025` but `CAMPAIGN_END_YEAR=2016`. | Never equate campaign key with coverage; actual environment must be inspected; explicit CLI years take precedence. |
+| Dependencies | `requirements.txt` pins `xarray==2026.7.0`, `netCDF4==1.7.4`, `pandas==3.0.3`, `pyarrow==25.0.0`, and `numpy==2.5.1`. | Use existing libraries; do not add Dask/DuckDB as runtime dependencies without evidence they are needed. |
+| Test placement | `tests/AGENTS.md` requires fast offline pipeline tests under `tests/unit/pipeline/`, with temporary source artifacts and no live CDS/PostgreSQL. | Cover both resolutions and failure/replay paths with controlled NetCDF/Parquet fixtures. |
+| Output size caveat | The spatial contract defines 43 × 35 = 1,505 RAW grid coordinates; the May 2024 pilot runbook records **530 complete land-grid points/day** in its transformed output. | Do **not** assert daily rows = 1,505 × days. Preserve exactly the transformed checkpoint rows; compare against actual sources. |
+| Destructive maintenance | `scripts/maintenance/reset_data.py` calls `clear_directory_contents(data/)`; `.gitignore` already ignores `/data/`. | **Correction to P5:** analytics under `data/` are currently deleted by approved reset/destroy operations. This plan must not claim otherwise. Either explicitly accept that behavior or separately approve a maintenance change; no silent exception. |
+| Existing stale draft | `docs/readme_eda.md` still mentions one 2016–2025 raw Parquet file and notebook processing in-repo. | Reconcile this older draft later with the agreed separate-notebook-project and year-partitioned dataset contract; avoid duplicate product specifications. |
+
+**Preliminary source-selection policy (needs local evidence):**
+1. Discover only the configured dataset/bbox and requested target months. Identify the actual request period from the stored artifact name plus validated metadata; reject multiple competing artifacts that cannot be reconciled deterministically.
+2. For RAW, include hours with `year(valid_time) == YYYY`; for daily, include rows with `year(valid_time_local) == YYYY`. For hourly periods, a monthly file's extra context hours are not owned by that target month unless they are the only validated source for a requested hour.
+3. Compare overlapping records before accepting any canonical owner. A conflicting value, incompatible grid, or missing requested variable is a hard error; identical duplication is handled deterministically with documented provenance.
+4. Treat the requested year range as a **completeness requirement**, not proof of data existence. Do not create partial output and label it complete.
+
+**Local-only checks still required to close P1:**
+- [ ] On the intended host, confirm `git branch --show-current` is `dev` and inspect `git status --short`; do not change branches.
+- [ ] Inventory actual `raw/` and `transformed/` files and their monthly variable signatures across selected years; confirm which years/months are complete.
+- [ ] Read representative NetCDF headers and transformed Parquet schemas (including 5-variable vs 9-variable generations) for coordinate dtypes, fill-value/mask decoding, source units, temporal context, and duplicate boundaries.
+- [ ] Measure file sizes, output disk headroom and temporary filesystem usage with the existing `python -m scripts.monitoring.inspect_campaign_capacity` inspection helper or shell read-only equivalents.
+- [ ] Validate a concrete small-period source-selection example and estimate annual memory/disk needs from actual data before accepting P2.
+- [ ] Clarify whether analytics output under `data/` being deleted by reset/destroy is acceptable; until resolved, leave destructive maintenance unchanged.
+
+**P1 status:** Repository-level module and contract audit completed; **local data/host verification pending**. No source code, test, RAW, transformed checkpoint, or database mutation was performed during this audit.
 
 ### P2 — Reusable selection and validation
 
@@ -151,7 +187,7 @@ A supported selection must be complete **for every requested annual partition an
 - [ ] Test preview read-only behavior, existing output protection, `--force` safeguards, checksum changes, write interruption, **annual boundary placement**, independently readable year files, incremental addition of a new year, and per-year rerun idempotency using temporary directories.
 - [ ] Run focused tests first, then `python -m pytest tests/unit -q`; run additional affected suites where needed. No live CDS or PostgreSQL needed for unit tests.
 - [ ] After the export contract is accepted, update the owning `docs/app_description.md` and operator-facing `README.md` / `pipeline/README.md` without duplicating full specifications across files.
-- [ ] Ensure generated analytics files and temporary outputs are ignored by Git and excluded from reset/destroy operations unless **explicitly** approved; inspect existing maintenance behavior before changing it.
+- [ ] Verify generated analytics files and temporary outputs remain ignored by Git. **Existing reset/destroy currently clears all of `data/`, including future `analytics/` exports**; decide explicitly whether this is acceptable before changing maintenance behavior.
 - [ ] Make small, focused, verified commits on `dev` only. Never touch other branches; push only as authorized. Document tests run, limitations, and commit hashes.
 
 **Acceptance:** Two selectable, year-partitioned analytics datasets with one manifest each, raw-preserving hourly values, unchanged daily science, explicit missing-variable failures, per-year provenance and safe incremental reruns, offline tests, and no impact on current ETL/PostgreSQL/Airflow operation.
