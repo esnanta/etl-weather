@@ -111,7 +111,7 @@ def test_cli_execute_dispatches_after_validation(monkeypatch, tmp_path, capsys):
         "--execute",
     ]) == 0
     assert calls == ["discover", "validate", ("export", tmp_path)]
-    assert "P3 export completed" in capsys.readouterr().out
+    assert "P4 export verification and manifest publication completed" in capsys.readouterr().out
 
 
 def test_cli_preview_never_calls_export(monkeypatch):
