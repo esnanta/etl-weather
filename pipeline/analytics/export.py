@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from calendar import isleap
 from collections.abc import Iterator
 from datetime import date, timedelta
 from pathlib import Path
