@@ -1,7 +1,7 @@
-"""Preview and validate existing analytics sources without writing artifacts.
+"""Preview validated sources or export annual analytics Parquet checkpoints.
 
-P2 intentionally has no export execution mode. Parquet output and manifests
-will be added in P3/P4 after the read-only source contract is validated.
+Exports read existing RAW/transformed files only and never download data.
+The P3 writer refuses all overwrites. Dataset manifests are deferred to P4.
 """
 
 from __future__ import annotations
@@ -9,9 +9,11 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import date
+from pathlib import Path
 
 import config
 from pipeline.analytics.selection import discover_sources, validate_sources
+from pipeline.analytics.export import export_selection, output_paths
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end-year", type=int)
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument("--execute", action="store_true", help="Write Parquet; default is preview only.")
+    parser.add_argument("--output", type=Path, help="Explicit dataset output directory.")
     args = parser.parse_args(argv)
 
     try:
@@ -58,7 +62,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Source months: {len(plan.months)}")
     for month in plan.months:
         print(f"  {month.start:%Y-%m}: {month.path}")
-    print("P2 validation passed. Preview only; no analytics dataset was written.")
+    destinations = output_paths(plan, output_directory=args.output)
+    for destination in destinations:
+        print(f"  Output: {destination}")
+    if args.execute:
+        try:
+            for destination, rows in export_selection(plan, output_directory=args.output):
+                print(f"  Exported: {destination} | rows={rows}")
+        except (ValueError, FileExistsError, OSError) as error:
+            parser.error(str(error))
+        print("P3 export completed. Dataset manifest is deferred to P4.")
+    else:
+        print("P2 validation passed. Preview only; no analytics dataset was written.")
     return 0
 
 
