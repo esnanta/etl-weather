@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 validated by user-reported local tests and two-month preview; P3/P4 not started  
+**Status:** P2 accepted; P3 implementation committed, awaiting local tests and two-month export; P4 not started  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -187,16 +187,50 @@ The user ran both CLI previews locally with `--variables all` for **2024-05-01 t
 
 **P2 gate accepted:** Source discovery and validation passed offline unit tests (12 passed) and two real May–June 2024 previews, per user-reported local output. No export serialization has been tested yet; output-row filtering, missing-value fidelity, and manifest correctness remain P3/P4 gates.
 
+### P3 implementation checkpoint — 2026-11-12
+
+**Status: code and offline tests committed on `dev`; local pytest and real May–June export still need verification.**
+
+- `pipeline/analytics/export.py` streams RAW by <=24 hourly steps (selected NetCDF variables only) and transformed daily Parquet through bounded Arrow batches. It produces one target-year Parquet per resolution, keeping provider values unchanged and mandatory time/grid columns.
+- Only month-owned target hours are written from RAW; previous-month context is excluded after P2 overlap validation. Daily rows are filtered by `valid_time_local`.
+- For a **complete year**, the destination is `analytics/<selection>/<resolution>/YYYY.parquet`. For the selected **partial-year pilot**, the destination is isolated at `analytics/<selection>/<resolution>/pilot_20240501_20240630/2024.parquet`, preventing a May–June file from masquerading as a complete 2024 partition.
+- Source units provided by RAW variable attributes and exact target period/coverage flags are included in Parquet schema metadata. No scientific transformations are performed.
+- Writes are staged in a same-directory temporary file and published with an exclusive hard link. Existing destinations are refused; incomplete temporary files are cleaned up. **No `--force` or manifest-aware reuse in P3**; those require P4's provenance contract.
+- `scripts/run_analytics.py --execute` performs export after source validation; without `--execute` it stays read-only. `--output` is an optional explicit destination dataset directory.
+- Added `tests/unit/pipeline/test_analytics_export.py` and updated existing CLI tests. The assistant could not run the repo tests in the user's local environment; execution evidence is pending.
+
+**Focused local test:**
+
+```bash
+python -m pytest tests/unit/pipeline/test_analytics_selection.py \
+  tests/unit/pipeline/test_analytics_cli.py \
+  tests/unit/pipeline/test_analytics_export.py -q
+```
+
+**Real pilot (run only after tests pass):**
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+
+python -m scripts.run_analytics --resolution daily --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+```
+
+Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and `analytics/all/daily/pilot_20240501_20240630/`. Do not run `--execute` twice without inspecting the first output: P3 correctly rejects already-published files rather than overwriting them. P4 adds dataset manifests/checksums and verified idempotent reuse.
+
+**P3 gate:** Pending local tests and input/output fidelity checks. The manifest, per-source SHA-256 inventory, and automated rerun reuse are P4 work.
+
 ### P3 — Parquet export for both resolutions
 
-- [ ] Implement `hourly` NetCDF-to-tabular export retaining original numeric values, units (in metadata), UTC `valid_time`, and original `latitude/longitude`.
-- [ ] Implement `daily` concatenation of existing transformed Parquet without rerunning UTC+7 aggregation or unit conversion; retain both `valid_time` and `valid_time_local`.
-- [ ] Support `--variables` for both resolutions, keeping mandatory coordinate/time columns.
-- [ ] Write one Parquet per target calendar year, incrementally (chunked/streamed) without materializing an entire year or campaign in memory. Partition hourly by UTC year and daily by local UTC+7 year.
-- [ ] Preserve stable column naming, ordering, and numeric precision where supported; explicitly detect incompatible dtypes/schema.
-- [ ] Stage each annual Parquet to a temporary file and publish only after complete validation. Remove incomplete temporary files on failure without deleting valid prior partitions. Keep manifest consistency when some yearly partitions succeed and others fail.
-- [ ] Make same-selection reruns idempotent **per year**: validate and reuse unchanged partitions or fail clearly. A new year may be added without regenerating prior years; changed source checksums must not be mistaken for unchanged output.
-- [ ] Reject conflicting annual output by default. Allow guarded replacement only via `--execute --force`, with failure-safe annual file/manifest publishing; do not replace unrelated years.
+- [x] Implement `hourly` NetCDF-to-tabular export retaining original numeric values, units (in metadata), UTC `valid_time`, and original `latitude/longitude`.
+- [x] Implement `daily` concatenation of existing transformed Parquet without rerunning UTC+7 aggregation or unit conversion; retain both `valid_time` and `valid_time_local`.
+- [x] Support `--variables` for both resolutions, keeping mandatory coordinate/time columns.
+- [x] Write one Parquet per target calendar year, incrementally (chunked/streamed) without materializing an entire year or campaign in memory. Partition hourly by UTC year and daily by local UTC+7 year.
+- [x] Preserve stable column naming, ordering, and numeric precision where supported; explicitly detect incompatible dtypes/schema.
+- [x] Stage each annual Parquet to a temporary file and publish only after complete validation. Remove incomplete temporary files on failure without deleting valid prior partitions. Keep manifest consistency when some yearly partitions succeed and others fail.
+- [ ] **P4:** Add manifest/checksum-aware per-year reuse. P3 refuses existing output rather than guessing whether it is unchanged; a new non-conflicting year can be written independently.
+- [x] Reject conflicting annual output by default using exclusive publication. **P4:** Decide guarded replacement and file/manifest consistency before offering `--force`; do not replace unrelated years.
 
 **Gate:** Each resolution yields one logical, year-partitioned dataset with independently readable annual Parquet files faithful to their respective sources.
 
