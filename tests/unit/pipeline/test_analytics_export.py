@@ -1,8 +1,8 @@
 """Verify P3 Parquet writing against real production selection and synthetic sources.
 
 Synthetic NetCDF and transformed Parquet fixtures replace CDS and PostgreSQL.
-P4 will add manifest/provenance verification; these tests check row fidelity,
-period ownership, partial-year isolation, and failed-write safety.
+P4 validates checksum/provenance and safely adopts already published outputs.
+These tests protect row fidelity, period ownership and failed-write safety.
 """
 
 from __future__ import annotations
@@ -82,9 +82,10 @@ def test_existing_output_is_not_overwritten(tmp_path):
     target = output_paths(selection, data_directory=tmp_path)[0]
     target.parent.mkdir(parents=True)
     target.write_bytes(b"existing")
-    with pytest.raises(FileExistsError, match="never overwrites"):
+    with pytest.raises((ValueError, OSError)):
         export_selection(selection, data_directory=tmp_path)
     assert target.read_bytes() == b"existing"
+    assert not (target.parent / "manifest.json").exists()
 
 
 def test_failed_write_cleans_temp_and_preserves_missing_final(tmp_path, monkeypatch):
@@ -101,6 +102,7 @@ def test_failed_write_cleans_temp_and_preserves_missing_final(tmp_path, monkeypa
         export_selection(selection, data_directory=tmp_path)
     assert not target.exists()
     assert not list(target.parent.glob(".*.tmp"))
+    assert not (target.parent / "manifest.json").exists()
 
 
 def test_two_month_daily_export_has_no_duplicate_days(tmp_path):
