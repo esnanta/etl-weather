@@ -4,8 +4,27 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P1–P5 accepted for the May–June 2024 pilot; focused analytics 37 passed, complete unit suite 497 passed, and Git ignore confirmed. Historical full-year expansion remains a known limitation.  
+**Status:** P1–P5 accepted for the previous date-driven pilot (37 analytics/497 unit tests). Source-driven CLI change committed on `dev`, pending new focused and full-unit regression verification; safe expansion of partial annual files remains unresolved.  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
+
+## Current CLI contract — source-driven export (2026-11-13)
+
+**Latest change, not yet verified by local pytest:** The user replaced date-window selection with source-driven discovery. The current CLI no longer accepts `--start-date`/`--end-date`. It automatically inventories all monthly `raw/YYYY/*.nc` checkpoints for `hourly` or all monthly `transformed/YYYY/*.parquet` checkpoints for `daily`, groups available months by year, validates them, and writes/verifies the existing `YYYY_<resolution>.parquet` outputs with one dataset-level manifest.
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all
+python -m scripts.run_analytics --resolution daily --variables all
+python -m scripts.run_analytics --resolution hourly --variables all --execute
+python -m scripts.run_analytics --resolution daily --variables all --execute
+```
+
+Source-year partitions do **not** require contiguous calendar months or a completed campaign. Every discovered source month must be valid and contain the selected variables; malformed, incompatible and ambiguous months cause explicit failures rather than silent skips. `complete_year` requires all twelve months. Nonconsecutive months are listed explicitly under `source_months` in the manifest; first/last dates alone are not proof of uninterrupted coverage.
+
+**Important migration constraint:** The canonical 2024 hourly/daily files already contain May–June only. If additional 2024 source months exist, the current no-overwrite policy correctly refuses to replace those files with different coverage. Do not delete or replace the existing exports without a separate guarded replacement decision. Rerunning the new date-free CLI on unchanged May–June source inventory should reuse the existing outputs and manifests.
+
+The older dated CLI snippets below describe **historical implementation checkpoints only** and are superseded by this section and the current operator README. Keep them as historical evidence, not live run commands.
+
+**New focused regression tests:** `test_analytics_selection.py` checks automatic discovery, missing-month gaps, incomplete-variable and ambiguous files; `test_analytics_cli.py` checks date-free dispatch and obsolete flag rejection; `test_analytics_release.py` checks gapped-month manifest coverage. Run focused tests and full `tests/unit` before accepting the changed CLI.
 
 ## 1. Agreed outcome and boundaries
 
@@ -68,7 +87,7 @@ data/
 - Future year additions must not rewrite valid, unchanged earlier-year Parquet files.
 - Never merge artifacts from different bounding boxes, provider datasets, incompatible schemas, or conflicting source identities.
 
-## 3. Proposed interface (not implemented)
+## 3. Original interface proposal (historical; superseded)
 
 Follow the repository's existing thin `scripts/` entrypoint + `pipeline/` domain logic convention:
 
