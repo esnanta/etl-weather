@@ -181,7 +181,7 @@ def _entry(
     months = _sources_for_year(selection, year)
     expected_months = {
         (cursor.year, cursor.month)
-        for cursor in pd.date_range(first, last, freq="MS")
+        for cursor in pd.period_range(first, last, freq="M")
     }
     actual_months = {(month.start.year, month.start.month) for month in months}
     entry = {
