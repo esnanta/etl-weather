@@ -176,14 +176,19 @@ def _entry(
         metadata = reader.schema_arrow.metadata or {}
         units = json.loads(metadata.get(b"analytics_source_units", b"{}"))
         columns = list(reader.schema_arrow.names)
-    return {
+    from pipeline.analytics.export import _full_year
+
+    months = _sources_for_year(selection, year)
+    expected_months = {
+        (cursor.year, cursor.month)
+        for cursor in pd.date_range(first, last, freq="MS")
+    }
+    actual_months = {(month.start.year, month.start.month) for month in months}
+    entry = {
         "year": year,
         "target_start": first.isoformat(),
         "target_end": last.isoformat(),
-        "coverage": (
-            "complete_year" if first == date(year, 1, 1)
-            and last == date(year, 12, 31) else "partial_year"
-        ),
+        "coverage": "complete_year" if _full_year(selection, year) else "partial_year",
         "rows": rows,
         "sha256": calculate_file_sha256(path),
         "time_columns": (
@@ -198,6 +203,13 @@ def _entry(
         ),
         "sources": _source_inventory(selection, year),
     }
+    if actual_months != expected_months:
+        # For non-contiguous source coverage, the inclusive bounds alone
+        # would misleadingly imply that the missing middle months exist.
+        entry["source_months"] = [
+            f"{month.start:%Y-%m}" for month in months
+        ]
+    return entry
 
 
 def publish_manifest(
