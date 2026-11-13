@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2–P4 pilot gates accepted; P5 documentation and regression tests committed, awaiting local verification  
+**Status:** P1–P5 accepted for the May–June 2024 pilot; focused analytics 37 passed, complete unit suite 497 passed, and Git ignore confirmed. Historical full-year expansion remains a known limitation.  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -320,7 +320,7 @@ The user also reported a successful **real hourly migration** to `analytics/all/
 
 ### P5 implementation checkpoint — 2026-11-13
 
-**Status: documentation and additional offline regression tests committed to `dev`; final local regression is pending.**
+**Status: pilot release verification passed based on user-reported local results.**
 
 - The user reran both canonical May–June 2024 `--execute` commands and reported successful verification/reuse of `2024_hourly.parquet` (**2,203,320 rows**) and `2024_daily.parquet` (**32,330 rows**) without path overrides. This is an end-to-end idempotent rerun on the real pilot.
 - `docs/app_description.md` now owns the offline export requirements: separate RAW-preserving hourly vs already-transformed daily exports, required dates/variable selection, year-specific filenames, explicit `partial_year`, missing-value fidelity, SHA-256 provenance, and safe reuse/no overwrite.
@@ -328,14 +328,13 @@ The user also reported a successful **real hourly migration** to `analytics/all/
 - Root `.gitignore` already ignores `/data/`, which includes analytics files and temporary writers. No new ignore rule is necessary.
 - Added `tests/unit/pipeline/test_analytics_release.py` for case/order-independent subset selection, manifest checksum tamper rejection, RAW context exclusion, and two-year output/manifest inventory.
 - No changes to ETL/PostgreSQL/Airflow runtime or scientific transformations. No credentials or dataset files committed.
-- **Open release gate:** Run focused analytics tests, the complete `tests/unit` suite, and other affected test suites if failures indicate a cross-domain regression. Do not claim these have passed before the user reports their outputs.
+- **Release verification:** User ran focused analytics tests (**37 passed in 3.04s**) and the full `tests/unit` suite (**497 passed in 14.05s**), with no reported failures. The existing `git check-ignore` rule also returned the expected hourly analytics path. These are user-reported local results; no integration suite or full historical campaign is claimed.
 - **Known limitation:** A partial `2024_<resolution>.parquet` cannot later be expanded into a complete 2024 file under the current guarded no-overwrite policy. This is intentional and must be resolved by a separate safe replacement design before using the tool for expanding partial annual partitions.
 
 Recommended final verification:
 
 ```bash
 git branch --show-current
-git status --short
 git check-ignore data/cds_reanalysis-era5-land/bbox_n6p1_w94p9_s1p9_e98p3/analytics/all/hourly/2024_hourly.parquet
 
 python -m pytest \
@@ -348,15 +347,21 @@ python -m pytest \
 python -m pytest tests/unit -q
 ```
 
+### P5 local acceptance — 2026-11-13
+
+The user confirmed a successful final regression: **37 focused analytics tests passed in 3.04s** and **497 unit tests passed in 14.05s**. `git check-ignore` returned the expected canonical hourly Parquet path, confirming that analytics output is excluded from Git by `/data/`. Both actual May–June hourly and daily exports had also passed verification and idempotent reruns in the canonical output directories.
+
+**P5 is accepted for the two-month pilot.** Do not extrapolate this to completed historical coverage, live CDS/PostgreSQL integration testing, or an ability to extend an already published partial-year file. The remaining historical five-variable/mixed-schema scenarios and safe partial-year replacement are tracked as limitations rather than claimed as tested.
+
 ### P5 — Offline tests, documentation, and release
 
 - [x] Add focused unit tests under `tests/unit/pipeline/` for selection, input validation, overlapping context, variable errors, missing values, timestamp boundaries, and numeric fidelity.
 - [ ] Test both resolutions; `all`, subset, reordered and invalid variable lists; 5-variable historical inputs; mixed/missing months; incompatible grids/schema; duplicate/conflicting timestamps. **P5 additions cover subset order, context and year boundaries; historical 5-variable/export-mixed-schema cases require further verification.**
 - [ ] Test preview read-only behavior, existing output protection, checksum changes, write interruption, **annual boundary placement**, independently readable year files, incremental addition of a new year, and per-year rerun idempotency using temporary directories. **No `--force` is offered; incremental-year cases added but local tests pending.**
-- [ ] Run focused tests first, then `python -m pytest tests/unit -q`; run additional affected suites where needed. No live CDS or PostgreSQL needed for unit tests.
+- [x] Run focused tests first, then `python -m pytest tests/unit -q`: 37 focused and 497 repository unit tests passed per user-reported local output. No live CDS or PostgreSQL needed.
 - [x] After the export contract is accepted, update the owning `docs/app_description.md` and operator-facing `README.md` / `pipeline/README.md` without duplicating full specifications across files.
-- [ ] Verify generated analytics files and temporary outputs remain ignored by Git. The existing `/data/` rule covers these files; check with `git check-ignore` locally. **Existing reset/destroy currently clears all of `data/`, including future `analytics/` exports**; decide explicitly whether this is acceptable before changing maintenance behavior.
-- [ ] Make small, focused, verified commits on `dev` only. Never touch other branches; push only as authorized. Document tests run, limitations, and commit hashes.
+- [x] Verify generated analytics files and temporary outputs remain ignored by Git. User confirmed `git check-ignore` returns the expected hourly analytics path; `/data/` also covers generated temp files. **Existing reset/destroy currently clears all of `data/`, including future `analytics/` exports**; decide explicitly whether this is acceptable before changing maintenance behavior.
+- [x] Make small, focused commits on `dev` only. Document user-reported tests, remaining coverage limitations and commit hashes.
 
 **Acceptance:** Two selectable, year-partitioned analytics datasets with one manifest each, raw-preserving hourly values, unchanged daily science, explicit missing-variable failures, per-year provenance and safe incremental reruns, offline tests, and no impact on current ETL/PostgreSQL/Airflow operation.
 
