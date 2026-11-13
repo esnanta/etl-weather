@@ -58,6 +58,10 @@ def _full_year(selection: AnalyticsSelection, year: int) -> bool:
     return (
         selection.start <= date(year, 1, 1)
         and selection.end >= date(year, 12, 31)
+        and {
+            month.start.month for month in selection.months
+            if month.start.year == year
+        } == set(range(1, 13))
     )
 
 
