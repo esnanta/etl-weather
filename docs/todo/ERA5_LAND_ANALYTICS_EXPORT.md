@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 accepted; P3 pilot exported successfully (21 focused tests passed); P4 implementation committed, local tests and legacy-file adoption pending  
+**Status:** P2 accepted; P3 pilot exported successfully (21 focused tests passed); P4 manifest and flat filename implementation committed; local P4 regression and legacy migration pending  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -28,7 +28,7 @@ For both exports:
 
 Use the existing dataset and bounding-box directory. **Each resolution is one logical dataset, stored as one Parquet file per target calendar year**, plus a dataset-level manifest. Separate variable selections so files never collide:
 
-```text
+\`\`\`text
 data/
 └── cds_reanalysis-era5-land/
     └── bbox_n6p1_w94p9_s1p9_e98p3/
@@ -37,32 +37,32 @@ data/
         └── analytics/
             ├── all/
             │   ├── hourly/
-            │   │   ├── 2016.parquet
+            │   │   ├── 2016_hourly.parquet
             │   │   ├── ...
-            │   │   ├── 2025.parquet
+            │   │   ├── 2025_hourly.parquet
             │   │   └── manifest.json
             │   └── daily/
-            │       ├── 2016.parquet
+            │       ├── 2016_daily.parquet
             │       ├── ...
-            │       ├── 2025.parquet
+            │       ├── 2025_daily.parquet
             │       └── manifest.json
             └── t2m_tp/
                 ├── hourly/
-                │   ├── 2016.parquet
+                │   ├── 2016_hourly.parquet
                 │   ├── ...
-                │   ├── 2025.parquet
+                │   ├── 2025_hourly.parquet
                 │   └── manifest.json
                 └── daily/
-                    ├── 2016.parquet
+                    ├── 2016_daily.parquet
                     ├── ...
-                    ├── 2025.parquet
+                    ├── 2025_daily.parquet
                     └── manifest.json
 ```
 
 - Directory signatures must be deterministic, case-normalized, sorted, and order-independent: `tp,t2m` and `t2m,tp` produce the same identity.
 - `all` means the **nine active source/provider variables** (`tp,t2m,d2m,swvl1,swvl2,swvl3,ssrd,u10,v10`) from current configuration, not an assumption that every historic file has all nine.
 - The daily source schema additionally contains derived `wind_speed` and `wind_direction`. For the initial CLI contract, `all` selects only the nine provider variables; preserve required `valid_time`, `valid_time_local`, `latitude`, and `longitude` keys. Do not silently include or calculate derived wind columns. Document an explicit future decision if these need selectable export.
-- Each `YYYY.parquet` contains only that year's **target** timestamps: UTC calendar year for hourly; UTC+7 local calendar year for daily. Do not leak adjacent source-context hours/days into a partition.
+- Each `YYYY_hourly.parquet` or `YYYY_daily.parquet` contains only that year's **target** timestamps: UTC calendar year for hourly; UTC+7 local calendar year for daily. Do not leak adjacent source-context hours/days into a partition.
 - The manifest in each `hourly/` or `daily/` directory identifies the requested year range and all constituent partitions; filenames alone do not encode the complete campaign.
 - Each complete annual partition must be independently readable by Pandas, Polars, or DuckDB. A full dataset can be read with a glob over `*.parquet` without concatenating into one large file.
 - Future year additions must not rewrite valid, unchanged earlier-year Parquet files.
@@ -197,7 +197,7 @@ After successful user-reported P3 pilot exports (**19 focused unit tests passed;
 
 - `pipeline/analytics/export.py` streams RAW by <=24 hourly steps (selected NetCDF variables only) and transformed daily Parquet through bounded Arrow batches. It produces one target-year Parquet per resolution, keeping provider values unchanged and mandatory time/grid columns.
 - Only month-owned target hours are written from RAW; previous-month context is excluded after P2 overlap validation. Daily rows are filtered by `valid_time_local`.
-- For a **complete year**, the destination is `analytics/<selection>/<resolution>/YYYY.parquet`. For the selected **partial-year pilot**, the destination is isolated at `analytics/<selection>/<resolution>/pilot_20240501_20240630/2024.parquet`, preventing a May–June file from masquerading as a complete 2024 partition.
+- All requested years, including partial coverage, use `analytics/<selection>/<resolution>/YYYY_<resolution>.parquet`. A partial-year file is **not** treated as complete: it retains exact target dates and `partial_year` in Parquet metadata and the manifest. A later full-year request for the same year is rejected until explicit safe replacement is agreed.
 - Source units provided by RAW variable attributes and exact target period/coverage flags are included in Parquet schema metadata. No scientific transformations are performed.
 - Writes are staged in a same-directory temporary file and published with an exclusive hard link. Existing destinations are refused; incomplete temporary files are cleaned up. **No `--force` or manifest-aware reuse in P3**; those require P4's provenance contract.
 - `scripts/run_analytics.py --execute` performs export after source validation; without `--execute` it stays read-only. `--output` is an optional explicit destination dataset directory.
@@ -221,7 +221,7 @@ python -m scripts.run_analytics --resolution daily --variables all \
   --start-date 2024-05-01 --end-date 2024-06-30 --execute
 ```
 
-Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and `analytics/all/daily/pilot_20240501_20240630/`. Do not run `--execute` twice without inspecting the first output: P3 correctly rejects already-published files rather than overwriting them. P4 adds dataset manifests/checksums and verified idempotent reuse.
+Pilot outputs now live directly under `analytics/all/hourly/` and `analytics/all/daily/`, with filenames `2024_hourly.parquet` and `2024_daily.parquet`. Do not run `--execute` twice without inspecting the first output: P3 correctly rejects already-published files rather than overwriting them. P4 adds dataset manifests/checksums and verified idempotent reuse.
 
 **P3 gate:** Pending local tests and input/output fidelity checks. The manifest, per-source SHA-256 inventory and verified rerun reuse have been implemented in P4; local verification remains pending.
 
@@ -243,7 +243,7 @@ Pilot outputs will be within `analytics/all/hourly/pilot_20240501_20240630/` and
 **Status:** Implementation committed to `dev`, verification on the user's host **not yet run**.
 
 - `pipeline/analytics/verification.py` performs **streaming, row-for-row source/output equality** for the selected time/grid columns and provider variables, including missing positions. It rejects changes to output coverage metadata, schema, values, row counts, or source identity.
-- One `manifest.json` is published in each physical dataset directory. Complete years live under `analytics/<variables>/<resolution>/manifest.json`; **partial pilot exports** retain their own `pilot_<start>_<end>/manifest.json` so incomplete years cannot masquerade as complete ones.
+- One `manifest.json` is published in each physical dataset directory. Complete years live under `analytics/<variables>/<resolution>/manifest.json`; **partial-year exports** live in the same resolution directory, and manifest entries explicitly record `target_start`, `target_end`, and `coverage=partial_year`. A conflicting full-year request fails safely; filenames alone do not imply completeness.
 - Each manifest records CDS ERA5-Land identity, bbox, selected variables, resolution, timezone and treatment, plus per-partition target date coverage, completion flag, column identities, row count, source/output SHA-256 digests and units. Daily units are those of the **upstream** transformed dataset, not a new conversion.
 - Existing P3 Parquet files with **no manifest** are adopted only after the source/output equality check passes, preserving the existing Parquet bytes. If an existing source or output differs, the run fails rather than replacing it.
 - The writer performs preflight on existing outputs; missing outputs are written, verified and then registered. A crash after the Parquet publish but before the manifest publish leaves an unregistered file that can be revalidated and adopted on the next run. Manifest publication uses a same-directory temporary file and `os.replace()`.
@@ -272,15 +272,25 @@ python -m scripts.run_analytics --resolution daily --variables all \
 Expected new JSON files:
 
 ```text
-analytics/all/hourly/pilot_20240501_20240630/manifest.json
-analytics/all/daily/pilot_20240501_20240630/manifest.json
+analytics/all/hourly/manifest.json
+analytics/all/daily/manifest.json
 ```
 
 If the fidelity check reports a discrepancy, **stop** and investigate the source/output values; do not delete or overwrite existing checkpoints or outputs. A successful P3 row-count report alone does not prove source fidelity.
 
+### Output naming simplification — 2026-11-13
+
+**Approved layout:** Store each year directly under its resolution folder with a resolution-specific filename, e.g. `analytics/all/hourly/2024_hourly.parquet`, `analytics/all/daily/2024_daily.parquet`, plus `manifest.json` in each resolution folder. No new `pilot_<date>` directories are created.
+
+**Important:** May–June 2024 remains **partial-year coverage**. The existing metadata/manifest verification rejects a later incompatible request for full-year 2024 rather than silently relabeling or overwriting the partial file.
+
+**Legacy P3 migration:** The previously created `pilot_20240501_20240630/2024.parquet` files are validated against source first, then linked non-destructively to the canonical filenames on the same filesystem. Original pilot files/directories are intentionally left untouched as a recovery copy; cleanup, if desired, requires a separate explicit decision. If the legacy output differs, fail without migrating. The new manifest is created directly in the resolution directory.
+
+**Verification:** Unit tests for flat paths, filename-based manifest keys, migration, incompatible-coverage rejection, and rerun protection have been revised; **local pytest is pending**.
+
 ### P4 — Manifest and fidelity verification
 
-- [x] Publish one dataset-level `manifest.json` in each `<selection>/<resolution>/` directory, with a partition inventory for every published `YYYY.parquet`.
+- [x] Publish one dataset-level `manifest.json` in each `<selection>/<resolution>/` directory, with a partition inventory for every published `YYYY_<resolution>.parquet`.
 - [x] Record provider/dataset, bbox, requested target year range, resolution/timezone, variable list and source units, generation time, and **for each year**: actual coverage, expected coordinates/timestamps, row count, source artifact paths and SHA-256 digests, output SHA-256, and partition status.
 - [x] State that hourly values are raw-preserving, whereas daily values were **already transformed upstream**. The export itself performs no scientific transformation.
 - [ ] Track detailed overlap/partition-selection decisions and any source decoding choices sufficient for reproducibility; do not store quality statistics.
