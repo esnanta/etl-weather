@@ -111,11 +111,18 @@ def test_legacy_pilot_with_changed_values_is_not_linked(tmp_path):
     from pipeline.analytics.export import _write_year
     _write_year(selected, 2024, legacy)
 
-    frame = pd.read_parquet(legacy)
-    frame.loc[0, "tp"] = 888.0
-    frame.to_parquet(legacy, index=False)
+    # Modify a meteorological value but preserve the P3 Arrow schema metadata.
+    # A Pandas round trip would strip analytics_* metadata and test the wrong
+    # validation boundary (metadata rejection instead of value fidelity).
+    table = pq.read_table(legacy)
+    values = table.column("tp").to_pylist()
+    values[0] = 888.0
+    column = table.schema.get_field_index("tp")
+    changed = table.set_column(column, table.schema.field(column), values)
+    pq.write_table(changed, legacy)
+    assert pq.read_metadata(legacy).metadata[b"analytics_resolution"] == b"daily"
 
-    with pytest.raises(ValueError, match="mismatch"):
+    with pytest.raises(ValueError, match="source/output value"):
         export_selection(selected, data_directory=tmp_path)
     assert not new_path.exists()
     assert not (new_path.parent / "manifest.json").exists()
