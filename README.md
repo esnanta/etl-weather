@@ -311,6 +311,48 @@ data/
 
 RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as Parquet. The active variable signature is `d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10`; five-variable artifacts have different paths and cannot resume nine-variable requests. Artifacts are validated before reuse, and historical five-variable files are not deleted automatically.
 
+## Offline Analytics Export
+
+Export existing validated ERA5-Land checkpoints as **independently readable yearly Parquet files** for an external notebook project. This is separate from the existing ETL and PostgreSQL read path: it never downloads CDS inputs, recomputes daily statistics, or changes source checkpoints.
+
+Preview available source months without writing anything:
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30
+```
+
+Publish/verify the available hourly and daily selections:
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+
+python -m scripts.run_analytics --resolution daily --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+```
+
+Both dates are **required and inclusive**. `--variables all` selects the nine provider codes; `--variables tp,t2m` selects a smaller, separately named dataset. An optional `--output` overrides the generated dataset directory for isolated testing. The CLI chooses the standard output directory automatically otherwise.
+
+Generated layout (illustrative 2024 pilot):
+
+```text
+data/cds_reanalysis-era5-land/bbox_n6p1_w94p9_s1p9_e98p3/analytics/
+└── all/
+    ├── hourly/
+    │   ├── 2024_hourly.parquet
+    │   └── manifest.json
+    └── daily/
+        ├── 2024_daily.parquet
+        └── manifest.json
+```
+
+There is **one manifest per selection and resolution**, with an inventory of published year files, their source paths/checksums, output checksums, variable/time semantics and true coverage. The May–June 2024 example remains `partial_year`, **not a complete annual file** despite its name. If additional months arrive later, the current writer will refuse an incompatible overwrite: expanding an existing year's coverage needs a separately authorized safe replacement process.
+
+On `--execute`, unchanged outputs are reverified and reused rather than overwritten. A conflict fails without replacing existing data. No `--force` mode is available. Development reset/destroy operations can remove all generated files under `data/`, including analytics exports; preserve a copy elsewhere before intentional resets.
+
+Implementation details and test ownership: [pipeline/README.md](./pipeline/README.md) and [Analytics Export checklist](./docs/todo/ERA5_LAND_ANALYTICS_EXPORT.md).
+
 ## Persistence and Idempotency
 
 PostgreSQL stores canonical daily observations in `climate_data.t_daily_climate_detail`. Schema initialization adds six nullable `DOUBLE PRECISION` fields (`swvl2`, `swvl3`, `u10`, `v10`, daily wind speed, and direction, using the database field names listed in [pipeline/README.md](./pipeline/README.md)) to compatible older tables without dropping historical observations. Re-running the same logical request validates and reuses existing artifacts and avoids duplicate canonical observations.
