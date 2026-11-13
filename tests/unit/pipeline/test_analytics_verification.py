@@ -12,6 +12,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import xarray as xr
@@ -118,7 +119,10 @@ def test_legacy_pilot_with_changed_values_is_not_linked(tmp_path):
     values = table.column("tp").to_pylist()
     values[0] = 888.0
     column = table.schema.get_field_index("tp")
-    changed = table.set_column(column, table.schema.field(column), values)
+    changed = table.set_column(
+        column, table.schema.field(column),
+        pa.array(values, type=table.schema.field(column).type),
+    )
     pq.write_table(changed, legacy)
     assert pq.read_metadata(legacy).metadata[b"analytics_resolution"] == b"daily"
 
