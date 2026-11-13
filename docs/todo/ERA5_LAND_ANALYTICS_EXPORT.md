@@ -28,7 +28,7 @@ For both exports:
 
 Use the existing dataset and bounding-box directory. **Each resolution is one logical dataset, stored as one Parquet file per target calendar year**, plus a dataset-level manifest. Separate variable selections so files never collide:
 
-\`\`\`text
+```text
 data/
 └── cds_reanalysis-era5-land/
     └── bbox_n6p1_w94p9_s1p9_e98p3/
@@ -74,13 +74,16 @@ Follow the repository's existing thin `scripts/` entrypoint + `pipeline/` domain
 
 ```bash
 # Preview only; no export is written
-python -m scripts.run_analytics --resolution hourly --variables t2m,tp
+python -m scripts.run_analytics --resolution hourly --variables t2m,tp \
+  --start-date 2024-05-01 --end-date 2024-06-30
 
 # Produce the hourly raw-preserving export
-python -m scripts.run_analytics --resolution hourly --variables t2m,tp --execute
+python -m scripts.run_analytics --resolution hourly --variables t2m,tp \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
 
 # Produce the daily already-transformed export
-python -m scripts.run_analytics --resolution daily --variables all --execute
+python -m scripts.run_analytics --resolution daily --variables all \
+  --start-date 2024-05-01 --end-date 2024-06-30 --execute
 ```
 
 Proposed arguments:
