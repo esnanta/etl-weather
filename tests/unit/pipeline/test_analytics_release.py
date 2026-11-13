@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 from pipeline.analytics.export import export_selection, output_paths
-from pipeline.analytics.selection import discover_sources, validate_sources
+from pipeline.analytics.selection import discover_available_sources, discover_sources, validate_sources
 from tests.unit.pipeline.test_analytics_selection import _daily_month, _raw_month
 
 
@@ -115,3 +115,22 @@ def test_two_year_daily_export_has_independent_files_and_manifest_inventory(tmp_
     }
     assert all(part["coverage"] == "partial_year" for part in document["partitions"].values())
     assert export_selection(plan, data_directory=tmp_path) == result
+
+
+def test_source_driven_nonconsecutive_months_are_not_marked_complete(tmp_path):
+    _daily_month(tmp_path, 5)
+    _daily_month(tmp_path, 7)
+    (plan,) = discover_available_sources(
+        "daily", "tp,t2m", data_directory=tmp_path
+    )
+    (path, rows), = export_selection(plan, data_directory=tmp_path)
+    frame = pd.read_parquet(path)
+    assert rows == (31 + 31) * 2
+    assert set(frame.valid_time_local.dt.month.unique()) == {5, 7}
+    manifest = json.loads((path.parent / "manifest.json").read_text())
+    partition = manifest["partitions"][path.name]
+    assert partition["coverage"] == "partial_year"
+    assert partition["target_start"] == "2024-05-01"
+    assert partition["target_end"] == "2024-07-31"
+    assert partition["source_months"] == ["2024-05", "2024-07"]
+    assert export_selection(plan, data_directory=tmp_path) == ((path, rows),)
