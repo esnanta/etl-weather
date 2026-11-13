@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P1–P5 accepted for the previous date-driven pilot (37 analytics/497 unit tests). Source-driven CLI change committed on `dev`, pending new focused and full-unit regression verification; safe expansion of partial annual files remains unresolved.  
+**Status:** P1–P5 and source-driven CLI accepted for the May–June 2024 pilot (40 focused analytics / 500 unit tests passed). Safe expansion of existing partial-year partitions remains unresolved.  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## Current CLI contract — source-driven export (2026-11-13)
@@ -25,6 +25,20 @@ Source-year partitions do **not** require contiguous calendar months or a comple
 The older dated CLI snippets below describe **historical implementation checkpoints only** and are superseded by this section and the current operator README. Keep them as historical evidence, not live run commands.
 
 **New focused regression tests:** `test_analytics_selection.py` checks automatic discovery, missing-month gaps, incomplete-variable and ambiguous files; `test_analytics_cli.py` checks date-free dispatch and obsolete flag rejection; `test_analytics_release.py` checks gapped-month manifest coverage. Run focused tests and full `tests/unit` before accepting the changed CLI.
+
+## Source-driven CLI acceptance — 2026-11-13
+
+**Accepted for available May–June 2024 source files, based on reported local execution.**
+
+- Focused analytics regression: **40 passed in 3.78s**.
+- Complete repository unit suite: **500 passed in 14.30s**.
+- Hourly preview, without dates: discovered **2024**, source months **2024-05** and **2024-06**, no writes.
+- Daily preview, without dates: discovered **2024**, source months **2024-05** and **2024-06**, no writes.
+- Hourly `--execute` verified/published `analytics/all/hourly/2024_hourly.parquet` (**2,203,320 rows**).
+- Daily `--execute` verified/published `analytics/all/daily/2024_daily.parquet` (**32,330 rows**).
+- Both existing datasets were successfully reused with source-driven CLI; separate manifest files remain in their respective resolution directories.
+
+**Scope:** This confirms the auto-discovery/rerun path for two adjacent months, not a full historical inventory or a successful extension of an already published partial annual file. New months for an existing year still trigger the guarded refusal to overwrite, and the replacement strategy remains a separate change.
 
 ## 1. Agreed outcome and boundaries
 
