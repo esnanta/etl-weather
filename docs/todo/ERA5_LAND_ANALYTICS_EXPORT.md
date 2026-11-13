@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2/P3 accepted; P4 hourly legacy migration passed; one regression fixture corrected after 32 passed/1 failed; local retest and daily migration pending  
+**Status:** P2–P4 pilot gates accepted; P4 focused tests 33 passed and both hourly/daily outputs verified; P5 pending  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -296,6 +296,16 @@ The user also reported a successful **real hourly migration** to `analytics/all/
 **Legacy P3 migration:** The previously created `pilot_20240501_20240630/2024.parquet` files are validated against source first, then linked non-destructively to the canonical filenames on the same filesystem. Original pilot files/directories are intentionally left untouched as a recovery copy; cleanup, if desired, requires a separate explicit decision. If the legacy output differs, fail without migrating. The new manifest is created directly in the resolution directory.
 
 **Verification:** Unit tests for flat paths, filename-based manifest keys, migration, incompatible-coverage rejection, and rerun protection have been revised; **local pytest is pending**.
+
+### P4 acceptance evidence — 2026-11-13
+
+**P4 pilot gate accepted based on user-reported local results.**
+
+- Focused offline tests: `python -m pytest tests/unit/pipeline/test_analytics_selection.py tests/unit/pipeline/test_analytics_cli.py tests/unit/pipeline/test_analytics_export.py tests/unit/pipeline/test_analytics_verification.py -q` → **33 passed in 3.25s**.
+- Hourly nine-variable May–June pilot: `analytics/all/hourly/2024_hourly.parquet`, **2,203,320 rows**, previously reported successfully verified/published with manifest.
+- Daily nine-variable May–June pilot: `analytics/all/daily/2024_daily.parquet`, **32,330 rows**, newly reported **P4 export verification and manifest publication completed**.
+- Both exports cover **2024-05-01 through 2024-06-30 only**, and must remain identified as `partial_year`.
+- The reported outputs verify the P4 pilot workflow, not complete 2024 coverage or a whole-repository test run. P5 includes broader regression, docs and release checks.
 
 ### P4 — Manifest and fidelity verification
 
