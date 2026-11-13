@@ -313,28 +313,25 @@ RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as P
 
 ## Offline Analytics Export
 
-Export existing validated ERA5-Land checkpoints as **independently readable yearly Parquet files** for an external notebook project. This is separate from the existing ETL and PostgreSQL read path: it never downloads CDS inputs, recomputes daily statistics, or changes source checkpoints.
+Export **all available** ERA5-Land monthly checkpoints to one annual Parquet file per year/resolution for external notebooks, without downloading CDS data, recalculating daily statistics, or changing source checkpoints.
 
-Preview available source months without writing anything:
-
-```bash
-python -m scripts.run_analytics --resolution hourly --variables all \
-  --start-date 2024-05-01 --end-date 2024-06-30
-```
-
-Publish/verify the available hourly and daily selections:
+Preview all discovered years and their existing source months:
 
 ```bash
-python -m scripts.run_analytics --resolution hourly --variables all \
-  --start-date 2024-05-01 --end-date 2024-06-30 --execute
-
-python -m scripts.run_analytics --resolution daily --variables all \
-  --start-date 2024-05-01 --end-date 2024-06-30 --execute
+python -m scripts.run_analytics --resolution hourly --variables all
+python -m scripts.run_analytics --resolution daily --variables all
 ```
 
-Both dates are **required and inclusive**. `--variables all` selects the nine provider codes; `--variables tp,t2m` selects a smaller, separately named dataset. An optional `--output` overrides the generated dataset directory for isolated testing. The CLI chooses the standard output directory automatically otherwise.
+Write or verify every available year:
 
-Generated layout (illustrative 2024 pilot):
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all --execute
+python -m scripts.run_analytics --resolution daily --variables all --execute
+```
+
+**No start/end dates are required or accepted.** `--resolution hourly` discovers existing `raw/YYYY/*.nc` checkpoints; `--resolution daily` discovers existing `transformed/YYYY/*.parquet`. Each layer is independent. `--variables all` requires the nine active provider variables in every discovered month; `--variables tp,t2m` selects a smaller dataset with a different signature. Unsupported or ambiguous sources are rejected rather than skipped. The optional `--output` is for isolated testing; normal operation resolves the destination automatically.
+
+Example output for existing May–June 2024 data:
 
 ```text
 data/cds_reanalysis-era5-land/bbox_n6p1_w94p9_s1p9_e98p3/analytics/
@@ -347,11 +344,11 @@ data/cds_reanalysis-era5-land/bbox_n6p1_w94p9_s1p9_e98p3/analytics/
         └── manifest.json
 ```
 
-There is **one manifest per selection and resolution**, with an inventory of published year files, their source paths/checksums, output checksums, variable/time semantics and true coverage. The May–June 2024 example remains `partial_year`, **not a complete annual file** despite its name. If additional months arrive later, the current writer will refuse an incompatible overwrite: expanding an existing year's coverage needs a separately authorized safe replacement process.
+Each resolution/variable-selection directory has **one manifest** indexing all exported yearly Parquet files. The manifest preserves source/output SHA-256 hashes, true temporal coverage and source metadata. A year is `complete_year` only when all 12 months exist. If only some months exist, the result is `partial_year`; gaps between available months are recorded explicitly in `source_months` when relevant.
 
-On `--execute`, unchanged outputs are reverified and reused rather than overwritten. A conflict fails without replacing existing data. No `--force` mode is available. Development reset/destroy operations can remove all generated files under `data/`, including analytics exports; preserve a copy elsewhere before intentional resets.
+A rerun verifies and reuses matching output. If new source months are subsequently added to a year already exported, the current implementation **refuses to overwrite or extend** the old annual Parquet; a separately designed guarded replacement mechanism is needed before exporting an expanded version of that same year. No `--force` mode exists. Generated artifacts are under `data/`, which is ignored by Git and is affected by intentional development reset/destroy commands.
 
-Implementation details and test ownership: [pipeline/README.md](./pipeline/README.md) and [Analytics Export checklist](./docs/todo/ERA5_LAND_ANALYTICS_EXPORT.md).
+See [pipeline/README.md](./pipeline/README.md) for module boundaries and [the Analytics Export checklist](./docs/todo/ERA5_LAND_ANALYTICS_EXPORT.md) for test/release tracking.
 
 ## Persistence and Idempotency
 
