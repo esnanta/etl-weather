@@ -1,63 +1,65 @@
-"""Preview validated sources or export annual analytics Parquet checkpoints.
+"""Preview or export all available ERA5-Land monthly checkpoints by source year.
 
-Exports read existing RAW/transformed files only and never download data.
-Existing output is verified before reuse; P4 writes source/output manifests.
+Never downloads data or alters RAW/transformed sources. Existing analytics
+outputs are verified and reused only when coverage and values still match.
 """
 
 from __future__ import annotations
 
 import argparse
-from datetime import date
 from pathlib import Path
 
-from pipeline.analytics.selection import discover_sources, validate_sources
+from pipeline.analytics.selection import (
+    AnalyticsSelection,
+    discover_available_sources,
+    validate_sources,
+)
 from pipeline.analytics.export import export_selection, output_paths
-
-def _date_bounds(args: argparse.Namespace) -> tuple[date, date]:
-    """Validate the required inclusive ISO date range."""
-    start = date.fromisoformat(args.start_date)
-    end = date.fromisoformat(args.end_date)
-    if start > end:
-        raise ValueError("Start date must not be after end date.")
-    return start, end
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Preview or export a selected period without changing source checkpoints."""
+    """Discover and optionally publish all available source years."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resolution", choices=("hourly", "daily"), required=True)
     parser.add_argument("--variables", default="all")
-    parser.add_argument("--start-date", required=True, help="Inclusive start date (YYYY-MM-DD).")
-    parser.add_argument("--end-date", required=True, help="Inclusive end date (YYYY-MM-DD).")
-    parser.add_argument("--execute", action="store_true", help="Write Parquet; default is preview only.")
+    parser.add_argument("--execute", action="store_true", help="Write/verify Parquet; preview is the default.")
     parser.add_argument("--output", type=Path, help="Explicit dataset output directory.")
     args = parser.parse_args(argv)
 
     try:
-        start, end = _date_bounds(args)
-        plan = discover_sources(args.resolution, args.variables, start, end)
-        validate_sources(plan)
+        years = discover_available_sources(args.resolution, args.variables)
+        # Validate all discovered months together, including RAW overlaps
+        # spanning adjacent calendar years, before writing any outputs.
+        months = tuple(month for selection in years for month in selection.months)
+        combined = AnalyticsSelection(
+            args.resolution, years[0].variables,
+            months[0].start, months[-1].end, months,
+        )
+        validate_sources(combined)
     except (ValueError, FileNotFoundError) as error:
         parser.error(str(error))
 
-    print(f"Resolution: {plan.resolution}")
-    print(f"Target period: {plan.start} to {plan.end}")
-    print(f"Variables: {','.join(plan.variables)}")
-    print(f"Source months: {len(plan.months)}")
-    for month in plan.months:
-        print(f"  {month.start:%Y-%m}: {month.path}")
-    destinations = output_paths(plan, output_directory=args.output)
-    for destination in destinations:
-        print(f"  Output: {destination}")
+    print(f"Resolution: {args.resolution}")
+    print(f"Variables: {','.join(years[0].variables)}")
+    print(f"Available years: {len(years)}")
+    for selection in years:
+        print(f"  Year: {selection.start.year} | source months: {len(selection.months)}")
+        print("  Months: " + ", ".join(f"{month.start:%Y-%m}" for month in selection.months))
+        for path in output_paths(selection, output_directory=args.output):
+            print(f"  Output: {path}")
+
     if args.execute:
         try:
-            for destination, rows in export_selection(plan, output_directory=args.output):
-                print(f"  Verified/published: {destination} | rows={rows}")
+            for selection in years:
+                for destination, rows in export_selection(
+                    selection, output_directory=args.output
+                ):
+                    print(f"  Verified/published: {destination} | rows={rows}")
         except (ValueError, FileExistsError, OSError) as error:
             parser.error(str(error))
-        print("P4 export verification and manifest publication completed.")
+        print("Analytics export verification and manifest publication completed.")
     else:
-        print("P2 validation passed. Preview only; no analytics dataset was written.")
+        print("Validation passed. Preview only; no analytics dataset was written.")
     return 0
 
 
