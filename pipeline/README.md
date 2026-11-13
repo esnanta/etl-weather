@@ -450,32 +450,33 @@ The configured inclusive period comes from the project environment. The runtime 
 
 ### Offline analytics export
 
-The Airflow-independent `pipeline/analytics/` modules discover existing monthly
-checkpoints, validate their period and selected variables, stream target hours
-(`valid_time`) or local days (`valid_time_local`) to Parquet, verify all
-exported values (including missingness), and publish a per-resolution
-`manifest.json` with year-level source/output hashes.
+The Airflow-independent `pipeline/analytics/` modules discover **all
+available monthly checkpoints** in the selected source layer (`raw/` for
+hourly, `transformed/` for daily), validate their time/grid/variable
+contracts, group them by source calendar year, stream target rows to Parquet,
+and verify each output before publishing a per-resolution `manifest.json`.
 
-Output identity is determined by the existing provider/dataset, bbox, sorted
-provider-variable selection (`all` or e.g. `t2m_tp`), resolution, and year:
-`analytics/<selection>/<resolution>/YYYY_<resolution>.parquet`. UTC RAW
-context hours are excluded; daily values are not recalculated. Historical
-five-variable files remain available for supported subset requests but cannot
-silently satisfy `all` nine-variable requests.
+`python -m scripts.run_analytics --resolution hourly --variables all`
+provides a read-only preview; add `--execute` to publish/revalidate annual
+partitions. Use `--resolution daily` for already-transformed UTC+7 values.
+**The CLI has no date-range flags**; discovered source files determine the
+available years and months. Missing calendar months are not downloaded,
+imputed, or assumed present. A year is complete only when all 12 months
+exist. Manifest entries for nonconsecutive source months list the actual
+months, not just their first/last dates.
 
-The CLI `python -m scripts.run_analytics` requires `--resolution`,
-`--start-date`, and `--end-date`, accepts `--variables` (default `all`),
-and performs a read-only preview unless `--execute` is provided.
-It does not access CDS or PostgreSQL. Existing matching output is verified
-and reused; changed source/output or incompatible coverage is rejected.
-Partial-year exports are explicitly identified in Parquet metadata and manifest
-even when their filenames include only the year. The writer currently does not
-extend or replace an existing annual file, and does not offer `--force`.
-The `--output` option is intended for isolated destinations; normal operation
-uses the automatically resolved data directory.
+Output identity is `analytics/<selection>/<resolution>/YYYY_<resolution>.parquet`.
+Both `all` (nine provider variables) and smaller subsets are supported,
+provided every discovered source month contains the selected fields. Ambiguous
+or incompatible monthly sources are rejected. RAW context hours are excluded;
+daily values and missingness are preserved without recomputation.
 
-See the root [README.md](../README.md) for CLI examples. The owning export
-requirements are in [docs/app_description.md](../docs/app_description.md).
+Existing matching annual output is verified and reused. If a new month is
+later added to an already-published partial annual file, its coverage no
+longer matches and the exporter safely refuses replacement; `--force`
+and automatic extension are deliberately unsupported. See the operator
+examples in [README.md](../README.md) and the scientific/data contract
+in [docs/app_description.md](../docs/app_description.md).
 
 ### Airflow
 
