@@ -448,6 +448,35 @@ per-request-partition idempotency contract. See the root README for command usag
 
 The configured inclusive period comes from the project environment. The runtime splits multi-month periods into calendar-month request partitions and processes each partition through the same checkpoint boundaries.
 
+### Offline analytics export
+
+The Airflow-independent `pipeline/analytics/` modules discover existing monthly
+checkpoints, validate their period and selected variables, stream target hours
+(`valid_time`) or local days (`valid_time_local`) to Parquet, verify all
+exported values (including missingness), and publish a per-resolution
+`manifest.json` with year-level source/output hashes.
+
+Output identity is determined by the existing provider/dataset, bbox, sorted
+provider-variable selection (`all` or e.g. `t2m_tp`), resolution, and year:
+`analytics/<selection>/<resolution>/YYYY_<resolution>.parquet`. UTC RAW
+context hours are excluded; daily values are not recalculated. Historical
+five-variable files remain available for supported subset requests but cannot
+silently satisfy `all` nine-variable requests.
+
+The CLI `python -m scripts.run_analytics` requires `--resolution`,
+`--start-date`, and `--end-date`, accepts `--variables` (default `all`),
+and performs a read-only preview unless `--execute` is provided.
+It does not access CDS or PostgreSQL. Existing matching output is verified
+and reused; changed source/output or incompatible coverage is rejected.
+Partial-year exports are explicitly identified in Parquet metadata and manifest
+even when their filenames include only the year. The writer currently does not
+extend or replace an existing annual file, and does not offer `--force`.
+The `--output` option is intended for isolated destinations; normal operation
+uses the automatically resolved data directory.
+
+See the root [README.md](../README.md) for CLI examples. The owning export
+requirements are in [docs/app_description.md](../docs/app_description.md).
+
 ### Airflow
 
 Airflow calls pipeline runtime boundaries rather than reproducing ETL logic in DAG files. For DAG IDs, schedules, pools, CDS pacing, retries, campaign progress, and recovery procedures, use [`orchestration/README.md`](../orchestration/README.md).
