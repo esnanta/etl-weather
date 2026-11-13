@@ -40,8 +40,8 @@ def test_manifest_tracks_source_and_output_sha256(tmp_path, resolution):
     assert record["dataset"] == "reanalysis-era5-land"
     assert record["resolution"] == resolution
     assert record["variables"] == ["t2m", "tp"]
-    assert list(record["partitions"]) == ["2024.parquet"]
-    partition = record["partitions"]["2024.parquet"]
+    assert list(record["partitions"]) == [f"2024_{resolution}.parquet"]
+    partition = record["partitions"][f"2024_{resolution}.parquet"]
     assert partition["coverage"] == "partial_year"
     assert partition["target_start"] == "2024-05-01"
     assert partition["target_end"] == "2024-05-31"
@@ -75,6 +75,50 @@ def test_adopt_existing_p3_without_replacing_parquet(tmp_path):
     assert export_selection(selected, data_directory=tmp_path) == results
     assert output.stat().st_ino == before
     assert (output.parent / "manifest.json").read_bytes() == manifest_before
+
+
+@pytest.mark.parametrize("resolution", ["hourly", "daily"])
+def test_existing_legacy_pilot_is_linked_without_rewriting_bytes(tmp_path, resolution):
+    (_raw_month if resolution == "hourly" else _daily_month)(tmp_path, 5)
+    selected = _selection(tmp_path, resolution)
+    new_path = output_paths(selected, data_directory=tmp_path)[0]
+    legacy = new_path.parent / "pilot_20240501_20240531" / "2024.parquet"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+
+    from pipeline.analytics.export import _write_year
+    _write_year(selected, 2024, legacy)
+    original_bytes = legacy.read_bytes()
+    original_inode = legacy.stat().st_ino
+
+    result = export_selection(selected, data_directory=tmp_path)
+    assert result[0][0] == new_path
+    assert new_path.name == f"2024_{resolution}.parquet"
+    assert new_path.parent.name == resolution
+    assert new_path.read_bytes() == original_bytes
+    assert legacy.read_bytes() == original_bytes
+    assert new_path.stat().st_ino == original_inode
+    assert (new_path.parent / "manifest.json").exists()
+
+    assert export_selection(selected, data_directory=tmp_path) == result
+
+
+def test_legacy_pilot_with_changed_values_is_not_linked(tmp_path):
+    _daily_month(tmp_path, 5)
+    selected = _selection(tmp_path, "daily")
+    new_path = output_paths(selected, data_directory=tmp_path)[0]
+    legacy = new_path.parent / "pilot_20240501_20240531" / "2024.parquet"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    from pipeline.analytics.export import _write_year
+    _write_year(selected, 2024, legacy)
+
+    frame = pd.read_parquet(legacy)
+    frame.loc[0, "tp"] = 888.0
+    frame.to_parquet(legacy, index=False)
+
+    with pytest.raises(ValueError, match="mismatch"):
+        export_selection(selected, data_directory=tmp_path)
+    assert not new_path.exists()
+    assert not (new_path.parent / "manifest.json").exists()
 
 
 def test_changed_output_is_rejected_without_overwrite(tmp_path):
