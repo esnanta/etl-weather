@@ -4,7 +4,7 @@
 
 **Branch:** `dev`  
 **Created:** 2026-11-12  
-**Status:** P2 accepted; P3 pilot exported successfully (21 focused tests passed); P4 manifest and flat filename implementation committed; local P4 regression and legacy migration pending  
+**Status:** P2/P3 accepted; P4 hourly legacy migration passed; one regression fixture corrected after 32 passed/1 failed; local retest and daily migration pending  
 **Scope:** Export only. EDA, data quality statistics, feature engineering, clustering, and model evaluation belong to a separate project (Jupyter / Google Colab).
 
 ## 1. Agreed outcome and boundaries
@@ -280,6 +280,12 @@ analytics/all/daily/manifest.json
 ```
 
 If the fidelity check reports a discrepancy, **stop** and investigate the source/output values; do not delete or overwrite existing checkpoints or outputs. A successful P3 row-count report alone does not prove source fidelity.
+
+### P4 local feedback — 2026-11-13
+
+The user reported **32 passed, 1 failed** in the focused P4 tests. The failing `test_legacy_pilot_with_changed_values_is_not_linked` had used `pd.read_parquet(...).to_parquet(...)` to mutate `tp`, unintentionally removing the `analytics_*` Parquet schema metadata. The production verifier correctly rejected the file at the **metadata** boundary, whereas the test expected a **value mismatch**. The test fixture has been corrected to modify the Arrow column while preserving the source schema metadata and assert the explicit source/output mismatch; rerun the focused tests locally. No validation rules were weakened.
+
+The user also reported a successful **real hourly migration** to `analytics/all/hourly/2024_hourly.parquet` (**2,203,320 rows**, verification and manifest publication completed). The **daily** migration has not yet been reported. Avoid deleting or regenerating the hourly output simply because an unrelated test failed.
 
 ### Output naming simplification — 2026-11-13
 
