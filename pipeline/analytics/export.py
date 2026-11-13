@@ -1,8 +1,8 @@
 """Stream validated ERA5-Land checkpoints to independent annual Parquet files.
 
-This module never changes source checkpoints. Partial-year selections are
-isolated under a period-scoped directory. P4 verifies existing P3 exports
-before adopting them into provenance manifests; outputs are never overwritten.
+This module never changes source checkpoints. Annual filenames include the
+resolution; partial coverage remains explicit in Parquet/manifest metadata.
+Legacy pilot outputs can be linked into the new layout after full verification.
 """
 
 from __future__ import annotations
@@ -67,19 +67,21 @@ def output_paths(
     data_directory: Path = DATA_DIRECTORY,
     output_directory: Path | None = None,
 ) -> tuple[Path, ...]:
-    """Return deterministic destinations with partial-year pilots isolated."""
+    """Return one resolution-qualified Parquet name per calendar year."""
     root = output_directory or _dataset_directory(selection, data_directory)
-    years = range(selection.start.year, selection.end.year + 1)
-    targets: list[Path] = []
-    for year in years:
-        if _full_year(selection, year):
-            targets.append(root / f"{year}.parquet")
-        else:
-            first = max(selection.start, date(year, 1, 1))
-            last = min(selection.end, date(year, 12, 31))
-            pilot = root / f"pilot_{first:%Y%m%d}_{last:%Y%m%d}"
-            targets.append(pilot / f"{year}.parquet")
-    return tuple(targets)
+    return tuple(
+        root / f"{year}_{selection.resolution}.parquet"
+        for year in range(selection.start.year, selection.end.year + 1)
+    )
+
+
+def _legacy_pilot_path(selection: AnalyticsSelection, year: int, root: Path) -> Path | None:
+    """Locate the previous P3 pilot layout without removing its original."""
+    if _full_year(selection, year):
+        return None
+    first = max(selection.start, date(year, 1, 1))
+    last = min(selection.end, date(year, 12, 31))
+    return root / f"pilot_{first:%Y%m%d}_{last:%Y%m%d}" / f"{year}.parquet"
 
 
 def _target_limits(selection: AnalyticsSelection, year: int) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -243,22 +245,39 @@ def export_selection(
 
     # Preflight all existing artifacts and manifests before any new writes.
     # This avoids adding a new partition to a dataset with a corrupt older one.
-    for path in destinations:
+    for year, path in zip(years, destinations):
         if path.exists() and not path.is_file():
             raise ValueError(f"Analytics output is not a regular file: {path}")
         if path.exists():
-            verify_output(selection, int(path.stem), path)
+            verify_output(selection, year, path)
         manifest_path = path.parent / "manifest.json"
         if manifest_path.exists():
             manifest = _read_manifest(manifest_path, selection)
             _verify_manifest_inventory(path.parent, manifest)
+
+        # Legacy P3 exports may already exist under pilot_<date> directories.
+        # Verify those bytes before attempting a non-destructive migration.
+        old_path = _legacy_pilot_path(selection, year, path.parent)
+        if not path.exists() and old_path is not None and old_path.exists():
+            verify_output(selection, year, old_path)
+            old_manifest = old_path.parent / "manifest.json"
+            if old_manifest.exists():
+                old_document = _read_manifest(old_manifest, selection)
+                _verify_manifest_inventory(old_path.parent, old_document)
 
     results: list[tuple[Path, int]] = []
     for year, path in zip(years, destinations):
         if path.exists():
             rows = verify_output(selection, year, path)
         else:
-            _write_year(selection, year, path)
+            old_path = _legacy_pilot_path(selection, year, path.parent)
+            if old_path is not None and old_path.is_file():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                # Hard-link only: preserves original legacy bytes and refuses
+                # races/collisions without copying or overwriting.
+                os.link(old_path, path)
+            else:
+                _write_year(selection, year, path)
             rows = verify_output(selection, year, path)
         publish_manifest(selection, year, path, rows)
         results.append((path, rows))
