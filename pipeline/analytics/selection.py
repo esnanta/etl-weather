@@ -1,7 +1,7 @@
 """Select and validate existing ERA5-Land monthly sources for analytics export.
 
 This module only reads checkpoints. It neither writes analytics artifacts nor
-downloads data. Period completeness is scoped to the caller's requested months.
+downloads data. Period completeness is validated within each available source month. A source-\ndriven discovery mode preserves gaps without fabricating missing months.
 """
 
 from __future__ import annotations
@@ -151,6 +151,77 @@ def discover_sources(
 
     return AnalyticsSelection(resolution, requested, start, end, tuple(selected))
 
+
+
+def discover_available_sources(
+    resolution: str,
+    variables: str,
+    *,
+    data_directory: Path = DATA_DIRECTORY,
+) -> tuple[AnalyticsSelection, ...]:
+    """Discover all existing checkpoint months, grouped by calendar year.
+
+    Missing calendar months are allowed, but each month with a source must
+    have exactly one compatible checkpoint. A historical smaller-variable
+    file cannot silently satisfy an 'all' request for nine variables.
+    """
+    if resolution not in _RESOLUTIONS:
+        raise ValueError("Resolution must be 'hourly' or 'daily'.")
+    requested = normalize_variables(variables)
+    layer, extension = _RESOLUTIONS[resolution]
+    root = _dataset_root(data_directory) / layer
+    candidates: dict[tuple[int, int], list[Path]] = {}
+    available_months: set[tuple[int, int]] = set()
+
+    for path in sorted(root.glob(f"*/*{extension}")):
+        if not path.parent.name.isdecimal() or len(path.parent.name) != 4:
+            raise ValueError(f"Unexpected {resolution} source directory: {path}")
+        match = _SOURCE_NAME.fullmatch(path.stem)
+        if match is None:
+            raise ValueError(f"Unrecognized {resolution} checkpoint name: {path}")
+        year = int(path.parent.name)
+        if match["year"] != str(year):
+            raise ValueError(f"Source year directory mismatch: {path}")
+        try:
+            month = int(match["start"][:2])
+            first = date(year, month, 1)
+            last = date(year, month, monthrange(year, month)[1])
+        except ValueError as error:
+            raise ValueError(f"Invalid source month: {path}") from error
+        available = _source_variables(path, first=first, last=last)
+        if available is None:
+            raise ValueError(f"Invalid full-month source identity: {path}")
+        key = (year, month)
+        available_months.add(key)
+        if set(requested).issubset(available):
+            candidates.setdefault(key, []).append(path)
+
+    if not available_months:
+        raise FileNotFoundError(f"No {resolution} checkpoint files found under {root}")
+
+    by_year: dict[int, list[SourceMonth]] = {}
+    for year, month in sorted(available_months):
+        paths = candidates.get((year, month), [])
+        if not paths:
+            raise ValueError(
+                f"No {resolution} checkpoint containing {','.join(requested)} "
+                f"for {year:04d}-{month:02d}; source exists with fewer variables"
+            )
+        if len(paths) != 1:
+            raise ValueError(
+                f"Ambiguous {resolution} source for {year:04d}-{month:02d}: "
+                + ", ".join(str(path) for path in paths)
+            )
+        first = date(year, month, 1)
+        last = date(year, month, monthrange(year, month)[1])
+        by_year.setdefault(year, []).append(SourceMonth(paths[0], first, last))
+
+    return tuple(
+        AnalyticsSelection(
+            resolution, requested, months[0].start, months[-1].end, tuple(months)
+        )
+        for year, months in sorted(by_year.items())
+    )
 
 def _check_axis(values: np.ndarray, name: str, expected: int) -> None:
     if len(values) != expected or len(np.unique(values)) != expected:
