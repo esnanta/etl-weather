@@ -15,6 +15,7 @@ import pytest
 import xarray as xr
 
 from pipeline.analytics.selection import (
+    discover_available_sources,
     discover_sources,
     normalize_variables,
     validate_sources,
@@ -170,3 +171,34 @@ def test_partial_month_still_requires_complete_monthly_checkpoint(tmp_path):
     validate_sources(selected)
     assert selected.start == date(2024, 5, 15)
     assert selected.end == date(2024, 5, 20)
+
+
+def test_source_driven_discovery_skips_absent_months_and_keeps_actual_coverage(tmp_path):
+    _daily_month(tmp_path, 5)
+    _daily_month(tmp_path, 7)
+    (plan,) = discover_available_sources(
+        "daily", "tp,t2m", data_directory=tmp_path
+    )
+    assert [month.start.month for month in plan.months] == [5, 7]
+    assert plan.start == date(2024, 5, 1)
+    assert plan.end == date(2024, 7, 31)
+    validate_sources(plan)
+
+
+def test_source_driven_discovery_rejects_incompatible_variable_source(tmp_path):
+    _raw_month(tmp_path, 5)
+    with pytest.raises(ValueError, match="fewer variables"):
+        discover_available_sources("hourly", "all", data_directory=tmp_path)
+
+
+def test_source_driven_discovery_rejects_ambiguous_month(tmp_path):
+    original = _daily_month(tmp_path, 5)
+    other = original.with_name("2024_0501_0531_d2m_t2m_tp.parquet")
+    other.write_bytes(original.read_bytes())
+    with pytest.raises(ValueError, match="Ambiguous"):
+        discover_available_sources("daily", "tp", data_directory=tmp_path)
+
+
+def test_source_driven_discovery_requires_at_least_one_checkpoint(tmp_path):
+    with pytest.raises(FileNotFoundError, match="No hourly checkpoint"):
+        discover_available_sources("hourly", "tp", data_directory=tmp_path)
