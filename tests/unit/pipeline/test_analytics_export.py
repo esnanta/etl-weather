@@ -31,8 +31,8 @@ def test_partial_hourly_export_excludes_context_and_preserves_values(tmp_path):
     _raw_month(tmp_path, 5)
     selection = _plan(tmp_path, "hourly", date(2024, 5, 2), date(2024, 5, 2))
     target = output_paths(selection, data_directory=tmp_path)[0]
-    assert target.name == "2024.parquet"
-    assert target.parent.name == "pilot_20240502_20240502"
+    assert target.name == "2024_hourly.parquet"
+    assert target.parent.name == "hourly"
 
     exported = export_selection(selection, data_directory=tmp_path)
     assert exported == ((target, 24 * 43 * 35),)
@@ -62,10 +62,12 @@ def test_daily_export_retains_utc_and_local_and_existing_values(tmp_path):
     assert frame.tp.eq(3).all()
 
 
-def test_year_complete_and_partial_destinations_do_not_collide(tmp_path):
+def test_partial_and_full_year_share_destination_but_conflict_safely(tmp_path):
     _daily_month(tmp_path, 5)
     partial = _plan(tmp_path, "daily")
-    assert output_paths(partial, data_directory=tmp_path)[0].parent.name.startswith("pilot_")
+    target = output_paths(partial, data_directory=tmp_path)[0]
+    assert target.name == "2024_daily.parquet"
+    assert target.parent.name == "daily"
     complete = type(partial)(
         partial.resolution,
         partial.variables,
@@ -73,7 +75,11 @@ def test_year_complete_and_partial_destinations_do_not_collide(tmp_path):
         date(2024, 12, 31),
         partial.months,
     )
-    assert output_paths(complete, data_directory=tmp_path)[0].parent.name == "daily"
+    assert output_paths(complete, data_directory=tmp_path) == (target,)
+    export_selection(partial, data_directory=tmp_path)
+    with pytest.raises(ValueError, match="incompatible analytics metadata"):
+        from pipeline.analytics.verification import verify_output
+        verify_output(complete, 2024, target)
 
 
 def test_existing_output_is_not_overwritten(tmp_path):
