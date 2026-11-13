@@ -378,6 +378,20 @@ The read path must be read-only, deterministic, bounded to the requested local-d
 
 Wet-day labels, scaling, rolling features, anomalies, clustering features, and other modelling semantics belong to downstream analytical stages, not the canonical daily climate dataset.
 
+## 13.1 Offline analytics export
+
+The application must also support an optional **offline, source-preserving analytics export** for an external notebook project. This is separate from the canonical PostgreSQL read interface and does not change existing ETL artifacts, transforms, database observations, or Airflow tasks.
+
+- **Hourly:** Read only already-downloaded ERA5-Land RAW NetCDF; preserve the nine selectable provider variables' UTC `valid_time`, grid coordinates, original values and missing positions. No new CDS requests, derived features, unit conversions or hourly-accumulation reinterpretation.
+- **Daily:** Read only already-transformed UTC+7 Parquet, preserving `valid_time`, `valid_time_local`, coordinates, provider-variable values and missing positions without running the daily transformation again. Derived `wind_speed` and `wind_direction` are not selected by `all`.
+- **Selection:** Require explicit inclusive `--start-date` and `--end-date`, a resolution (`hourly` or `daily`), and a selected provider variable set (`all` means the nine active provider variables). All monthly sources and requested variables must exist and pass structural/temporal validation. Missing, conflicting or ambiguous files must fail; no silent fallback.
+- **Layout:** Publish one independent year-level Parquet file for each selected resolution under `data/cds_<dataset>/<bbox>/analytics/<variable_signature>/<resolution>/YYYY_<resolution>.parquet`, with one `manifest.json` per resolution/selection directory. This file name identifies the partition year, **not** proof of complete annual coverage.
+- **Coverage:** For a partial year, retain exact inclusive coverage in both Parquet metadata and manifest (`partial_year`). A later request for a different period of that same year must fail rather than silently replacing, extending or falsely certifying an existing annual partition.
+- **Integrity:** Stream processing in bounded batches, exclude RAW context hours outside month ownership, compare output rows against source data including null positions, and record each source/output SHA-256 in a manifest with dataset/bbox, selection, time semantics and per-year coverage. Existing output is reusable only after matching source/output verification. Do not overwrite conflicting output or invent complete missing years.
+- **Safety:** Preview is read-only; `--execute` writes only analytics output and manifests. Publishing may not mutate RAW, transformed checkpoints or PostgreSQL; overwrite/`--force` is not supported. Temporary artifacts must not replace valid partitions on failure. Analytics under `data/` remain subject to the repository's explicitly authorized development reset operations.
+
+Data quality statistics, EDA, imputation, feature engineering and predictive analysis belong downstream, not in the export.
+
 ## 14. Geospatial requirements
 
 PostGIS is used for administrative-region mapping.
