@@ -126,33 +126,6 @@ Example for local day 2024-05-01:
 
 Daily means for `t2m`, `d2m`, `swvl1`, `swvl2`, `swvl3`, `u10`, and `v10` require 24 valid hourly samples per grid point for the local day. Derived `wind_speed` is the mean of 24 paired hourly wind-vector magnitudes (not the magnitude of the daily-mean components); `wind_direction` uses the daily-mean components and is missing for an effectively calm resultant. The two wind outputs are not additional CDS provider variables. Missing observations remain missing rather than being converted to zero. Full formulas and scientific requirements are in [docs/app_description.md](./docs/app_description.md).
 
-## Architecture Overview
-
-```text
-Copernicus CDS
-      │
-      ▼
-   pipeline/
- acquire hourly data
- validate source
- transform UTC → UTC+7 daily
- preserve NetCDF / Parquet
- load canonical observations
-      │
-      ├──────────────► PostgreSQL
-      │                    │
-      │                    ├── geospatial/
-      │                    │   boundaries + grid mapping
-      │                    │
-      │                    └── query/
-      │                        read-only operational audit
-      │
-      └──────────────► orchestration/
-                       Apache Airflow coordinates
-                       the existing pipeline
-```
-
-Airflow coordinates pipeline execution but does not redefine the scientific transformation or persistence rules.
 
 ## Project Structure
 
@@ -337,6 +310,45 @@ data/
 ```
 
 RAW hourly data is stored as NetCDF. UTC+7 daily transformed data is stored as Parquet. The active variable signature is `d2m_ssrd_swvl1_swvl2_swvl3_t2m_tp_u10_v10`; five-variable artifacts have different paths and cannot resume nine-variable requests. Artifacts are validated before reuse, and historical five-variable files are not deleted automatically.
+
+## Offline Analytics Export
+
+Export **all available** ERA5-Land monthly checkpoints to one annual Parquet file per year/resolution for external notebooks, without downloading CDS data, recalculating daily statistics, or changing source checkpoints.
+
+Preview all discovered years and their existing source months:
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all
+python -m scripts.run_analytics --resolution daily --variables all
+```
+
+Write or verify every available year:
+
+```bash
+python -m scripts.run_analytics --resolution hourly --variables all --execute
+python -m scripts.run_analytics --resolution daily --variables all --execute
+```
+
+**No start/end dates are required or accepted.** `--resolution hourly` discovers existing `raw/YYYY/*.nc` checkpoints; `--resolution daily` discovers existing `transformed/YYYY/*.parquet`. Each layer is independent. `--variables all` requires the nine active provider variables in every discovered month; `--variables tp,t2m` selects a smaller dataset with a different signature. Unsupported or ambiguous sources are rejected rather than skipped. The optional `--output` is for isolated testing; normal operation resolves the destination automatically.
+
+Example output for existing May–June 2024 data:
+
+```text
+data/cds_reanalysis-era5-land/bbox_n6p1_w94p9_s1p9_e98p3/analytics/
+└── all/
+    ├── hourly/
+    │   ├── 2024_hourly.parquet
+    │   └── manifest.json
+    └── daily/
+        ├── 2024_daily.parquet
+        └── manifest.json
+```
+
+Each resolution/variable-selection directory has **one manifest** indexing all exported yearly Parquet files. The manifest preserves source/output SHA-256 hashes, true temporal coverage and source metadata. A year is `complete_year` only when all 12 months exist. If only some months exist, the result is `partial_year`; gaps between available months are recorded explicitly in `source_months` when relevant.
+
+A rerun verifies and reuses matching output. If new source months are subsequently added to a year already exported, the current implementation **refuses to overwrite or extend** the old annual Parquet; a separately designed guarded replacement mechanism is needed before exporting an expanded version of that same year. No `--force` mode exists. Generated artifacts are under `data/`, which is ignored by Git and is affected by intentional development reset/destroy commands.
+
+See [pipeline/README.md](./pipeline/README.md) for module boundaries and [the Analytics Export checklist](./docs/todo/ERA5_LAND_ANALYTICS_EXPORT.md) for test/release tracking.
 
 ## Persistence and Idempotency
 

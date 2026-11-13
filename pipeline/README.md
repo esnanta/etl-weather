@@ -448,6 +448,36 @@ per-request-partition idempotency contract. See the root README for command usag
 
 The configured inclusive period comes from the project environment. The runtime splits multi-month periods into calendar-month request partitions and processes each partition through the same checkpoint boundaries.
 
+### Offline analytics export
+
+The Airflow-independent `pipeline/analytics/` modules discover **all
+available monthly checkpoints** in the selected source layer (`raw/` for
+hourly, `transformed/` for daily), validate their time/grid/variable
+contracts, group them by source calendar year, stream target rows to Parquet,
+and verify each output before publishing a per-resolution `manifest.json`.
+
+`python -m scripts.run_analytics --resolution hourly --variables all`
+provides a read-only preview; add `--execute` to publish/revalidate annual
+partitions. Use `--resolution daily` for already-transformed UTC+7 values.
+**The CLI has no date-range flags**; discovered source files determine the
+available years and months. Missing calendar months are not downloaded,
+imputed, or assumed present. A year is complete only when all 12 months
+exist. Manifest entries for nonconsecutive source months list the actual
+months, not just their first/last dates.
+
+Output identity is `analytics/<selection>/<resolution>/YYYY_<resolution>.parquet`.
+Both `all` (nine provider variables) and smaller subsets are supported,
+provided every discovered source month contains the selected fields. Ambiguous
+or incompatible monthly sources are rejected. RAW context hours are excluded;
+daily values and missingness are preserved without recomputation.
+
+Existing matching annual output is verified and reused. If a new month is
+later added to an already-published partial annual file, its coverage no
+longer matches and the exporter safely refuses replacement; `--force`
+and automatic extension are deliberately unsupported. See the operator
+examples in [README.md](../README.md) and the scientific/data contract
+in [docs/app_description.md](../docs/app_description.md).
+
 ### Airflow
 
 Airflow calls pipeline runtime boundaries rather than reproducing ETL logic in DAG files. For DAG IDs, schedules, pools, CDS pacing, retries, campaign progress, and recovery procedures, use [`orchestration/README.md`](../orchestration/README.md).
