@@ -1,8 +1,7 @@
-"""Test analytics CLI preview and explicit P3 execution routing.
+"""Test source-driven analytics CLI preview, dispatch, and input failures.
 
-Source discovery and actual file writes are isolated because this module
-tests CLI dispatch. Production selection and Parquet integrity have separate
-offline tests, without live CDS or PostgreSQL.
+Only discovery, validation and export boundaries are stubbed; real artifact
+selection and fidelity are covered by offline pipeline integration-style tests.
 """
 
 from __future__ import annotations
@@ -16,119 +15,73 @@ from pipeline.analytics.selection import AnalyticsSelection, SourceMonth
 from scripts import run_analytics
 
 
-def test_cli_explicit_months_does_not_require_campaign_config(monkeypatch, capsys):
+def _year(year=2024):
+    return AnalyticsSelection(
+        "daily", ("t2m", "tp"), date(year, 5, 1), date(year, 5, 31),
+        (SourceMonth(Path(f"{year}.parquet"), date(year, 5, 1), date(year, 5, 31)),),
+    )
+
+
+def test_cli_discovers_all_available_months_without_campaign_dates(monkeypatch, capsys):
     seen = []
-
-    def discover(resolution, variables, start, end):
-        seen.append((resolution, variables, start, end))
-        return AnalyticsSelection(
-            resolution,
-            ("t2m", "tp"),
-            start,
-            end,
-            (SourceMonth(Path("fixture.nc"), date(2024, 5, 1), date(2024, 5, 31)),),
-        )
-
-    monkeypatch.setattr(run_analytics, "discover_sources", discover)
+    def discover(resolution, variables):
+        seen.append((resolution, variables))
+        return (_year(),)
+    monkeypatch.setattr(run_analytics, "discover_available_sources", discover)
     monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: None)
-    assert run_analytics.main([
-        "--resolution", "hourly",
-        "--variables", "tp,t2m",
-        "--start-date", "2024-05-01",
-        "--end-date", "2024-06-30",
-    ]) == 0
-    assert seen == [
-        ("hourly", "tp,t2m", date(2024, 5, 1), date(2024, 6, 30))
-    ]
-    assert "Preview only" in capsys.readouterr().out
+    assert run_analytics.main(["--resolution", "daily", "--variables", "tp,t2m"]) == 0
+    assert seen == [("daily", "tp,t2m")]
+    stdout = capsys.readouterr().out
+    assert "2024-05" in stdout
+    assert "Preview only" in stdout
 
 
-def test_cli_rejects_obsolete_year_flags():
-    with pytest.raises(SystemExit) as error:
-        run_analytics.main([
-            "--resolution", "hourly",
-            "--start-date", "2024-05-01",
-            "--end-date", "2024-06-30",
-            "--start-year", "2024",
-        ])
-    assert error.value.code == 2
-
-
-def test_cli_requires_explicit_date_bounds():
-    with pytest.raises(SystemExit) as error:
-        run_analytics.main(["--resolution", "hourly"])
-    assert error.value.code == 2
-
-
-def test_cli_rejects_reversed_dates():
-    with pytest.raises(SystemExit) as error:
-        run_analytics.main([
-            "--resolution", "hourly",
-            "--start-date", "2024-06-30",
-            "--end-date", "2024-05-01",
-        ])
-    assert error.value.code == 2
+def test_cli_rejects_obsolete_date_and_year_flags():
+    for old in ("--start-date", "--end-date", "--start-year", "--end-year"):
+        with pytest.raises(SystemExit) as error:
+            run_analytics.main(["--resolution", "daily", old, "2024-01-01"])
+        assert error.value.code == 2
 
 
 def test_cli_rejects_missing_inputs(monkeypatch):
     def missing(*args, **kwargs):
-        raise FileNotFoundError("missing June checkpoint")
-
-    monkeypatch.setattr(run_analytics, "discover_sources", missing)
+        raise FileNotFoundError("no source checkpoints")
+    monkeypatch.setattr(run_analytics, "discover_available_sources", missing)
     with pytest.raises(SystemExit) as error:
-        run_analytics.main([
-            "--resolution", "daily",
-            "--start-date", "2024-06-01",
-            "--end-date", "2024-06-30",
-        ])
+        run_analytics.main(["--resolution", "daily"])
     assert error.value.code == 2
 
 
-def test_cli_execute_dispatches_after_validation(monkeypatch, tmp_path, capsys):
+def test_cli_execute_dispatches_each_year_after_global_validation(monkeypatch, tmp_path, capsys):
     calls = []
-
-    def discover(*args):
-        calls.append("discover")
-        return AnalyticsSelection(
-            "daily", ("tp",), date(2024, 5, 1), date(2024, 5, 31),
-            (SourceMonth(Path("fixture.parquet"), date(2024, 5, 1), date(2024, 5, 31)),),
-        )
-
-    monkeypatch.setattr(run_analytics, "discover_sources", discover)
-    monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: calls.append("validate"))
     monkeypatch.setattr(
-        run_analytics, "export_selection",
-        lambda plan, output_directory: (
-            calls.append(("export", output_directory))
-            or ((output_directory / "2024.parquet", 2),)
-        ),
+        run_analytics, "discover_available_sources", lambda *args: (_year(2023), _year(2024)),
     )
+    monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: calls.append(
+        ("validate", len(plan.months))
+    ))
+    monkeypatch.setattr(run_analytics, "export_selection", lambda plan, output_directory: (
+        calls.append(("export", plan.start.year, output_directory))
+        or ((output_directory / f"{plan.start.year}_daily.parquet", 2),)
+    ))
     assert run_analytics.main([
-        "--resolution", "daily",
-        "--start-date", "2024-05-01",
-        "--end-date", "2024-05-31",
-        "--output", str(tmp_path),
-        "--execute",
+        "--resolution", "daily", "--output", str(tmp_path), "--execute",
     ]) == 0
-    assert calls == ["discover", "validate", ("export", tmp_path)]
-    assert "P4 export verification and manifest publication completed" in capsys.readouterr().out
+    assert calls == [
+        ("validate", 2),
+        ("export", 2023, tmp_path),
+        ("export", 2024, tmp_path),
+    ]
+    assert "Analytics export verification and manifest publication completed" in capsys.readouterr().out
 
 
 def test_cli_preview_never_calls_export(monkeypatch):
     monkeypatch.setattr(
-        run_analytics, "discover_sources",
-        lambda *args: AnalyticsSelection(
-            "daily", ("tp",), date(2024, 5, 1), date(2024, 5, 31),
-            (SourceMonth(Path("fixture.parquet"), date(2024, 5, 1), date(2024, 5, 31)),),
-        ),
+        run_analytics, "discover_available_sources", lambda *args: (_year(),),
     )
     monkeypatch.setattr(run_analytics, "validate_sources", lambda plan: None)
     monkeypatch.setattr(
         run_analytics, "export_selection",
         lambda *args, **kwargs: pytest.fail("Preview must not export"),
     )
-    assert run_analytics.main([
-        "--resolution", "daily",
-        "--start-date", "2024-05-01",
-        "--end-date", "2024-05-31",
-    ]) == 0
+    assert run_analytics.main(["--resolution", "daily"]) == 0
